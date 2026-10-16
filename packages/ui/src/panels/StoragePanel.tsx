@@ -1,5 +1,6 @@
 import { METRO_SDK, type StorageAdapterInfo, type StorageEntries, type StorageEntry } from '@capybara/protocol';
 import { useEffect, useMemo, useState } from 'react';
+import { CopyButton } from '../components/CopyButton';
 import { JsonTree } from '../components/JsonTree';
 import { storageCommand } from '../connection';
 import { formatBytes, makeMatcher, parseJson } from '../format';
@@ -350,6 +351,16 @@ function ValueEditor({
         </strong>
         <span className="note">{formatBytes(full.size)}</span>
         <span className="spacer" />
+        {!editing && full.value !== null && (
+          <CopyButton
+            className="btn small"
+            label={`Copy the value of ${entry.key}`}
+            // The tree view copies indented JSON; Raw copies the value exactly as stored.
+            text={() => (parsed.ok && !raw ? JSON.stringify(parsed.value, null, 2) : value)}
+          >
+            Copy
+          </CopyButton>
+        )}
         {!editing && parsed.ok && (
           <button type="button" className="btn small" onClick={() => setRaw(!raw)}>
             {raw ? 'Tree' : 'Raw'}

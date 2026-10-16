@@ -1,6 +1,7 @@
 import type { SerializedValue } from '@capybara/protocol';
 import { useState, type ReactNode } from 'react';
-import { formatKey, isSpecial, preview } from '../format';
+import { formatKey, isSpecial, preview, valueText } from '../format';
+import { CopyButton } from './CopyButton';
 
 interface Props {
   value: SerializedValue;
@@ -46,6 +47,11 @@ function TreeNode({ name, value, depth, raw, expandDepth }: NodeProps) {
           {label}
           <Leaf value={value} raw={raw} />
         </span>
+        <CopyButton
+          label={name === undefined ? 'Copy this value' : `Copy the value of ${name}`}
+          text={() => valueText(value, raw)}
+          toast={(copied) => leafToast(copied, name)}
+        />
       </div>
     );
   }
@@ -58,6 +64,11 @@ function TreeNode({ name, value, depth, raw, expandDepth }: NodeProps) {
           {label}
           <span className="t-preview">{preview(value, raw)}</span>
         </span>
+        <CopyButton
+          label={name === undefined ? 'Copy as JSON' : `Copy ${name} as JSON`}
+          text={() => valueText(value, raw)}
+          toast={name === undefined ? 'Copied as JSON' : `Copied ${name} as JSON`}
+        />
       </div>
       {open &&
         children.entries.map(([key, child], index) => (
@@ -70,6 +81,13 @@ function TreeNode({ name, value, depth, raw, expandDepth }: NodeProps) {
       )}
     </>
   );
+}
+
+/** Short values are shown, so it is clear that only the value was copied, without its key or quotes. */
+function leafToast(copied: string, name: string | undefined): string {
+  if (copied === '') return 'Copied an empty string';
+  if (copied.length <= 40 && !copied.includes('\n')) return `Copied: ${copied}`;
+  return name === undefined ? 'Copied the value' : `Copied the value of ${name}`;
 }
 
 function Leaf({ value, raw }: { value: SerializedValue; raw: boolean }): ReactNode {

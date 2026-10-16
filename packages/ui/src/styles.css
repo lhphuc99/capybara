@@ -638,11 +638,13 @@ code {
 }
 
 .log-line {
+  position: relative;
   display: grid;
   grid-template-columns: 92px 14px minmax(0, 1fr) auto;
   align-items: start;
   gap: 6px;
-  padding: 3px 12px 3px 10px;
+  /* Room for the copy button, so it never covers the source badge. */
+  padding: 3px 38px 3px 10px;
   border-left: 2px solid transparent;
 }
 
@@ -1309,4 +1311,90 @@ code {
   font: 12px/18px var(--font-mono);
   list-style: none;
   overflow-wrap: anywhere;
+}
+
+/* Icon-only copy buttons appear when their row is hovered or the button has keyboard focus. */
+.copy-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--text-muted);
+  opacity: 0;
+}
+
+.copy-icon:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.log-line:hover > .copy-icon,
+.tree-row:hover > .copy-icon,
+.copy-icon:focus-visible,
+.copy-icon.copied {
+  opacity: 1;
+}
+
+.copy-icon.copied,
+.btn.copied {
+  color: var(--ok);
+}
+
+.log-line > .copy-icon {
+  position: absolute;
+  top: 2px;
+  right: 8px;
+}
+
+.tree-row > .copy-icon {
+  height: 18px;
+  margin-left: auto;
+}
+
+.toast-region {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  z-index: 100;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--text);
+  color: var(--bg);
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  box-shadow: var(--shadow);
+  animation: toast-in 160ms ease-out;
+}
+
+.toast.error {
+  background: var(--error);
+  color: var(--accent-text);
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast {
+    animation: none;
+  }
 }

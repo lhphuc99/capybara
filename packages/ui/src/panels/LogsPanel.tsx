@@ -1,9 +1,10 @@
-import type { LogLevel, LogSource, SerializedValue } from '@capybara/protocol';
+import type { LogLevel } from '@capybara/protocol';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { memo, useMemo, useRef, useState } from 'react';
+import { CopyButton } from '../components/CopyButton';
 import { JsonTree } from '../components/JsonTree';
 import { useFollow } from '../follow';
-import { formatLogMessage, formatTime, isSpecial, makeMatcher } from '../format';
+import { formatLogMessage, formatTime, isExpandable, LOG_SOURCE_LABELS, logEntryText, makeMatcher } from '../format';
 import { clearSession, type LogEntry, type SessionState } from '../store';
 
 const LEVELS: Array<{ level: LogLevel; label: string }> = [
@@ -14,13 +15,6 @@ const LEVELS: Array<{ level: LogLevel; label: string }> = [
   { level: 'debug', label: 'Debug' },
 ];
 
-const SOURCE_LABELS: Record<LogSource, string | null> = {
-  console: null,
-  api: 'api',
-  uncaught: 'uncaught',
-  unhandledrejection: 'unhandled rejection',
-};
-
 // Entries are immutable, so the text used for filtering is built once per entry.
 const searchTexts = new WeakMap<LogEntry, string>();
 function searchText(entry: LogEntry): string {
@@ -30,16 +24,6 @@ function searchText(entry: LogEntry): string {
     searchTexts.set(entry, text);
   }
   return text;
-}
-
-function expandable(value: SerializedValue): boolean {
-  if (value === null || typeof value !== 'object') return false;
-  if (Array.isArray(value)) return value.length > 0;
-  if (isSpecial(value)) {
-    if (value.$t === 'object') return Object.keys(value.props).length > 0 || !!value.more;
-    return value.$t === 'error' || value.$t === 'array' || value.$t === 'map' || value.$t === 'set';
-  }
-  return Object.keys(value).length > 0;
 }
 
 export function LogsPanel({ session }: { session: SessionState }) {
@@ -113,6 +97,15 @@ export function LogsPanel({ session }: { session: SessionState }) {
         <span className="note">
           {visible.length === logs.length ? `${logs.length} entries` : `${visible.length} of ${logs.length}`}
         </span>
+        <CopyButton
+          className="btn"
+          label={visible.length === logs.length ? 'Copy all logs as text' : 'Copy the logs that match the filters as text'}
+          text={() => visible.map(logEntryText).join('\n')}
+          toast={`Copied ${visible.length} log ${visible.length === 1 ? 'entry' : 'entries'} to the clipboard`}
+          disabled={visible.length === 0}
+        >
+          {visible.length === logs.length ? 'Copy all' : `Copy ${visible.length}`}
+        </CopyButton>
         <button type="button" className="btn" onClick={() => clearSession(session.meta.info.id)} disabled={logs.length === 0}>
           Clear
         </button>
@@ -163,8 +156,8 @@ const LogRow = memo(function LogRow({
   expanded: boolean;
   onToggle: (seq: number) => void;
 }) {
-  const canExpand = entry.args.some(expandable);
-  const source = SOURCE_LABELS[entry.source];
+  const canExpand = entry.args.some(isExpandable);
+  const source = LOG_SOURCE_LABELS[entry.source];
   return (
     <>
       <div className={`log-line${canExpand ? ' clickable' : ''}`} onClick={canExpand ? () => onToggle(entry.seq) : undefined}>
@@ -172,10 +165,11 @@ const LogRow = memo(function LogRow({
         {canExpand ? <span className={`caret${expanded ? ' open' : ''}`} /> : <span className="caret-space" />}
         <span className="log-message">{formatLogMessage(entry.args)}</span>
         {source && <span className="log-source">{source}</span>}
+        <CopyButton label="Copy this log entry" text={() => logEntryText(entry)} />
       </div>
       {expanded && (
         <div className="log-details">
-          {entry.args.filter(expandable).map((arg, index) => (
+          {entry.args.filter(isExpandable).map((arg, index) => (
             <JsonTree key={index} value={arg} expandDepth={1} />
           ))}
         </div>

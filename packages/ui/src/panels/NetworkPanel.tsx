@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { JsonTree } from '../components/JsonTree';
 import { diagnose } from '../connection';
 import { useFollow } from '../follow';
+import { showToast } from '../toast';
 import {
   copyText,
   decodeSocketIo,
@@ -351,7 +352,9 @@ function MessageView({ message, socketIo }: { message: SocketMessage; socketIo: 
         body={body}
         empty="Empty message"
         onCopy={(text) =>
-          void copyText(text).then(() => {
+          void copyText(text).then((ok) => {
+            showToast(ok ? 'Copied to clipboard' : 'Could not copy to the clipboard', ok ? 'ok' : 'error');
+            if (!ok) return;
             setCopied(true);
             window.setTimeout(() => setCopied(false), 1_200);
           })
@@ -397,7 +400,9 @@ function RequestDetail({ entry, session, onClose }: { entry: NetworkEntry; sessi
   const [copied, setCopied] = useState<string | null>(null);
 
   const copy = (label: string, text: string) => {
-    void copyText(text).then(() => {
+    void copyText(text).then((ok) => {
+      showToast(ok ? 'Copied to clipboard' : 'Could not copy to the clipboard', ok ? 'ok' : 'error');
+      if (!ok) return;
       setCopied(label);
       window.setTimeout(() => setCopied(null), 1_200);
     });

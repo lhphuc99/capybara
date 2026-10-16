@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { EmptyState } from './components/EmptyState';
 import { SessionPicker } from './components/SessionPicker';
+import { Toaster } from './components/Toaster';
 import type { ConnectionStatus } from './connection';
 import { statusTone } from './format';
 import { LogsPanel } from './panels/LogsPanel';
@@ -78,6 +79,7 @@ export function App() {
           <StoragePanel session={session} />
         )}
       </main>
+      <Toaster />
     </div>
   );
 }

@@ -1,5 +1,5 @@
-import type { Platform, SerializedValue, SessionInfo, SpecialValue } from '@capybara/protocol';
-import type { NetworkEntry } from './store';
+import type { LogSource, Platform, SerializedValue, SessionInfo, SpecialValue } from '@capybara/protocol';
+import type { LogEntry, NetworkEntry } from './store';
 
 export function isSpecial(value: SerializedValue): value is SpecialValue {
   return (
@@ -86,6 +86,86 @@ function previewSpecial(v: SpecialValue, nested: boolean): string {
     case 'limit':
       return `[${v.name}]`;
   }
+}
+
+/** Values a log row can expand into a tree. */
+export function isExpandable(value: SerializedValue): boolean {
+  if (value === null || typeof value !== 'object') return false;
+  if (Array.isArray(value)) return value.length > 0;
+  if (isSpecial(value)) {
+    if (value.$t === 'object') return Object.keys(value.props).length > 0 || !!value.more;
+    return value.$t === 'error' || value.$t === 'array' || value.$t === 'map' || value.$t === 'set';
+  }
+  return Object.keys(value).length > 0;
+}
+
+export const LOG_SOURCE_LABELS: Record<LogSource, string | null> = {
+  console: null,
+  api: 'api',
+  uncaught: 'uncaught',
+  unhandledrejection: 'unhandled rejection',
+};
+
+/**
+ * A captured value as plain JSON, for copying. Tagged values become what JSON can hold (dates their
+ * ISO text, Maps objects, Sets arrays, errors their fields), and cut values say how much is missing.
+ */
+export function plainValue(value: SerializedValue, raw = false): unknown {
+  if (value === null || typeof value !== 'object') return value;
+  if (Array.isArray(value)) return value.map((item) => plainValue(item, raw));
+  if (raw || !isSpecial(value)) {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, plainValue(item as SerializedValue, raw)]));
+  }
+  const props = (record: Record<string, SerializedValue> = {}) =>
+    Object.fromEntries(Object.entries(record).map(([key, item]) => [key, plainValue(item)]));
+  const more = (missing: number) => (missing > 0 ? [`… ${missing} more`] : []);
+  switch (value.$t) {
+    case 'undefined':
+      return undefined;
+    case 'number':
+      return value.v === '-0' ? 0 : value.v;
+    case 'string':
+      return `${value.v}… (${value.length.toLocaleString()} chars)`;
+    case 'date':
+      return value.v;
+    case 'error':
+      return { name: value.name, message: value.message, ...(value.stack ? { stack: value.stack } : {}), ...props(value.props) };
+    case 'array':
+      return [...value.items.map((item) => plainValue(item)), ...more(value.length - value.items.length)];
+    case 'object':
+      return value.more ? { ...props(value.props), '…': `${value.more} more` } : props(value.props);
+    case 'map': {
+      const entries = value.entries.map(([key, item]) => [typeof key === 'string' ? key : preview(key), plainValue(item)]);
+      const missing = value.size - value.entries.length;
+      return Object.fromEntries(missing > 0 ? [...entries, ['…', `${missing} more`]] : entries);
+    }
+    case 'set':
+      return [...value.values.map((item) => plainValue(item)), ...more(value.size - value.values.length)];
+    default:
+      return preview(value);
+  }
+}
+
+/** The full text of a value for the clipboard: strings as they are, errors with their stack, the rest as JSON. */
+export function valueText(value: SerializedValue, raw = false): string {
+  if (typeof value === 'string') return value;
+  if (!raw && isSpecial(value) && value.$t === 'error') {
+    const head = `${value.name}: ${value.message}`;
+    if (!value.stack) return head;
+    return value.stack.startsWith(head) ? value.stack : `${head}\n${value.stack}`;
+  }
+  const plain = plainValue(value, raw);
+  return typeof plain === 'string' ? plain : (JSON.stringify(plain, null, 2) ?? String(plain));
+}
+
+/** A log entry as copied text: the line as the list shows it, then each object or error in full. */
+export function logEntryText(entry: LogEntry): string {
+  const source = LOG_SOURCE_LABELS[entry.source];
+  const head = `${formatTime(entry.ts)} ${entry.level.toUpperCase().padEnd(5)} ${source ? `(${source}) ` : ''}${formatLogMessage(entry.args)}`;
+  const details = entry.args
+    .filter((arg) => isExpandable(arg) || (isSpecial(arg) && arg.$t === 'string'))
+    .map((arg) => valueText(arg).replace(/^/gm, '  '));
+  return [head, ...details].join('\n');
 }
 
 /** The message line of a log entry, with printf-style `%s`/`%d`/`%o` substitutions applied. */
@@ -292,16 +372,19 @@ export function describeSession(info: SessionInfo): string {
     .join(' · ');
 }
 
-export async function copyText(text: string): Promise<void> {
+/** Resolves false when neither the Clipboard API nor the older copy command worked. */
+export async function copyText(text: string): Promise<boolean> {
   try {
     await navigator.clipboard.writeText(text);
+    return true;
   } catch {
     // Clipboard API needs a secure context; LAN addresses over plain HTTP are not one.
     const area = document.createElement('textarea');
     area.value = text;
     document.body.appendChild(area);
     area.select();
-    document.execCommand('copy');
+    const copied = document.execCommand('copy');
     area.remove();
+    return copied;
   }
 }

@@ -1,5 +1,63 @@
+import type { SerializedValue } from '@capybara/protocol';
 import { describe, expect, it } from 'vitest';
-import { decodeSocketIo } from '../src/format';
+import { decodeSocketIo, logEntryText, valueText } from '../src/format';
+import type { LogEntry } from '../src/store';
+
+describe('copied text', () => {
+  it('turns captured values into plain JSON, saying what was cut', () => {
+    const value: SerializedValue = {
+      id: 1,
+      when: { $t: 'date', v: '2026-10-16T08:00:00.000Z' },
+      tags: { $t: 'set', values: ['a', 'b'], size: 3 },
+      meta: { $t: 'map', entries: [['k', 1], [{ $t: 'symbol', v: 'Symbol(x)' }, 2]], size: 2 },
+      missing: { $t: 'undefined' },
+      big: { $t: 'bigint', v: '12' },
+      nan: { $t: 'number', v: 'NaN' },
+      user: { $t: 'object', name: 'User', props: { name: 'Ada' }, more: 3 },
+      note: { $t: 'string', v: 'abc', length: 500 },
+      list: { $t: 'array', items: [1, 2], length: 10 },
+      save: { $t: 'function', name: 'save' },
+    };
+    expect(JSON.parse(valueText(value))).toEqual({
+      id: 1,
+      when: '2026-10-16T08:00:00.000Z',
+      tags: ['a', 'b', '… 1 more'],
+      meta: { k: 1, 'Symbol(x)': 2 },
+      big: '12n',
+      nan: 'NaN',
+      user: { name: 'Ada', '…': '3 more' },
+      note: 'abc… (500 chars)',
+      list: [1, 2, '… 8 more'],
+      save: 'ƒ save()',
+    });
+    expect(valueText(value)).toContain('\n  "id": 1,');
+    // Plain JSON from storage or a response keeps a `$t` key as an ordinary key.
+    expect(JSON.parse(valueText({ $t: 'date', v: 'x' }, true))).toEqual({ $t: 'date', v: 'x' });
+    expect(valueText('as is')).toBe('as is');
+  });
+
+  it('copies errors with their stack, adding the message when the stack leaves it out', () => {
+    const error = (stack: string): SerializedValue => ({ $t: 'error', name: 'TypeError', message: 'boom', stack });
+    expect(valueText(error('TypeError: boom\n    at f (app.js:1:1)'))).toBe('TypeError: boom\n    at f (app.js:1:1)');
+    expect(valueText(error('f@app.js:1:1'))).toBe('TypeError: boom\nf@app.js:1:1');
+  });
+
+  it('writes a log entry as its line, then its objects and errors in full', () => {
+    const ts = new Date(2026, 9, 16, 8, 5, 3, 21).getTime();
+    const warn: LogEntry = { seq: 1, ts, level: 'warn', source: 'console', args: ['Saved %s', 'draft', { id: 7 }] };
+    expect(logEntryText(warn)).toBe('08:05:03.021 WARN  Saved draft {id: 7}\n  {\n    "id": 7\n  }');
+    const crash: LogEntry = {
+      seq: 2,
+      ts,
+      level: 'error',
+      source: 'uncaught',
+      args: [{ $t: 'error', name: 'TypeError', message: 'x is undefined', stack: 'TypeError: x is undefined\n    at App (App.tsx:4:2)' }],
+    };
+    expect(logEntryText(crash)).toBe(
+      '08:05:03.021 ERROR (uncaught) TypeError: x is undefined\n  TypeError: x is undefined\n      at App (App.tsx:4:2)',
+    );
+  });
+});
 
 describe('decodeSocketIo', () => {
   it('names socket.io packets and pulls out event arguments', () => {
