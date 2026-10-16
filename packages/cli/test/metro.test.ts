@@ -414,7 +414,8 @@ describe('Metro discovery and CDP event relay', () => {
     await until(() => expect(f.run('typeof __DEVSIGHT_WS_TRACKER_V1__')).toBe('undefined'));
     expect(f.run('Object.prototype.hasOwnProperty.call(WebSocket.prototype, "dispatchEvent")')).toBe(false);
     expect(f.run('globalThis.WebSocket === WebSocket')).toBe(true);
-    expect(f.commands.some((c) => c.method === 'Runtime.removeBinding')).toBe(true);
+    // Sent once the app has answered the stop evaluation.
+    await until(() => expect(f.commands.some((c) => c.method === 'Runtime.removeBinding')).toBe(true));
   });
 
   it('routes read-only storage commands from the viewer to the app through CDP', async () => {
