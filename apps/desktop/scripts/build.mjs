@@ -38,3 +38,5 @@ await build({
 });
 
 cpSync(ui, `${dist}ui`, { recursive: true });
+// The Linux window icon. Only dist/ is packaged, so the copy in build/ isn't in the app.
+cpSync(path('../build/icon.png'), `${dist}icon.png`);

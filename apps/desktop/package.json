@@ -1,15 +1,21 @@
 {
   "name": "@capybara/desktop",
   "productName": "Capybara",
+  "desktopName": "capybara-desktop.desktop",
   "version": "0.1.0",
   "private": true,
   "description": "Capybara as a desktop app: the server and the UI in one window",
+  "author": "Capybara",
   "type": "module",
   "main": "dist/main.cjs",
   "scripts": {
     "build": "node scripts/build.mjs",
     "start": "npm run build && electron .",
     "package": "npm run build && electron-builder --mac",
+    "package:win": "npm run build && electron-builder --win",
+    "package:linux": "npm run build && electron-builder --linux",
+    "package:all": "npm run build && electron-builder --mac --win --linux",
+    "icon": "node scripts/icon.mjs",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json"
   },
@@ -24,6 +30,7 @@
   },
   "build": {
     "appId": "dev.capybara.desktop",
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "files": [
       "dist/**"
     ],
@@ -31,6 +38,9 @@
       "output": "release"
     },
     "npmRebuild": false,
+    "toolsets": {
+      "appimage": "1.0.3"
+    },
     "mac": {
       "category": "public.app-category.developer-tools",
       "icon": "build/icon.icon",
@@ -40,6 +50,46 @@
       ],
       "identity": "-",
       "hardenedRuntime": false
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png"
+    },
+    "linux": {
+      "executableName": "capybara-desktop",
+      "syncDesktopName": true,
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "tar.gz",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png",
+      "category": "Development",
+      "synopsis": "Debug React Native and web apps: logs, network and storage"
     }
   },
   "engines": {

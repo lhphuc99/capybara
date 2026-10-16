@@ -119,11 +119,21 @@ function takeOverWhenFree(options: ServerOptions) {
   }, TAKEOVER_INTERVAL_MS);
 }
 
-/** Opened from the Dock, the app doesn't get the shell's PATH, so look where the Android SDK keeps adb. */
+/** Opened from the Dock or Start menu, the app doesn't get the shell's PATH, so look where the Android SDK keeps adb. */
 function findAdb(): string {
-  const sdks = [process.env.ANDROID_HOME, process.env.ANDROID_SDK_ROOT, join(homedir(), 'Library', 'Android', 'sdk')];
+  const sdks = [
+    process.env.ANDROID_HOME,
+    process.env.ANDROID_SDK_ROOT,
+    // Android Studio's default SDK location on each platform.
+    process.platform === 'win32'
+      ? join(process.env.LOCALAPPDATA ?? join(homedir(), 'AppData', 'Local'), 'Android', 'Sdk')
+      : process.platform === 'darwin'
+        ? join(homedir(), 'Library', 'Android', 'sdk')
+        : join(homedir(), 'Android', 'Sdk'),
+  ];
+  const binary = process.platform === 'win32' ? 'adb.exe' : 'adb';
   for (const sdk of sdks) {
-    const adb = sdk && join(sdk, 'platform-tools', 'adb');
+    const adb = sdk && join(sdk, 'platform-tools', binary);
     if (adb && existsSync(adb)) return adb;
   }
   return 'adb';
@@ -149,6 +159,8 @@ function createWindow(): BrowserWindow {
     minWidth: 640,
     minHeight: 400,
     title: 'Capybara',
+    // Windows takes the icon from the exe and macOS from the app bundle; a Linux binary has none.
+    icon: process.platform === 'linux' ? join(app.getAppPath(), 'dist', 'icon.png') : undefined,
     backgroundColor: windowBackground(),
     webPreferences: {
       preload: join(app.getAppPath(), 'dist', 'preload.cjs'),

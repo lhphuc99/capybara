@@ -98,25 +98,32 @@ To share what you see, **Copy all** in the Logs tab copies the entries that matc
 
 Drag the line between the request list and its details (or between the keys and the value in the Storage tab) to resize them; double-click it to reset. With the line focused, the arrow keys move it too. Widths are remembered.
 
-The **Appearance** button at the top right switches between System (the default, following your OS), Light and Dark. In the desktop app the window's title bar follows it too.
+The **Appearance** button at the top right switches between System (the default, following your OS), Light and Dark. In the macOS desktop app the window's title bar follows it too.
 
 The SDK finds your machine from the Metro bundle URL, so simulators and phones on the same Wi-Fi connect without configuration. For Android devices over USB the CLI and the desktop app run `adb reverse` for you. Pass `host` to `init()` to override.
 
 ## Desktop app
 
-The same server and UI in a window of their own, with a Dock icon and no terminal to keep open. The code is in `apps/desktop` (Electron).
+The same server and UI in a window of their own, with a Dock or taskbar icon and no terminal to keep open. The code is in `apps/desktop` (Electron).
 
 ```bash
-npm run desktop            # build it and open the window; run `npm run build` once before
-npm run desktop:package    # macOS .dmg and .zip in apps/desktop/release/
+npm run desktop                  # build it and open the window; run `npm run build` once before
+npm run desktop:package          # macOS: .dmg and .zip
+npm run desktop:package:win      # Windows x64: installer (.exe) and .zip
+npm run desktop:package:linux    # Linux x64 and arm64: .AppImage and .tar.gz
+npm run desktop:package:all      # all three
 ```
+
+Packages land in `apps/desktop/release/`, named like `Capybara-0.1.0-win-x64.exe`. A Mac builds all three without Wine or Docker; the macOS package can only be built on a Mac.
 
 - Apps connect exactly as they do to the CLI, on port 7357. Set `CAPYBARA_PORT` to use another port.
 - If `npx capybara` is already running, the window shows that server, and the app takes over the port once the CLI stops. If another program holds the port, the app says so and lets you try again.
-- On macOS, closing the window keeps the server running in the Dock. Quit with ⌘Q.
-- Builds are ad-hoc signed and not notarized, so on another Mac the first launch is blocked until you allow it in System Settings → Privacy & Security.
+- On macOS, closing the window keeps the server running in the Dock. Quit with ⌘Q. On Windows and Linux, closing the window quits.
+- No build is signed for distribution. On another Mac the first launch is blocked until you allow it in System Settings → Privacy & Security. On Windows, SmartScreen warns about an unknown publisher: choose More info → Run anyway.
+- Windows: the installer installs for the current user, without admin rights. On first launch Windows Firewall asks about network access; allow it on private networks if phones connect over Wi-Fi. Apps on the same computer, emulators and USB devices connect through localhost and don't need it.
+- Linux: `chmod +x` the AppImage, then run it; it doesn't need libfuse2. Ubuntu 24.04 and later block the user namespaces that Chromium's sandbox needs. There the AppImage starts without the sandbox, while `capybara-desktop` from the tar.gz refuses to start until you pass `--no-sandbox` or make `chrome-sandbox` owned by root with mode 4755.
 - Needs Node 22.12 or later. Electron downloads its binary (about 130 MB) the first time it runs.
-- Packaging needs Xcode 26 or later. The app icon (`apps/desktop/build/icon.icon`, an Icon Composer file) is compiled with Xcode's `actool`, which also produces the `.icns` that older macOS versions use. The source artwork is [`assets/icon.svg`](assets/icon.svg).
+- The macOS package needs Xcode 26 or later. The app icon (`apps/desktop/build/icon.icon`, an Icon Composer file) is compiled with Xcode's `actool`, which also produces the `.icns` that older macOS versions use. Windows and Linux use `apps/desktop/build/icon.png`; after changing the source artwork, [`assets/icon.svg`](assets/icon.svg), regenerate it on a Mac with `npm run icon -w @capybara/desktop`.
 
 ## AI assistants (MCP)
 

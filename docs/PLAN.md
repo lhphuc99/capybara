@@ -25,7 +25,7 @@ SDK tách phần **thu thập** (plugin ghi event vào ring buffer) khỏi phầ
 | Storage RN: AsyncStorage, MMKV (best-effort) | SecureStore, Keychain |
 | Xem/sửa/xoá/clear storage, tự refresh khi app ghi | |
 | Nhiều app/thiết bị cùng lúc, tự kết nối lại, rớt mạng ngắn không mất log | Export/import phiên |
-| UI web do CLI phục vụ (`npx capybara`); app desktop macOS bọc cùng server và UI | Next.js server, state (Redux/Zustand/TanStack Query), MCP |
+| UI web do CLI phục vụ (`npx capybara`); app desktop (macOS, Windows, Linux) bọc cùng server và UI | Next.js server, state (Redux/Zustand/TanStack Query), MCP |
 
 ## Kiến trúc
 
@@ -73,6 +73,7 @@ App (RN / web)                        Máy dev
 - **Bảo mật**: server bind `0.0.0.0` để máy thật trong LAN kết nối được. UI chỉ kết nối được từ cùng origin, và header `Host` phải là `localhost` hoặc IP. Như vậy trang web lạ mở trong browser của dev không đọc được dữ liệu qua WebSocket, kể cả bằng DNS rebinding. Chế độ dev không che header (có tuỳ chọn `redactHeaders`); chế độ QA sau này sẽ che mặc định.
 - **Port mặc định 7357.**
 - **App desktop là Electron bọc server sẵn có**: cửa sổ load UI qua HTTP từ chính server, không dùng `file://`, nên các kiểm tra origin và `Host` ở trên giữ nguyên. Main process được bundle bằng rolldown (có sẵn qua Vite) thành một file CJS, mọi dependency là devDependencies, nên electron-builder chỉ đóng gói `dist/` mà không kéo `node_modules` của workspace. `backgroundThrottling: false` để cửa sổ bị ẩn vẫn cập nhật đều: đo trên Electron 44, timer 100 ms trong cửa sổ ẩn chạy 30 lần/3 s, bật throttling thì chỉ còn 3 lần.
+- **Đóng gói Windows và Linux**: build được ngay trên Mac, không cần Wine hay Docker. Windows có bộ cài NSIS (cài cho user hiện tại, không cần quyền admin) và `.zip`, bản x64. Linux có AppImage và `.tar.gz`, bản x64 và arm64; chưa có deb/rpm vì gói deb bắt buộc có email người bảo trì. AppImage dùng runtime tĩnh (`toolsets.appimage: "1.0.3"`): runtime cũ cần libfuse2, và bản arm64 không chạy được vì thiếu `libz.so`. Runtime cũ còn luôn tắt sandbox của Chromium; launcher của bản mới thử `unshare -Ur` và chỉ thêm `--no-sandbox` khi máy không cho tạo user namespace (Ubuntu 24.04+ chặn qua AppArmor). Đặt `desktopName` trong package.json kèm `linux.syncDesktopName` để tên file `.desktop`, `StartupWMClass` và WM_CLASS của cửa sổ cùng là `capybara-desktop`. Thiếu nó thì cửa sổ có class `capybara` còn file `.desktop` ghi `Capybara`, nên desktop environment không gắn cửa sổ với app. Binary Linux không chứa icon, nên cửa sổ được gán `dist/icon.png`. Icon Windows/Linux (`build/icon.png`) vẽ từ cùng file SVG nhưng cắt bỏ lề, vì chỉ macOS chừa lề quanh icon.
 - **Cổng của app desktop đang bận**: nếu là một Capybara khác (vd. `npx capybara`), cửa sổ hiện server đó và app thử nhận cổng mỗi 2 giây, nên tắt CLI là app tự thay chỗ. Nếu là chương trình khác thì báo lỗi, có nút thử lại. macOS vẫn cho bind mọi interface khi chương trình khác giữ cùng cổng trên `0.0.0.0`, `127.0.0.1` hoặc `::1`, và localhost vẫn đi tới chương trình đó, nên app thử bind từng địa chỉ này trước. CLI chưa có kiểm tra này.
 - **Bridge Metro (React Native không cần SDK)**: CLI/desktop nối vào `/inspector/debug` của Metro như một debugger thứ hai (CDP, kênh React Native DevTools dùng). Mỗi JS context là một phiên, gửi vào server qua `/client` như SDK. Hermes chỉ mô tả Date/Map/Set là "Object", nên tham số log được serialize ngay trong app bằng chính `serialize()` của SDK (hàm tự chứa, gửi qua `serialize.toString()`). App có SDK (`__CAPYBARA_CLIENT__`) thì bỏ qua; quyết định đợi tới khi app chạy xong file entry (`RN$AppRegistry` hoặc log `Running "…"`), vì SDK khởi tạo trong đó. Expo CLI chỉ giữ socket debugger khi Origin đúng địa chỉ của nó (`http://127.0.0.1:<port>`); Metro thường nhận mọi origin localhost.
 
@@ -91,8 +92,8 @@ App (RN / web)                        Máy dev
 
 - Chế độ QA: panel trong app, export/import phiên.
 - Next.js server (`instrumentation.ts`) và nối request client ↔ server bằng trace id.
-- MCP server để Claude Code/Cursor đọc log/network.
-- Đóng gói desktop app: đã có bản macOS chưa ký (xem Trạng thái). Còn ký + notarize, icon riêng, bản Intel/universal, Windows/Linux.
+- MCP server để Claude Code/Cursor đọc log/network: đã có bản chỉ đọc (xem Trạng thái).
+- Đóng gói desktop app: đã có bản macOS, Windows, Linux chưa ký (xem Trạng thái). Còn ký code (Developer ID + notarize, chứng chỉ ký Windows), bản macOS Intel/universal, Windows arm64, gói deb/rpm, tự cập nhật.
 
 ## Trạng thái (16/10/2026)
 
@@ -104,6 +105,9 @@ App (RN / web)                        Máy dev
 - Appearance (16/10/2026): nút ở góc phải thanh trên cùng, chọn System (mặc định, theo hệ điều hành), Light hoặc Dark; lưu trong localStorage. Bảng màu đặt theo `data-theme` trên `<html>`, một script nhỏ trong `index.html` đặt nó trước lần vẽ đầu nên không nháy màu; ở System thì đổi ngay khi hệ thống đổi. App desktop có preload báo lựa chọn cho tiến trình chính, đặt `nativeTheme.themeSource` (thanh tiêu đề macOS đổi theo) và lưu vào `settings.json` để lần mở sau cửa sổ có đúng màu nền ngay. Đã thử trên trình duyệt (giả lập hệ thống sáng/tối, tải lại trang) và trên cửa sổ desktop thật qua cổng debug tạm thời.
 - Kéo đổi độ rộng (16/10/2026): đường chia giữa danh sách request và khung chi tiết (tab Network), giữa danh sách key và khung giá trị (tab Storage). Kéo chuột, phím mũi tên khi đang chọn đường chia, nhấp đúp để về mặc định; độ rộng lưu theo phần trăm trong localStorage. Mỗi bên có độ rộng tối thiểu, và hàng nút ở đầu khung tự xuống dòng thay vì bị cắt khi khung hẹp. Đã thử trên app desktop: kéo, giới hạn 25–75%, nhớ sau khi tải lại, nhấp đúp; ở cửa sổ 1000px kéo về mức tối thiểu không còn nút nào bị che.
 - Icon: capybara ngâm suối nước nóng, mắt nhắm, quả yuzu trên đầu, vẽ bằng nét thẳng và cung tròn trên nền cam yuzu. File gốc `assets/icon.svg`; giao diện dùng nó làm logo và favicon. App desktop dùng gói Icon Composer `apps/desktop/build/icon.icon`, electron-builder biên dịch bằng `actool` (Xcode 26) ra `Assets.car` cho macOS 26 và `icon.icns` cho bản cũ. Đã lấy icon của `Capybara.app` qua `NSWorkspace` trên macOS 26.6: hiện đúng kiểu Liquid Glass, không bị đóng khung xám như icon kiểu cũ.
+- Bản Windows và Linux của app desktop (16/10/2026): lệnh `desktop:package:win`, `desktop:package:linux` và `desktop:package:all` (xem README); cách đóng gói ở mục Quyết định kỹ thuật. App tìm `adb` ở vị trí Android SDK mặc định của từng hệ điều hành.
+  - Linux: chạy trong Docker Ubuntu 24.04 với Xvfb, bằng user thường, bản arm64 chạy thẳng và x64 giả lập. Server trả UI, cửa sổ tải `http://localhost:7357/`, có icon và WM_CLASS `capybara-desktop` khớp file `.desktop`. Khi được tạo user namespace, cả tar.gz lẫn AppImage chạy có sandbox. Khi bị chặn (seccomp mặc định của Docker, cùng tác dụng với AppArmor của Ubuntu 24.04+), AppImage tự chạy không sandbox, còn tar.gz dừng với lỗi `chrome-sandbox` cho tới khi thêm `--no-sandbox`.
+  - Windows: chưa chạy được vì không có máy Windows hay Wine. Đã đọc file exe: PE32+ GUI x86-64, icon capybara 16–256 px, thông tin phiên bản Capybara 0.1.0 (thiếu `author` thì CompanyName vẫn là "GitHub, Inc." của Electron); `app.asar` có đủ `dist/`.
 - Monorepo gồm 6 package, app desktop và 3 app mẫu (web, Next.js, Expo). `npm run build`, `npm run typecheck` và `npm test` (127 test) đều pass.
 - Metro/CDP bridge chạy trong CLI và desktop: có 11 test tích hợp với Metro giả lập cho log object, request/response/body, lỗi mạng, reload, reconnect, bỏ qua app có SDK, target không hỗ trợ nhiều debugger và bắt/gỡ MMKV private. App Expo mẫu mặc định không nạp SDK. Đã chạy thử với app này trên Expo Go (iPhone 17 simulator), qua cả CLI lẫn app desktop: log có object, Date, Map/Set, Error, unhandled rejection; network `fetch` + XHR có status, header và body (cả 404); app có SDK thì bị bỏ qua đúng. Chưa thử trên máy thật.
 - Storage không SDK: đã thử trên app Expo/Hermes đang chạy trong iPhone 17 simulator, đọc được danh sách store, 2 key và giá trị được chọn. Reader hỗ trợ Metro lazy-loading của AsyncStorage và export getter ESM. Runtime hook MMKV có lease 15 giây, tự khôi phục method khi disconnect/lease hết hạn, hỗ trợ nhiều debugger cùng lúc và giữ tối đa 100 instance. V4 shadow method trên factory object vì Nitro khóa prototype; không thể bắt lại mọi instance cũ. Đọc dữ liệu qua instance gốc, không tạo store mới hay ghi key, không giữ encryption config. `test:mmkv-compat` kiểm tra source package 2.12.2/3.3.3/4.3.2 với native giả lập.
@@ -147,7 +151,7 @@ App (RN / web)                        Máy dev
 - RN thuần trên iOS (mới chạy trên Android).
 - react-native-mmkv 3.x native trên Android (mới chạy 4.x).
 - Next.js phía server (log, request trong server component và route handler), nằm trong lộ trình M3.
-- App desktop: mở bản đóng gói trên máy Mac khác (Gatekeeper với app chưa notarize), bản Intel, Windows/Linux.
+- App desktop: mở bản đóng gói trên máy Mac khác (Gatekeeper với app chưa notarize), bản Intel. Bản Windows chưa chạy trên Windows (SmartScreen, hộp hỏi của tường lửa, `adb.exe`). Bản Linux mới chạy trong Docker với Xvfb, chưa chạy trên desktop thật (GNOME/KDE, Wayland, AppArmor của Ubuntu 24.04+).
 
 **Rút ra từ lần chạy thật**: ban đầu SDK chỉ patch XHR trên RN, nên mọi request `fetch` trong app Expo đều bị bỏ sót. Đã sửa bằng cách tự nhận biết lúc `init()` (xem mục Quyết định kỹ thuật). Với app desktop, macOS cho server bind cổng 7357 dù chương trình khác đang giữ cổng đó trên loopback, nên phải kiểm tra trước (xem mục Quyết định kỹ thuật).
 
@@ -191,6 +195,8 @@ Khi thử lý do request lỗi:
 ## Câu hỏi còn mở
 
 - MCP: có nên thêm tool ghi (sửa storage, xoá phiên) sau cờ riêng không? Hiện chỉ đọc.
+- Gói deb/rpm cho Linux cần email người bảo trì (`author.email` hoặc `linux.maintainer`). Dùng email nào?
+- Ký code: cần Apple Developer ID (để notarize) và chứng chỉ ký cho Windows. Chưa ký thì macOS chặn lần mở đầu, còn Windows hiện cảnh báo SmartScreen.
 - License: MIT, Apache-2.0 hay đóng nguồn?
 - Đăng ký tên trên npm: scope `@capybara` và gói CLI `capybara` (gói cũ cùng tên đã bị gỡ ngày 3/10/2026). Bundle ID của app desktop (`dev.capybara.desktop`) đi theo tên.
 - Có cần hỗ trợ RN kiến trúc cũ (< 0.76) không?
