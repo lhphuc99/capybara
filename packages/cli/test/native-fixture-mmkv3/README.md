@@ -2,7 +2,7 @@
 
 The MMKV 3 counterpart of [`../native-fixture`](../native-fixture/README.md), which tests MMKV 4. The same rules apply: this is an independent Expo development app with its own bundle identifier (`dev.devsight.mmkv3test`), synthetic data, and no Devsight SDK. Do not use an existing user app or reuse its native binary for this test. Both fixtures can stay installed on the same test simulator.
 
-The fixture pins MMKV 3.3.3 (a C++ TurboModule, no Nitro), AsyncStorage 2.2.0, Expo SDK 57 and React Native 0.86.3. Apart from MMKV and Nitro, its lockfile resolves the same packages as the MMKV 4 fixture. CocoaPods compiles the actual MMKV native implementation.
+The fixture pins react-native-mmkv 3.3.3 (a C++ TurboModule, no Nitro), AsyncStorage 2.2.0, Expo SDK 57 and React Native 0.86.3, plus react-native-web 0.21.4 and react-dom 19.2.3 for the web check. Apart from MMKV and Nitro, its lockfile resolves the same packages as the MMKV 4 fixture. CocoaPods compiles the actual MMKV native implementation.
 
 Copy this directory outside the repository (the tested setup), then from the copy:
 
@@ -18,3 +18,5 @@ node packages/cli/scripts/check-mmkv-native.mjs 8096 /tmp/devsight-mmkv3-native-
 ```
 
 The runner performs the same checks as for MMKV 4, except for private instances created before attachment. Devsight wraps a method that every MMKV 3 instance shares, so such an instance is captured once the app calls one of its methods. The runner checks that it is hidden before that call and readable after it, and that disconnecting restores the original method.
+
+The web check works as for MMKV 4, against this app's Metro: `node packages/cli/scripts/check-mmkv-web.mjs http://localhost:8096`.

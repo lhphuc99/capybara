@@ -10,7 +10,7 @@ import {
   type SessionInfo,
 } from '@devsight/protocol';
 import { serialize, type SerializeOptions } from './serialize.js';
-import { Connection, defaultSocketFactory, type SocketFactory } from './transport.js';
+import { Connection, nativeSocketFactory, type SocketFactory } from './transport.js';
 import { errorMessage, randomId } from './utils.js';
 
 type ConsoleMethod = (...args: unknown[]) => void;
@@ -163,7 +163,8 @@ export function createClient(options: ClientOptions): DevsightClient {
     }
   };
 
-  const connection = new Connection(options.url, options.socketFactory ?? defaultSocketFactory, {
+  // Created before plugins run, so WebSocket capture never wraps the SDK's own connection.
+  const connection = new Connection(options.url, options.socketFactory ?? nativeSocketFactory(), {
     onOpen: () => {
       send({ t: 'hello', protocol: PROTOCOL_VERSION, session });
     },

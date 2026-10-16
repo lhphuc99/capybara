@@ -12,7 +12,7 @@ import {
 import { CLIENT_PATH, DEFAULT_PORT, type DeviceInfo, type Platform as DevsightPlatform } from '@devsight/protocol';
 import { NativeModules, Platform } from 'react-native';
 import { errorUtilsPlugin } from './errors.js';
-import { formatHost, hostFromUrl } from './host.js';
+import { devToolSockets, formatHost, hostFromUrl, portFromUrl } from './host.js';
 
 export const SDK_VERSION = '0.1.0';
 
@@ -50,7 +50,7 @@ export function init(options: InitOptions = {}): DevsightClient | undefined {
         fetch: !fetchRunsOnXhr(),
         xhr: true,
         ...network,
-        ignoreUrls: [...DEV_SERVER_NOISE, ...(network.ignoreUrls ?? [])],
+        ignoreUrls: [...DEV_SERVER_NOISE, ...devToolSockets(portFromUrl(bundleUrl() ?? '')), ...(network.ignoreUrls ?? [])],
       }),
     );
   }
@@ -79,17 +79,22 @@ function fetchRunsOnXhr(): boolean {
   return (globalThis as { fetch?: { polyfill?: boolean } }).fetch?.polyfill === true;
 }
 
-function defaultHost(): string {
+function bundleUrl(): string | undefined {
   try {
     const sourceCode = NativeModules.SourceCode as
       | { scriptURL?: string; getConstants?: () => { scriptURL?: string } }
       | undefined;
     const scriptURL = sourceCode?.getConstants?.().scriptURL ?? sourceCode?.scriptURL;
-    const host = typeof scriptURL === 'string' ? hostFromUrl(scriptURL) : undefined;
-    if (host) return host;
+    return typeof scriptURL === 'string' ? scriptURL : undefined;
   } catch {
-    // fall through to the emulator defaults
+    return undefined;
   }
+}
+
+function defaultHost(): string {
+  const url = bundleUrl();
+  const host = url ? hostFromUrl(url) : undefined;
+  if (host) return host;
   // Bundles loaded from disk have no host; these addresses reach the dev machine from simulators and emulators.
   return Platform.OS === 'android' ? '10.0.2.2' : 'localhost';
 }

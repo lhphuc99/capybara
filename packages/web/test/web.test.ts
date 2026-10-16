@@ -1,7 +1,12 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getActiveClient } from '@devsight/core';
+import { getActiveClient, networkPlugin, type NetworkPluginOptions } from '@devsight/core';
 import { cookieStorage, init, webStorage } from '../src/index.js';
+
+vi.mock('@devsight/core', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@devsight/core')>();
+  return { ...actual, networkPlugin: vi.fn(actual.networkPlugin) };
+});
 
 afterEach(() => {
   getActiveClient()?.stop();
@@ -71,6 +76,23 @@ describe('cookieStorage', () => {
     await adapter.remove!('session id');
     expect(await adapter.get('session id')).toBeNull();
   });
+
+  it('reports cookie changes where the Cookie Store API exists', () => {
+    vi.stubGlobal('cookieStore', undefined);
+    expect(cookieStorage().watch).toBeUndefined();
+
+    const store = new EventTarget();
+    vi.stubGlobal('cookieStore', store);
+    const onChange = vi.fn();
+    const unsubscribe = cookieStorage().watch!(onChange);
+    store.dispatchEvent(Object.assign(new Event('change'), { changed: [{ name: 'consent' }], deleted: [{ name: 'old' }] }));
+    expect(onChange.mock.calls).toEqual([['set', 'consent'], ['remove', 'old']]);
+
+    unsubscribe();
+    store.dispatchEvent(Object.assign(new Event('change'), { changed: [{ name: 'later' }] }));
+    expect(onChange).toHaveBeenCalledTimes(2);
+    vi.unstubAllGlobals();
+  });
 });
 
 describe('init', () => {
@@ -79,6 +101,31 @@ describe('init', () => {
     const client = init({ port: 1 });
     expect(client?.session).toMatchObject({ appName: 'Shop', platform: 'web', sdk: { name: '@devsight/web' } });
     expect(init()).toBe(client);
+  });
+
+  it("skips the dev server's own tooling requests and keeps custom ignores", () => {
+    init({ port: 1, network: { ignoreUrls: ['/health'] } });
+    const options = vi.mocked(networkPlugin).mock.calls.at(-1)![0] as NetworkPluginOptions;
+    const ignored = (url: string) =>
+      options.ignoreUrls!.some((pattern) => (typeof pattern === 'string' ? url.includes(pattern) : pattern.test(url)));
+    expect(ignored('http://localhost:3000/__nextjs_original-stack-frames')).toBe(true);
+    expect(ignored('http://localhost:3000/__nextjs_launch-editor?file=app%2Fpage.tsx')).toBe(true);
+    expect(ignored('http://localhost:3000/health')).toBe(true);
+    expect(ignored('http://localhost:3000/api/hello')).toBe(false);
+    expect(ignored('ws://localhost:3000/_next/webpack-hmr?id=x')).toBe(true);
+  });
+
+  it("skips Metro's sockets on the page's own origin (Expo web)", () => {
+    vi.stubGlobal('location', { host: 'localhost:8081', hostname: 'localhost', href: 'http://localhost:8081/' });
+    init({ port: 1 });
+    const options = vi.mocked(networkPlugin).mock.calls.at(-1)![0] as NetworkPluginOptions;
+    const ignored = (url: string) =>
+      options.ignoreUrls!.some((pattern) => (typeof pattern === 'string' ? url.includes(pattern) : pattern.test(url)));
+    expect(ignored('ws://localhost:8081/hot')).toBe(true);
+    expect(ignored('ws://localhost:8081/message?role=x')).toBe(true);
+    expect(ignored('ws://localhost:8081/socket')).toBe(false);
+    expect(ignored('ws://chat.example.test/hot')).toBe(false);
+    vi.unstubAllGlobals();
   });
 
   it('does nothing when disabled', () => {

@@ -24,11 +24,20 @@ export interface ReconnectOptions {
 
 const OPEN = 1;
 
+/** Marks the SDK's own socket so WebSocket capture skips it; the hook checks the same literal. */
+export const INTERNAL_SOCKET = '__DEVSIGHT_INTERNAL__';
+
 export const defaultSocketFactory: SocketFactory = (url) => {
   const WebSocketCtor = (globalThis as { WebSocket?: new (url: string) => SocketLike }).WebSocket;
   if (!WebSocketCtor) throw new Error('WebSocket is not available in this environment');
   return new WebSocketCtor(url);
 };
+
+/** Binds to the WebSocket constructor present now, before plugins patch it. */
+export function nativeSocketFactory(): SocketFactory {
+  const WebSocketCtor = (globalThis as { WebSocket?: new (url: string) => SocketLike }).WebSocket;
+  return WebSocketCtor ? (url) => new WebSocketCtor(url) : defaultSocketFactory;
+}
 
 /** A WebSocket that reconnects with exponential backoff until stopped. */
 export class Connection {
@@ -95,6 +104,11 @@ export class Connection {
     } catch {
       this.scheduleRetry();
       return;
+    }
+    try {
+      (socket as unknown as Record<string, unknown>)[INTERNAL_SOCKET] = true;
+    } catch {
+      // a frozen socket object; React Native's prototype capture would then record it
     }
     this.socket = socket;
     const lost = () => {

@@ -58,6 +58,7 @@ async function fixture(options: { sdk?: boolean; ready?: boolean; multiple?: boo
   });
   cleanups.push(() => { for (const timer of runtimeTimers) clearInterval(timer); });
   const handles = new Map<string, unknown>();
+  const bindings = new Set<string>();
   let nextHandle = 0;
   // These values originate in a different JS runtime, like Hermes RemoteObjects.
   runInContext(`globalThis.objects = {
@@ -123,6 +124,14 @@ async function fixture(options: { sdk?: boolean; ready?: boolean; multiple?: boo
         return;
       } else if (method === 'Runtime.releaseObject') {
         handles.delete(params.objectId);
+      } else if (method === 'Runtime.addBinding') {
+        // Like React Native: a runtime function whose calls reach subscribed sessions as events.
+        bindings.add(params.name);
+        (vm as Record<string, unknown>)[params.name] = (payload: string) => {
+          if (bindings.has(params.name)) event('Runtime.bindingCalled', { name: params.name, payload, executionContextId: contextId });
+        };
+      } else if (method === 'Runtime.removeBinding') {
+        bindings.delete(params.name);
       }
       reply(ws, id, {});
     });
@@ -347,6 +356,65 @@ describe('Metro discovery and CDP event relay', () => {
     expect(f.origins).toEqual([`http://127.0.0.1:${f.metroPort}`, `http://localhost:${f.metroPort}`]);
     f.viewer.send(JSON.stringify({ t: 'command', id: 'storage', sessionId: f.sessions()[0].session.info.id, plugin: 'storage', method: 'clear' }));
     await until(() => expect(f.messages.find((m) => m.t === 'result')).toMatchObject({ ok: false, error: expect.stringContaining('read-only') }));
+  });
+
+  it('relays WebSocket traffic, including a socket opened before attaching, then removes the hook', async () => {
+    const f = await fixture();
+    // React Native's WebSocket dispatches its events from JS.
+    f.run(`
+      globalThis.navigator = { product: 'ReactNative' };
+      class Target {
+        constructor() { this.listeners = {}; }
+        addEventListener(type, fn) { (this.listeners[type] ??= []).push(fn); }
+        dispatchEvent(event) { for (const fn of this.listeners[event.type] ?? []) fn(event); return true; }
+      }
+      class WebSocket extends Target {
+        constructor(url, protocols) { super(); this.url = url; this.readyState = 0; this.protocol = ''; }
+        send(data) { this.last = data; }
+        deliver(type, init) { if (type === 'open') this.readyState = 1; this.dispatchEvent({ type, ...init }); }
+      }
+      globalThis.WebSocket = WebSocket;
+      globalThis.early = new WebSocket('wss://chat.example.test/early');
+      early.deliver('open');
+    `);
+    f.start();
+    await until(() => expect(f.run('typeof __DEVSIGHT_WS_TRACKER_V1__')).toBe('object'));
+    expect(f.commands.find((c) => c.method === 'Runtime.addBinding')?.params).toEqual({
+      name: '__devsightWebSocket', executionContextId: 1,
+    });
+
+    f.run(`
+      early.deliver('message', { data: 'from before' });
+      // The class name above is a script-scoped binding; the app's global is the patched constructor.
+      const live = new globalThis.WebSocket('wss://chat.example.test/live', 'v1');
+      live.deliver('open');
+      live.send('ping');
+      live.deliver('message', { data: '{"pong":true}' });
+      live.deliver('close', { code: 1000, reason: 'done' });
+      new WebSocket('ws://localhost:${f.metroPort}/hot').deliver('open');
+    `);
+    await until(() => expect(f.events().some((e) => e.kind === 'ws.close')).toBe(true));
+    const sockets = f.events().filter((e) => e.kind.startsWith('ws.'));
+    expect(sockets.map((e) => [e.kind, e.payload.url ?? e.payload.direction ?? e.payload.code ?? ''])).toEqual([
+      ['ws.connect', 'wss://chat.example.test/early'],
+      ['ws.open', ''],
+      ['ws.message', 'received'],
+      ['ws.connect', 'wss://chat.example.test/live'],
+      ['ws.open', ''],
+      ['ws.message', 'sent'],
+      ['ws.message', 'received'],
+      ['ws.close', 1000],
+    ]);
+    expect(sockets[0].payload.existing).toBe(true);
+    expect(sockets[3].payload).toMatchObject({ protocols: ['v1'] });
+    expect(sockets[3].payload.existing).toBeUndefined();
+    expect(sockets[6].payload.data).toMatchObject({ kind: 'text', text: '{"pong":true}', size: 13 });
+
+    f.stop();
+    await until(() => expect(f.run('typeof __DEVSIGHT_WS_TRACKER_V1__')).toBe('undefined'));
+    expect(f.run('Object.prototype.hasOwnProperty.call(WebSocket.prototype, "dispatchEvent")')).toBe(false);
+    expect(f.run('globalThis.WebSocket === WebSocket')).toBe(true);
+    expect(f.commands.some((c) => c.method === 'Runtime.removeBinding')).toBe(true);
   });
 
   it('routes read-only storage commands from the viewer to the app through CDP', async () => {

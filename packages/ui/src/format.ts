@@ -188,6 +188,7 @@ export function statusTone(entry: NetworkEntry): 'ok' | 'redirect' | 'error' | '
 }
 
 export function responseSize(entry: NetworkEntry): number | undefined {
+  if (entry.socket) return entry.socket.bytes;
   if (entry.responseBody?.size !== undefined) return entry.responseBody.size;
   const header = findHeader(entry.responseHeaders, 'content-length');
   return header === undefined ? undefined : Number(header);
@@ -208,6 +209,39 @@ export function toCurl(entry: NetworkEntry): string {
   const body = entry.requestBody;
   if (body?.text !== undefined && body.kind === 'text') parts.push(`--data-raw ${quote(body.text)}`);
   return parts.join(' \\\n  ');
+}
+
+const ENGINE_IO_PACKETS = ['open', 'close', 'ping', 'pong', 'message', 'upgrade', 'noop'];
+const SOCKET_IO_PACKETS = ['connect', 'disconnect', 'event', 'ack', 'connect error', 'binary event', 'binary ack'];
+
+/**
+ * Names a socket.io (engine.io v4) text frame, e.g. `42["chat",{"text":"hi"}]` is event "chat".
+ * `payload` is the JSON that follows: the event's arguments, or the packet's data.
+ */
+export function decodeSocketIo(text: string): { label: string; payload?: string } | undefined {
+  const engine = ENGINE_IO_PACKETS[Number(text[0])];
+  if (!engine || !/^\d/.test(text)) return undefined;
+  if (engine !== 'message') return { label: engine, payload: text.slice(1) || undefined };
+  // 4<type>[<attachments>-][<namespace>,][<ack id>][<data>]
+  const match = /^4([0-6])(?:\d+-)?(\/[^,]*,)?(\d+)?([\s\S]*)$/.exec(text);
+  if (!match) return { label: 'message', payload: text.slice(1) || undefined };
+  const [, type, namespace, ack, data] = match;
+  const parts = [SOCKET_IO_PACKETS[Number(type)]!];
+  let payload = data || undefined;
+  if ((type === '2' || type === '5') && data) {
+    try {
+      const args = JSON.parse(data) as unknown;
+      if (Array.isArray(args) && typeof args[0] === 'string') {
+        parts.push(JSON.stringify(args[0]));
+        payload = args.length > 1 ? JSON.stringify(args.length === 2 ? args[1] : args.slice(1)) : undefined;
+      }
+    } catch {
+      // not JSON; keep the raw data
+    }
+  }
+  if (namespace && namespace !== '/,') parts.push(`in ${namespace.slice(0, -1)}`);
+  if (ack) parts.push(`#${ack}`);
+  return { label: parts.join(' '), payload };
 }
 
 export function parseJson(text: string): { ok: true; value: SerializedValue } | { ok: false } {

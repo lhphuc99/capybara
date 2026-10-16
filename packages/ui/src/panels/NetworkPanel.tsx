@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { JsonTree } from '../components/JsonTree';
 import {
   copyText,
+  decodeSocketIo,
   formatBytes,
   formatDuration,
   formatTime,
@@ -14,19 +15,22 @@ import {
   statusTone,
   toCurl,
 } from '../format';
-import { clearSession, type NetworkEntry, type SessionState } from '../store';
+import { clearSession, type NetworkEntry, type SessionState, type SocketInfo, type SocketMessage } from '../store';
 
-type Filter = 'all' | 'fetch' | 'xhr' | 'failed';
+type Filter = 'all' | 'fetch' | 'xhr' | 'ws' | 'failed';
 type DetailTab = 'headers' | 'request' | 'response';
+type SocketEntry = NetworkEntry & { socket: SocketInfo };
 
 const FILTERS: Array<{ id: Filter; label: string }> = [
   { id: 'all', label: 'All' },
   { id: 'fetch', label: 'Fetch' },
   { id: 'xhr', label: 'XHR' },
+  { id: 'ws', label: 'WS' },
   { id: 'failed', label: 'Failed' },
 ];
 
 const ROW_HEIGHT = 26;
+const MESSAGE_ROW_HEIGHT = 24;
 
 export function NetworkPanel({ session }: { session: SessionState }) {
   const [query, setQuery] = useState('');
@@ -40,8 +44,8 @@ export function NetworkPanel({ session }: { session: SessionState }) {
   const visible = useMemo(
     () =>
       network.filter((entry) => {
-        if (filter === 'fetch' || filter === 'xhr') {
-          if (entry.initiator !== filter) return false;
+        if (filter === 'fetch' || filter === 'xhr' || filter === 'ws') {
+          if (entry.initiator !== (filter === 'ws' ? 'websocket' : filter)) return false;
         } else if (filter === 'failed' && statusTone(entry) !== 'error') {
           return false;
         }
@@ -126,7 +130,7 @@ export function NetworkPanel({ session }: { session: SessionState }) {
           {network.length === 0 ? (
             <div className="empty">
               <strong>No requests yet</strong>
-              <p>Requests made with fetch, XMLHttpRequest or axios show up here.</p>
+              <p>Requests made with fetch, XMLHttpRequest or axios, and WebSocket connections, show up here.</p>
             </div>
           ) : (
             <div className="net-body" ref={bodyRef} onScroll={onScroll}>
@@ -147,7 +151,11 @@ export function NetworkPanel({ session }: { session: SessionState }) {
             </div>
           )}
         </div>
-        {selected && <RequestDetail entry={selected} onClose={() => setSelectedId(null)} />}
+        {selected?.socket ? (
+          <SocketDetail entry={selected as SocketEntry} onClose={() => setSelectedId(null)} />
+        ) : (
+          selected && <RequestDetail entry={selected} onClose={() => setSelectedId(null)} />
+        )}
       </div>
     </section>
   );
@@ -181,8 +189,226 @@ function NetworkRow({
       <span className="muted">{host}</span>
       <span className="muted">{entry.initiator}</span>
       <span className="num muted">{formatBytes(responseSize(entry))}</span>
-      <span className="num">{formatDuration(entry.duration)}</span>
+      <span className="num">{entry.state === 'open' ? 'open' : formatDuration(entry.duration)}</span>
     </div>
+  );
+}
+
+function SocketDetail({ entry, onClose }: { entry: SocketEntry; onClose: () => void }) {
+  const [tab, setTab] = useState<'messages' | 'general'>('messages');
+  return (
+    <aside className="detail">
+      <div className="detail-head">
+        <div className="subtabs" role="tablist">
+          {(['messages', 'general'] as const).map((id) => (
+            <button key={id} type="button" role="tab" className="tab" aria-selected={tab === id} onClick={() => setTab(id)}>
+              {id === 'messages' ? 'Messages' : 'General'}
+            </button>
+          ))}
+        </div>
+        <span className="spacer" />
+        <button type="button" className="btn small icon" onClick={onClose} aria-label="Close details">
+          ✕
+        </button>
+      </div>
+      {tab === 'messages' ? (
+        <SocketMessages entry={entry} />
+      ) : (
+        <div className="detail-body">
+          <SocketGeneral entry={entry} />
+        </div>
+      )}
+    </aside>
+  );
+}
+
+function SocketMessages({ entry }: { entry: SocketEntry }) {
+  const { socket } = entry;
+  const [direction, setDirection] = useState<'all' | 'sent' | 'received'>('all');
+  const [query, setQuery] = useState('');
+  const [selectedSeq, setSelectedSeq] = useState<number | null>(null);
+  const [follow, setFollow] = useState(true);
+  const listRef = useRef<HTMLDivElement>(null);
+  const socketIo = entry.url.includes('/socket.io/');
+  const matcher = useMemo(() => makeMatcher(query), [query]);
+  const visible = useMemo(
+    () =>
+      socket.messages.filter(
+        (message) =>
+          (direction === 'all' || message.direction === direction) &&
+          (!matcher || matcher.test(message.data.text ?? message.data.summary ?? '')),
+      ),
+    [socket.messages, direction, matcher],
+  );
+  const selected = selectedSeq === null ? undefined : socket.messages.find((message) => message.seq === selectedSeq);
+
+  const virtualizer = useVirtualizer({
+    count: visible.length,
+    getScrollElement: () => listRef.current,
+    estimateSize: () => MESSAGE_ROW_HEIGHT,
+    overscan: 20,
+    getItemKey: (index) => visible[index]!.seq,
+    useFlushSync: false,
+  });
+
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    if (follow && list) list.scrollTop = list.scrollHeight;
+  });
+
+  const onScroll = () => {
+    const list = listRef.current;
+    if (!list) return;
+    const atBottom = list.scrollHeight - list.scrollTop - list.clientHeight < MESSAGE_ROW_HEIGHT;
+    if (atBottom !== follow) setFollow(atBottom);
+  };
+
+  return (
+    <div className="ws-pane">
+      <div className="ws-toolbar">
+        <input
+          className={`search${matcher?.invalid ? ' invalid' : ''}`}
+          placeholder="Filter messages"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          spellCheck={false}
+        />
+        <div className="chips">
+          {(['all', 'sent', 'received'] as const).map((id) => (
+            <button key={id} type="button" className="chip" aria-pressed={direction === id} onClick={() => setDirection(id)}>
+              {id === 'all' ? 'All' : id === 'sent' ? '↑ Sent' : '↓ Received'}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="ws-summary note">
+        {socket.sent} sent · {socket.received} received · {formatBytes(socket.bytes)}
+        {socket.dropped > 0 && ` · ${socket.dropped} oldest not kept`}
+      </div>
+      {entry.state === 'failed' && (
+        <div className="callout error inline">
+          <strong>Connection failed</strong>
+          <p>{entry.error}</p>
+        </div>
+      )}
+      {socket.existing && <p className="callout inline">Already open when Devsight attached, so earlier messages are missing.</p>}
+      {visible.length === 0 ? (
+        <div className="empty small">
+          <strong>{socket.messages.length === 0 ? 'No messages yet' : 'No matching messages'}</strong>
+        </div>
+      ) : (
+        <div className="ws-list" ref={listRef} onScroll={onScroll}>
+          <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
+            {virtualizer.getVirtualItems().map((item) => {
+              const message = visible[item.index]!;
+              return (
+                <MessageRow
+                  key={item.key}
+                  message={message}
+                  top={item.start}
+                  socketIo={socketIo}
+                  selected={message.seq === selectedSeq}
+                  onSelect={() => setSelectedSeq(message.seq === selectedSeq ? null : message.seq)}
+                />
+              );
+            })}
+          </div>
+        </div>
+      )}
+      {selected && <MessageView key={selected.seq} message={selected} socketIo={socketIo} />}
+    </div>
+  );
+}
+
+function MessageRow({
+  message,
+  top,
+  socketIo,
+  selected,
+  onSelect,
+}: {
+  message: SocketMessage;
+  top: number;
+  socketIo: boolean;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const { data } = message;
+  const decoded = socketIo && data.text !== undefined ? decodeSocketIo(data.text) : undefined;
+  const preview =
+    data.text === undefined
+      ? `${data.summary ?? data.kind} message`
+      : decoded
+        ? `${decoded.label}${decoded.payload ? ` ${decoded.payload}` : ''}`
+        : data.text;
+  return (
+    <div
+      className={`ws-row ${message.direction}${selected ? ' selected' : ''}`}
+      style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: MESSAGE_ROW_HEIGHT, transform: `translateY(${top}px)` }}
+      onClick={onSelect}
+    >
+      <span className="ws-dir" aria-label={message.direction}>
+        {message.direction === 'sent' ? '↑' : '↓'}
+      </span>
+      <span className="ws-preview">{preview.slice(0, 300)}</span>
+      <span className="num muted">{formatBytes(data.size)}</span>
+      <span className="num muted">{formatTime(message.ts)}</span>
+    </div>
+  );
+}
+
+function MessageView({ message, socketIo }: { message: SocketMessage; socketIo: boolean }) {
+  const [copied, setCopied] = useState(false);
+  const { data } = message;
+  const decoded = socketIo && data.text !== undefined ? decodeSocketIo(data.text) : undefined;
+  const body = decoded ? { ...data, text: decoded.payload ?? '', contentType: `socket.io ${decoded.label}` } : data;
+  return (
+    <div className="ws-message">
+      <p className="note">
+        {message.direction === 'sent' ? 'Sent' : 'Received'} at {formatTime(message.ts)}
+      </p>
+      <BodyView
+        body={body}
+        empty="Empty message"
+        onCopy={(text) =>
+          void copyText(text).then(() => {
+            setCopied(true);
+            window.setTimeout(() => setCopied(false), 1_200);
+          })
+        }
+        copied={copied}
+      />
+    </div>
+  );
+}
+
+function SocketGeneral({ entry }: { entry: SocketEntry }) {
+  const { socket } = entry;
+  const closed = `${socket.closeCode !== undefined ? ` with code ${socket.closeCode}` : ''}${socket.closeReason ? `: ${socket.closeReason}` : ''}`;
+  const status =
+    entry.state === 'pending'
+      ? 'Connecting'
+      : entry.state === 'open'
+        ? 'Open (101 Switching Protocols)'
+        : entry.state === 'done'
+          ? `Closed${closed}`
+          : `Failed: ${entry.error ?? ''}${socket.closeCode !== undefined ? ` (code ${socket.closeCode})` : ''}`;
+  const rows: Array<[string, string]> = [
+    ['URL', entry.url],
+    ['Status', status],
+    ['Requested subprotocols', socket.protocols?.join(', ') || 'None'],
+    ['Subprotocol', socket.protocol || 'None'],
+    ['Extensions', socket.extensions || 'None'],
+    ['Started', formatTime(entry.ts)],
+    ['Handshake', formatDuration(socket.handshake)],
+    ['Duration', entry.state === 'open' || entry.state === 'pending' ? 'Still open' : formatDuration(entry.duration)],
+    ['Messages', `${socket.sent} sent, ${socket.received} received, ${formatBytes(socket.bytes)}`],
+  ];
+  return (
+    <>
+      <KeyValues title="General" rows={rows} />
+      {socket.existing && <p className="note">Already open when Devsight attached; its start time is when Devsight first saw it.</p>}
+    </>
   );
 }
 

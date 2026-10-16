@@ -892,6 +892,88 @@ code {
   margin-bottom: 8px;
 }
 
+/* WebSocket messages */
+
+.ws-pane {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.ws-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.ws-toolbar .search {
+  flex: 1;
+  width: auto;
+  min-width: 140px;
+}
+
+.ws-summary {
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+}
+
+.ws-list {
+  flex: 1;
+  min-height: 96px;
+  overflow: auto;
+  font: 12px var(--font-mono);
+}
+
+.ws-row {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) 64px 92px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.ws-row > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ws-row:hover {
+  background: var(--bg-hover);
+}
+
+.ws-row.selected {
+  background: var(--bg-selected);
+}
+
+.ws-row.sent .ws-dir {
+  color: var(--ok);
+}
+
+.ws-row.received .ws-dir {
+  color: var(--info);
+}
+
+.ws-message {
+  flex: none;
+  max-height: 45%;
+  overflow: auto;
+  padding: 8px 12px 12px;
+  border-top: 1px solid var(--border-strong);
+}
+
+.ws-message > .note {
+  margin: 0 0 6px;
+  font-size: 11px;
+}
+
 /* --------------------------------------------------------------- storage */
 
 .storage {

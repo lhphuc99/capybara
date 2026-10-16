@@ -15,6 +15,9 @@ import { cookieStorage, webStorage } from './storage.js';
 
 export const SDK_VERSION = '0.1.0';
 
+/** Traffic of a dev server's own tooling: Next.js error overlay requests and its HMR socket. */
+const DEV_SERVER_NOISE = [/\/__nextjs_[\w-]+(\?|$)/, /\/_next\/webpack-hmr(\?|$)/];
+
 export interface InitOptions {
   /** Shown in the session picker. Defaults to the page title. */
   appName?: string;
@@ -41,7 +44,10 @@ export function init(options: InitOptions = {}): DevsightClient | undefined {
   const plugins: Plugin[] = [];
   if (options.logs !== false) plugins.push(consolePlugin(), windowErrorsPlugin());
   if (options.network !== false) {
-    plugins.push(networkPlugin(typeof options.network === 'object' ? options.network : {}));
+    const network = typeof options.network === 'object' ? options.network : {};
+    plugins.push(
+      networkPlugin({ ...network, ignoreUrls: [...DEV_SERVER_NOISE, ...metroSockets(), ...(network.ignoreUrls ?? [])] }),
+    );
   }
   if (options.storage !== false) {
     const extra = Array.isArray(options.storage) ? options.storage : [];
@@ -78,6 +84,12 @@ function defaultStorages(): StorageAdapter[] {
   }
   adapters.push(cookieStorage());
   return adapters;
+}
+
+/** With Expo web, Metro serves the page and also opens /hot and /message sockets on the same origin. */
+function metroSockets(): RegExp[] {
+  const host = window.location.host.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return host ? [new RegExp(`^wss?://${host}/(?:hot|message)(?:[/?]|$)`)] : [];
 }
 
 function formatHost(host: string): string {

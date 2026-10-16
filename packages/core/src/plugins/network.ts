@@ -1,15 +1,23 @@
 import type { BodyPreview } from '@devsight/protocol';
 import type { Plugin, PluginContext } from '../client.js';
 import { errorMessage, now, randomId, utf8Length } from '../utils.js';
+import { hookWebSockets } from './websocket.js';
+
+/** Vite's dev server channel. */
+const DEV_TOOL_PROTOCOLS = ['vite-hmr', 'vite-ping'];
 
 export interface NetworkPluginOptions {
   /** Patch `fetch`. Turn off where fetch is built on XHR (whatwg-fetch), or each request is recorded twice. */
   fetch?: boolean;
   xhr?: boolean;
-  /** Requests whose URL contains one of these strings or matches one of these patterns are not recorded. */
+  /** Record WebSocket connections and their messages. Default true. */
+  websocket?: boolean;
+  /** Requests and WebSockets whose URL contains one of these strings or matches one of these patterns are not recorded. */
   ignoreUrls?: Array<string | RegExp>;
   /** Request and response bodies are cut after this many characters. Default 128 KiB. */
   maxBodySize?: number;
+  /** WebSocket messages are cut after this many characters. Default 16 KiB. */
+  maxMessageSize?: number;
   /** Header names (case-insensitive) whose values are replaced with "[redacted]". */
   redactHeaders?: string[];
 }
@@ -28,6 +36,17 @@ export function networkPlugin(options: NetworkPluginOptions = {}): Plugin {
       const teardowns: Array<() => void> = [];
       if (options.fetch !== false) teardowns.push(patchFetch(ctx, settings));
       if (options.xhr !== false) teardowns.push(patchXhr(ctx, settings));
+      if (options.websocket !== false) {
+        teardowns.push(
+          hookWebSockets(ctx.emit, {
+            ignoreUrls: (options.ignoreUrls ?? []).map((pattern) =>
+              typeof pattern === 'string' ? pattern : { source: pattern.source, flags: pattern.flags },
+            ),
+            ignoreProtocols: DEV_TOOL_PROTOCOLS,
+            maxMessage: options.maxMessageSize ?? 16 * 1024,
+          }),
+        );
+      }
       return () => {
         for (const teardown of teardowns) teardown();
       };

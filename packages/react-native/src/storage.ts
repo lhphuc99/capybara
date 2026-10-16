@@ -60,8 +60,7 @@ export function mmkvStorage(mmkv: MMKVLike, options: AdapterOptions = {}): Stora
   return {
     id: options.id ?? 'mmkv',
     label: options.label ?? 'MMKV',
-    // MMKV keeps no type information, so a value is tried as each type in turn.
-    note: 'MMKV stores no value types: numbers and booleans are shown best-effort; edits are saved as strings.',
+    note: 'MMKV keeps no value types, so they are inferred: false and an empty string are stored alike and show as false, and binary values may not display. Edits are saved as strings.',
     keys: () => mmkv.getAllKeys(),
     get: (key) => readMmkv(mmkv, key),
     set: (key, value) => mmkv.set(key, value),
@@ -81,12 +80,39 @@ export function mmkvStorage(mmkv: MMKVLike, options: AdapterOptions = {}): Stora
 
 function readMmkv(mmkv: MMKVLike, key: string): string | null {
   const text = mmkv.getString(key);
-  if (text !== undefined) return text;
+  // On the web, MMKV keeps the text it was given; trying getNumber would turn '007' into 7.
+  if (isWeb()) return text ?? null;
+  // Native MMKV keeps no types and every getter decodes the same bytes, so 42 reads as '' through
+  // getString. A string takes a length byte plus its UTF-8 bytes, while getNumber needs at least 8
+  // bytes, so a decoded string shorter than 7 bytes is real only if getNumber fails.
+  if (text !== undefined && utf8Size(text) >= 7) return text;
   const number = mmkv.getNumber?.(key);
   if (number !== undefined && !Number.isNaN(number)) return String(number);
+  if (text) return text;
+  // `false` and '' are the same single zero byte.
   const bool = mmkv.getBoolean?.(key);
-  if (bool !== undefined) return String(bool);
-  return null;
+  return bool === undefined ? (text ?? null) : String(bool);
+}
+
+/** Some React Native libraries polyfill `document`, but React Native always reports its navigator.product. */
+function isWeb(): boolean {
+  const scope = globalThis as { document?: unknown; navigator?: { product?: string } };
+  return scope.document !== undefined && scope.navigator?.product !== 'ReactNative';
+}
+
+/** TextEncoder may be missing or lazily installed in React Native runtimes. */
+function utf8Size(value: string): number {
+  let size = 0;
+  for (let i = 0; i < value.length; i++) {
+    const code = value.charCodeAt(i);
+    if (code < 0x80) size++;
+    else if (code < 0x800) size += 2;
+    else if (code >= 0xd800 && code <= 0xdbff && value.charCodeAt(i + 1) >= 0xdc00 && value.charCodeAt(i + 1) <= 0xdfff) {
+      size += 4;
+      i++;
+    } else size += 3;
+  }
+  return size;
 }
 
 /** Runs `hooks[name](firstArg)` after the wrapped method's promise resolves. Returns an undo function. */

@@ -13,6 +13,8 @@ class Cart {
   total = 59.9;
 }
 
+let socket: WebSocket | undefined;
+
 const groups: Array<{ title: string; actions: Action[] }> = [
   {
     title: 'Logs',
@@ -108,6 +110,53 @@ const groups: Array<{ title: string; actions: Action[] }> = [
             () => 'unexpectedly succeeded',
             () => 'failed, as intended',
           ),
+      },
+    ],
+  },
+  {
+    title: 'WebSocket',
+    actions: [
+      {
+        label: 'Connect to /api/socket',
+        run: () =>
+          new Promise((resolve, reject) => {
+            socket?.close();
+            const next = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/socket`, 'chat');
+            next.onopen = () => resolve(`connected (${next.protocol})`);
+            next.onerror = () => reject(new Error('could not connect'));
+            socket = next;
+          }),
+      },
+      {
+        label: 'Send a chat message',
+        run: () => {
+          if (socket?.readyState !== WebSocket.OPEN) return 'connect first';
+          socket.send(JSON.stringify({ type: 'chat', text: 'Hello from the example', at: new Date().toISOString() }));
+          return 'sent';
+        },
+      },
+      {
+        label: 'Send 4 binary bytes',
+        run: () => {
+          if (socket?.readyState !== WebSocket.OPEN) return 'connect first';
+          socket.send(new Uint8Array([1, 2, 3, 4]).buffer);
+          return 'sent';
+        },
+      },
+      {
+        label: 'Close the socket',
+        run: () => {
+          socket?.close(1000, 'Closed from the example');
+          return 'closing';
+        },
+      },
+      {
+        label: 'Fail to connect',
+        run: () =>
+          new Promise((resolve) => {
+            const unreachable = new WebSocket('ws://localhost:59999/nothing');
+            unreachable.onclose = (event) => resolve(`closed with code ${event.code}`);
+          }),
       },
     ],
   },

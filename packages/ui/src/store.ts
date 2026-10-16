@@ -25,18 +25,46 @@ export interface NetworkEntry {
   id: string;
   seq: number;
   ts: number;
-  initiator: NetworkInitiator;
+  initiator: NetworkInitiator | 'websocket';
   method: string;
   url: string;
   requestHeaders: Record<string, string>;
   requestBody?: BodyPreview;
-  state: 'pending' | 'done' | 'failed';
+  /** `open` is only used by WebSockets. */
+  state: 'pending' | 'open' | 'done' | 'failed';
   status?: number;
   statusText?: string;
   responseHeaders?: Record<string, string>;
   responseBody?: BodyPreview;
+  /** For WebSockets, how long the connection lasted. */
   duration?: number;
   error?: string;
+  socket?: SocketInfo;
+}
+
+export interface SocketMessage {
+  seq: number;
+  ts: number;
+  direction: 'sent' | 'received';
+  data: BodyPreview;
+}
+
+export interface SocketInfo {
+  protocols?: string[];
+  protocol?: string;
+  extensions?: string;
+  /** Already open when first seen, so earlier messages are missing. */
+  existing?: boolean;
+  handshake?: number;
+  messages: SocketMessage[];
+  /** Oldest messages dropped to bound memory. */
+  dropped: number;
+  sent: number;
+  received: number;
+  bytes: number;
+  closeCode?: number;
+  closeReason?: string;
+  wasClean?: boolean;
 }
 
 export interface SessionState {
@@ -59,6 +87,7 @@ export interface State {
 
 const MAX_LOGS = 10_000;
 const MAX_REQUESTS = 5_000;
+const MAX_SOCKET_MESSAGES = 2_000;
 
 let state: State = { status: 'connecting', sessions: {} };
 const listeners = new Set<() => void>();
@@ -147,8 +176,15 @@ export function receive(message: Exclude<ServerToViewer, CommandResult>): void {
     }
     case 'cleared': {
       const session = state.sessions[message.sessionId];
-      // lastSeq is kept: the app keeps counting, so later events still apply.
-      if (session) updateSession({ ...session, logs: [], network: [] });
+      // lastSeq is kept: the app keeps counting, so later events still apply. Live sockets stay,
+      // without their messages, so the ones that arrive next still have a row to land in.
+      const live = (entry: NetworkEntry) => entry.socket && (entry.state === 'open' || entry.state === 'pending');
+      if (session) {
+        const network = session.network
+          .filter(live)
+          .map((entry) => ({ ...entry, socket: { ...entry.socket!, messages: [], dropped: 0, sent: 0, received: 0, bytes: 0 } }));
+        updateSession({ ...session, logs: [], network });
+      }
       break;
     }
   }
@@ -213,6 +249,25 @@ function applyEvents(session: SessionState, events: DevsightEvent[]): SessionSta
     }
     return network;
   };
+  // Busy sockets send many messages per batch: look each one up once and copy its message list once.
+  const located = new Map<string, number>();
+  const locate = (id: string) => {
+    const cached = located.get(id);
+    if (cached !== undefined && network[cached]?.id === id) return cached;
+    const index = findRequest(network, id);
+    if (index >= 0) located.set(id, index);
+    return index;
+  };
+  const ownedSockets = new Set<string>();
+  const editableSocket = (index: number): NetworkEntry & { socket: SocketInfo } => {
+    const list = editableNetwork();
+    const entry = list[index]!;
+    if (!ownedSockets.has(entry.id)) {
+      list[index] = { ...entry, socket: { ...entry.socket!, messages: entry.socket!.messages.slice() } };
+      ownedSockets.add(entry.id);
+    }
+    return list[index] as NetworkEntry & { socket: SocketInfo };
+  };
 
   for (const event of events) {
     if (event.seq <= lastSeq) continue;
@@ -263,6 +318,71 @@ function applyEvents(session: SessionState, events: DevsightEvent[]): SessionSta
         if (index < 0) break;
         const list = editableNetwork();
         list[index] = { ...list[index]!, state: 'failed', error: p.message, duration: p.duration };
+        break;
+      }
+      case 'ws.connect': {
+        const p = event.payload;
+        editableNetwork().push({
+          id: p.id,
+          seq: event.seq,
+          ts: event.ts,
+          initiator: 'websocket',
+          method: 'WS',
+          url: p.url,
+          requestHeaders: {},
+          state: 'pending',
+          socket: { protocols: p.protocols, existing: p.existing, messages: [], dropped: 0, sent: 0, received: 0, bytes: 0 },
+        });
+        ownedSockets.add(p.id);
+        break;
+      }
+      case 'ws.open': {
+        const p = event.payload;
+        const index = locate(p.id);
+        if (index < 0 || !network[index]!.socket) break;
+        const entry = editableSocket(index);
+        entry.state = 'open';
+        entry.status = 101;
+        entry.statusText = 'Switching Protocols';
+        entry.socket.protocol = p.protocol;
+        entry.socket.extensions = p.extensions;
+        entry.socket.handshake = p.duration;
+        break;
+      }
+      case 'ws.message': {
+        const p = event.payload;
+        const index = locate(p.id);
+        if (index < 0 || !network[index]!.socket) break;
+        const { socket } = editableSocket(index);
+        socket.messages.push({ seq: event.seq, ts: event.ts, direction: p.direction, data: p.data });
+        if (p.direction === 'sent') socket.sent++;
+        else socket.received++;
+        socket.bytes += p.data.size ?? 0;
+        if (socket.messages.length > MAX_SOCKET_MESSAGES) {
+          const extra = socket.messages.length - MAX_SOCKET_MESSAGES;
+          socket.messages.splice(0, extra);
+          socket.dropped += extra;
+        }
+        break;
+      }
+      case 'ws.error': {
+        const index = locate(event.payload.id);
+        if (index < 0 || !network[index]!.socket) break;
+        editableSocket(index).error = event.payload.message;
+        break;
+      }
+      case 'ws.close': {
+        const p = event.payload;
+        const index = locate(p.id);
+        if (index < 0 || !network[index]!.socket) break;
+        const entry = editableSocket(index);
+        // 1006 means the connection dropped without a close frame.
+        entry.state = entry.state === 'open' && p.code !== 1006 && !entry.error ? 'done' : 'failed';
+        entry.duration = p.duration;
+        entry.socket.closeCode = p.code;
+        entry.socket.closeReason = p.reason;
+        entry.socket.wasClean = p.wasClean;
+        if (entry.state === 'failed' && !entry.error) entry.error = p.reason || `Closed with code ${p.code ?? 'unknown'}`;
         break;
       }
       case 'storage.change':

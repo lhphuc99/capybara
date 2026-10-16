@@ -128,6 +128,45 @@ export interface NetworkErrorPayload {
   timeout?: boolean;
 }
 
+/** A WebSocket the app created. Later `ws.*` events refer to it by `id`. */
+export interface WebSocketConnectPayload {
+  id: string;
+  url: string;
+  protocols?: string[];
+  /** First seen after it was created, so earlier traffic was not captured. */
+  existing?: boolean;
+}
+
+export interface WebSocketOpenPayload {
+  id: string;
+  /** Subprotocol the server selected. */
+  protocol?: string;
+  extensions?: string;
+  /** Milliseconds from creation (or first sight) to the handshake. */
+  duration: number;
+}
+
+export interface WebSocketMessagePayload {
+  id: string;
+  direction: 'sent' | 'received';
+  /** Text frames carry `text`; binary frames only their size. */
+  data: BodyPreview;
+}
+
+export interface WebSocketErrorPayload {
+  id: string;
+  message: string;
+}
+
+export interface WebSocketClosePayload {
+  id: string;
+  code?: number;
+  reason?: string;
+  wasClean?: boolean;
+  /** Milliseconds from creation (or first sight) to the close. */
+  duration: number;
+}
+
 export type StorageOp = 'set' | 'remove' | 'clear' | 'merge' | 'unknown';
 
 export interface StorageChangePayload {
@@ -141,6 +180,11 @@ export interface EventPayloads {
   'network.request': NetworkRequestPayload;
   'network.response': NetworkResponsePayload;
   'network.error': NetworkErrorPayload;
+  'ws.connect': WebSocketConnectPayload;
+  'ws.open': WebSocketOpenPayload;
+  'ws.message': WebSocketMessagePayload;
+  'ws.error': WebSocketErrorPayload;
+  'ws.close': WebSocketClosePayload;
   'storage.change': StorageChangePayload;
 }
 

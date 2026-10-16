@@ -14,6 +14,12 @@
       "port": 5173
     },
     {
+      "name": "example-nextjs",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "-w", "example-nextjs"],
+      "port": 3005
+    },
+    {
       "name": "example-expo",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "ios", "-w", "example-expo"],

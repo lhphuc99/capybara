@@ -1,6 +1,6 @@
 # Devsight
 
-Debug React Native and web apps from one place: logs, network and storage, streamed live to a local UI.
+Debug React Native and web apps from one place: logs, network (including WebSockets) and storage, streamed live to a local UI.
 
 > Status: MVP, not published to npm yet. "Devsight" is a working name.
 
@@ -17,13 +17,14 @@ npm run desktop    # or the same in a desktop app, see below
 
 Start Metro on the same computer, open your development app on a simulator or phone, then run `npm run desktop` or `npm start` here. Devsight discovers apps on Metro ports **8081 and 8082** and streams console logs, exceptions and network requests into the UI. The Storage tab also reads AsyncStorage and discoverable MMKV instances. No Devsight package installation or code changes in your app are needed.
 
-- Requires Hermes and a Metro inspector target advertising `supportsMultipleDebuggers`. Older targets are skipped so Devsight does not disconnect your existing debugger. Release builds do not expose Metro's inspector.
-- Network headers, status and bodies depend on the events your React Native / Expo runtime exposes. React Native's built-in Network support starts at [0.83](https://reactnative.dev/docs/react-native-devtools#network); Expo also provides its own network interceptor. Some Expo versions do not report failed native requests, so those can remain pending. Missing or evicted response bodies cannot be recovered.
+- Requires Hermes and **React Native 0.85 or later**, whose Metro inspector targets advertise `supportsMultipleDebuggers`. On older versions a new debugger disconnects the existing one, so Devsight skips those targets; use the SDK there. Release builds do not expose Metro's inspector.
+- Network headers, status and bodies depend on the events your React Native / Expo runtime exposes. React Native's built-in Network support starts at [0.83](https://reactnative.dev/docs/react-native-devtools#network); Expo also provides its own network interceptor. Some Expo versions do not report failed native requests, so those can remain pending. Expo's native `fetch` (`expo/fetch`) is reported only when `expo-dev-client` or Expo Go sets up Expo's network inspector; in other debug builds (seen on Android) those requests do not appear without the SDK, while XHR and axios requests still do. Missing or evicted response bodies cannot be recovered.
+- **WebSockets:** while connected, Devsight hooks the app's `WebSocket` (reporting through `Runtime.addBinding`) and records connections and messages: text up to 16 KiB per message, binary as its size. React Native dispatches socket events from JS, so sockets opened before Devsight attached, and sockets made through a constructor a library saved earlier (socket.io's engine.io does), are recorded from their next event on. Sockets of dev tools (Metro, React DevTools on 8097, Reactotron on 9090) are skipped. The hook is removed on disconnect or after an unrenewed 15-second lease.
 - Reloading creates a new session; Metro disconnects are rediscovered automatically. Requests made before the bridge connects are not replayed.
 - Apps already using the Devsight SDK are skipped to avoid duplicate sessions.
 - **Read-only storage:** Devsight runs a reader through CDP against storage already in your app. It finds AsyncStorage and MMKV instances exposed by initialized Metro module exports (including ESM bindings and exports nested up to two levels). The known AsyncStorage implementation can be loaded from the existing bundle if Metro has deferred it. No new MMKV instances are created, and no keys are written by Devsight.
-- **Private MMKV instances:** while connected, Devsight temporarily hooks known MMKV APIs in the running JS runtime. V2/V3 instances are captured when the app next uses their shared method cache, including instances created before connection. V4 instances are captured when the app calls the native factory after the hook is installed. This changes runtime methods, not app source files. The V4 factory accessor may initialize the library's shared factory, but does not open a store. Hooks are restored on disconnect or after an unrenewed 15-second lease (when the app's JS timers can run). At most 100 instances are tracked, using weak references when available.
-- In Storage, use **Find stores** after using the relevant app screen, and **Refresh** to read new values. MMKV v4 freezes its native prototypes: an existing private instance cannot be captured merely by reading it again; it must be exported or created after attachment. Modules loaded and used between discovery polls, immutable APIs, custom wrappers and runtimes without Metro module discovery may still be missed. Reloading alone does not guarantee capture because the app may create stores before the bridge attaches. The existing instance retains its encryption configuration; Devsight does not request or guess encryption keys.
+- **Private MMKV instances:** while connected, Devsight temporarily hooks known `react-native-mmkv` APIs in the running JS runtime. 3.x instances are captured when the app next uses their shared method cache, including instances created before connection. 4.x instances are captured when the app calls the native factory after the hook is installed. This changes runtime methods, not app source files. The 4.x factory accessor may initialize the library's shared factory, but does not open a store. Hooks are restored on disconnect or after an unrenewed 15-second lease (when the app's JS timers can run). At most 100 instances are tracked, using weak references when available.
+- In Storage, use **Find stores** after using the relevant app screen, and **Refresh** to read new values. `react-native-mmkv` 4.x freezes its native prototypes: an existing private instance cannot be captured merely by reading it again; it must be exported or created after attachment. Modules loaded and used between discovery polls, immutable APIs, custom wrappers and runtimes without Metro module discovery may still be missed. Reloading alone does not guarantee capture because the app may create stores before the bridge attaches. The existing instance retains its encryption configuration; Devsight does not request or guess encryption keys.
 - MMKV stores no value types, so Devsight infers them from what each getter can decode. Numbers and booleans display correctly, but `false` and an empty string are stored as the same byte and both show as `false`; binary values may not display. Trying the getters makes MMKV print harmless `[E]` decode messages (such as `getDouble reach end`) to the native log while Devsight reads a store.
 - Storage lists are capped at 1,000 keys with 2,000-character previews; selecting a value reads up to 1,000,000 characters. **Editing and automatic storage change notifications still use the SDK.**
 
@@ -36,9 +37,9 @@ npm start -- --no-metro                          # SDK connections only
 
 The desktop app reuses a running CLI server, including its Metro configuration. When that CLI exits, the desktop starts its own server and scans the default ports.
 
-MMKV compatibility targets are the three recent major lines: **2.x, 3.x and 4.x**. Automated checks run against the published JS sources of **2.12.2, 3.3.3 and 4.3.2**, with a simulated native boundary (including Nitro's frozen prototypes). After building, run `npm run test:mmkv-compat -w devsight` to repeat this matrix. It downloads integrity-pinned source archives to a temporary directory, without installing dependencies into your app. Pass a cache directory after `--` to use pre-downloaded archives.
+MMKV versions here are those of the [`react-native-mmkv`](https://github.com/mrousavy/react-native-mmkv) package, not of the Tencent MMKV core it bundles (the core is at 2.x). Targets are **3.x and 4.x**; 2.x needs React Native's legacy architecture and is out of scope. Automated checks run against the published JS sources of **3.3.3 and 4.3.2** (and 2.12.2, which shares the 3.x hook), with a simulated native boundary (including Nitro's frozen prototypes). After building, run `npm run test:mmkv-compat -w devsight` to repeat this matrix. It downloads integrity-pinned source archives to a temporary directory, without installing dependencies into your app. Pass a cache directory after `--` to use pre-downloaded archives.
 
-Native **MMKV 4.3.2** and **3.3.3** have been verified end to end on an iOS simulator (Expo SDK 57, React Native 0.86, Hermes), each with a separate test app holding synthetic data: [`packages/cli/test/native-fixture`](packages/cli/test/native-fixture/README.md) and [`packages/cli/test/native-fixture-mmkv3`](packages/cli/test/native-fixture-mmkv3/README.md). Native 2.x (legacy architecture only), Android and physical devices have not been run yet.
+Native **react-native-mmkv 4.3.2** and **3.3.3** have been verified end to end on an iOS simulator, and 4.3.2 also on an Android emulator (Expo SDK 57, React Native 0.86, Hermes), each with a separate test app holding synthetic data: [`packages/cli/test/native-fixture`](packages/cli/test/native-fixture/README.md) and [`packages/cli/test/native-fixture-mmkv3`](packages/cli/test/native-fixture-mmkv3/README.md). The same apps run on the web through react-native-web, where `packages/cli/scripts/check-mmkv-web.mjs` checks MMKV's web storage through the web SDK. Metro discovery has not been run on a physical device yet.
 
 ### Web (React, Vite, Next.js client)
 
@@ -50,28 +51,34 @@ import { init } from '@devsight/web';
 if (import.meta.env.DEV) init({ appName: 'My web app' });
 ```
 
-In Next.js (App Router), put it in a client component rendered from the root layout. On the server `init()` does nothing:
+In Next.js 15.3 or later, put it in `instrumentation-client.ts` at the project root. Next.js runs that file in the browser before your app's code, and production builds drop the call:
 
-```tsx
-// app/devsight.tsx
-'use client';
+```ts
+// instrumentation-client.ts
 import { init } from '@devsight/web';
 
 if (process.env.NODE_ENV === 'development') init({ appName: 'My Next.js app' });
-
-export default function Devsight() {
-  return null;
-}
 ```
+
+On older versions, call it at the top of a client component rendered from the root layout; on the server `init()` does nothing. Requests the Next.js dev overlay makes for itself (`/__nextjs_*`) are not recorded, and server-side logs and requests are not captured yet. See [`examples/nextjs`](examples/nextjs).
+
+- WebSockets the page creates after `init()` are recorded, which is another reason to import the SDK first. Dev server sockets (Vite, Next.js and Metro HMR) are skipped.
+- Cookie writes refresh the Storage tab automatically where the Cookie Store API exists (such as Chrome); elsewhere use Refresh.
+- `react-native-mmkv` on the web keeps values as text in localStorage under `<id>\<key>`, so they appear in **Local Storage** with their exact values. Edits made there are read by MMKV, but listeners from `addOnValueChangedListener` (and hooks built on them) are not notified. Instances that fall back to memory because localStorage is blocked are not visible.
 
 ### Optional React Native SDK (storage editing)
 
 ```ts
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { asyncStorage, init } from '@devsight/react-native';
+import { asyncStorage, init, mmkvStorage } from '@devsight/react-native';
+import { storage } from './storage'; // your react-native-mmkv instance
 
-if (__DEV__) init({ appName: 'My app', storage: [asyncStorage(AsyncStorage)] });
+if (__DEV__) init({ appName: 'My app', storage: [asyncStorage(AsyncStorage), mmkvStorage(storage)] });
 ```
+
+The SDK also works below React Native 0.85, where Metro discovery is not available. WebSockets are recorded by default; pass `network: { websocket: false }` to turn that off, or `maxMessageSize` to change the 16 KiB message preview. Socket URLs are shown as the app opened them, query string included, and some apps put an auth token there.
+
+In the UI, WebSocket connections are **WS** rows in the Network tab. Select one to see its messages, filter them by text or direction, and inspect JSON payloads; socket.io frames are decoded into event names and arguments.
 
 The SDK finds your machine from the Metro bundle URL, so simulators and phones on the same Wi-Fi connect without configuration. For Android devices over USB the CLI and the desktop app run `adb reverse` for you. Pass `host` to `init()` to override.
 
@@ -93,8 +100,9 @@ npm run desktop:package    # macOS .dmg and .zip in apps/desktop/release/
 ## Examples
 
 ```bash
-npm run example:web    # Vite app with a mock API, http://localhost:5173
-npm run example:expo   # Expo Go; no Devsight SDK loaded, uses Metro discovery
+npm run example:web     # Vite app with a mock API, http://localhost:5173
+npm run example:nextjs  # Next.js App Router with a route handler, http://localhost:3005
+npm run example:expo    # Expo Go; no Devsight SDK loaded, uses Metro discovery
 ```
 
 The Expo example's AsyncStorage can be read through Metro without loading the Devsight SDK. To test storage editing, add `import './devsight';` as the first import in `examples/expo/index.ts`, then reload the app. The SDK packages are not published yet; outside this workspace, build and `npm pack` the protocol, core and platform SDK packages and install those local archives together.

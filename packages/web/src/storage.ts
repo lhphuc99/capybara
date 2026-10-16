@@ -99,6 +99,25 @@ export function cookieStorage(): StorageAdapter {
     clear: () => {
       for (const [key] of read()) remove(key);
     },
+    watch: cookieChanges(),
+  };
+}
+
+/** The Cookie Store API also reports document.cookie writes; without it, cookies refresh only on demand. */
+function cookieChanges(): StorageAdapter['watch'] {
+  const store = (globalThis as { cookieStore?: EventTarget }).cookieStore;
+  if (!store) return undefined;
+  return (onChange) => {
+    const listener = (event: Event) => {
+      const { changed = [], deleted = [] } = event as Event & {
+        changed?: Array<{ name?: string }>;
+        deleted?: Array<{ name?: string }>;
+      };
+      for (const cookie of changed) onChange('set', cookie.name);
+      for (const cookie of deleted) onChange('remove', cookie.name);
+    };
+    store.addEventListener('change', listener);
+    return () => store.removeEventListener('change', listener);
   };
 }
 

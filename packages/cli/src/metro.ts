@@ -14,6 +14,7 @@ import {
 import { WebSocket, type RawData } from 'ws';
 import { readMetroStorage } from './metro-storage.js';
 import { watchMetroMMKV } from './metro-mmkv.js';
+import { parseWebSocketReport, watchMetroWebSockets, WEBSOCKET_BINDING } from './metro-websocket.js';
 import {
   headerValue,
   initiatorOf,
@@ -54,6 +55,7 @@ const STARTUP_CHECK_MS = 1_000;
 const STARTUP_LIMIT_MS = 30_000;
 const MAX_BODY_FETCH = 4 * 1024 * 1024;
 const MAX_HELD_EVENTS = 2_000;
+const MAX_SOCKET_MESSAGE = 16 * 1024;
 
 const SERIALIZER_GLOBAL = '__DEVSIGHT_SERIALIZE__';
 const INSTALL_SERIALIZER = `globalThis.${SERIALIZER_GLOBAL} = ${serialize.toString()}`;
@@ -178,6 +180,7 @@ interface Run {
   retry?: ReturnType<typeof setTimeout>;
   session?: Session;
   mmkv?: ReturnType<typeof watchMetroMMKV>;
+  sockets?: ReturnType<typeof watchMetroWebSockets>;
   requests: Map<string, Request>;
 }
 
@@ -343,7 +346,7 @@ function watchApp(
     current.held = [];
     current.session?.close();
     current.requests.clear();
-    return current.mmkv?.stop() ?? Promise.resolve();
+    return Promise.all([current.mmkv?.stop(), current.sockets?.stop()]).then(() => {});
   };
 
   const decide = async (current: Run) => {
@@ -371,6 +374,13 @@ function watchApp(
     }
     current.state = 'streaming';
     current.mmkv = watchMetroMMKV(call, current.contextId);
+    current.sockets = watchMetroWebSockets(call, current.contextId, {
+      // Metro's own sockets (HMR, inspector), React DevTools and Reactotron. React Native opens some
+      // of them with an http:// URL.
+      ignoreUrls: [{ source: `^(?:wss?|https?)://[^/]+:(?:${metroPort}|8097|9090)(?:/|$)`, flags: '' }],
+      ignoreProtocols: [],
+      maxMessage: MAX_SOCKET_MESSAGE,
+    });
     current.session = openSession(devsightUrl, sessionInfo(probe?.name), end, (command) => {
       if (command.plugin !== 'storage') return Promise.reject(new Error('This plugin is unavailable through Metro'));
       return readMetroStorage(call, current.contextId, () => run === current, command.method, command.params);
@@ -401,6 +411,7 @@ function watchApp(
     const relevant =
       event.method === 'Runtime.consoleAPICalled' ||
       event.method === 'Runtime.exceptionThrown' ||
+      event.method === 'Runtime.bindingCalled' ||
       event.method.startsWith('Network.');
     const current = run;
     if (!relevant || !current) return;
@@ -496,6 +507,13 @@ function watchApp(
         const values = await serializeArgs(args, executionContextId ?? current.contextId);
         const source = level === 'error' && isUnhandledRejection(values) ? 'unhandledrejection' : 'console';
         session.emit('log', { level, source, args: values }, epochMs(timestamp));
+        return;
+      }
+      case 'Runtime.bindingCalled': {
+        const { name, payload } = event.params as { name?: string; payload?: unknown };
+        if (name !== WEBSOCKET_BINDING) return;
+        const report = parseWebSocketReport(payload);
+        if (report) session.emit(report.kind, report.payload as never, report.ts);
         return;
       }
       case 'Runtime.exceptionThrown': {

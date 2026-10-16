@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import react from '@vitejs/plugin-react';
 import { defineConfig, type Plugin } from 'vite';
+import { WebSocketServer } from 'ws';
 
 const users = [
   { id: 1, name: 'Ada Lovelace', email: 'ada@example.com', role: 'admin' },
@@ -15,6 +16,18 @@ function mockApi(): Plugin {
     configureServer(server) {
       server.middlewares.use('/api', (req, res) => {
         void handle(req, res);
+      });
+      const sockets = new WebSocketServer({ noServer: true });
+      sockets.on('connection', (socket) => {
+        socket.send(JSON.stringify({ type: 'welcome', users: users.length }));
+        socket.on('message', (data, isBinary) => {
+          if (isBinary) socket.send(data, { binary: true });
+          else socket.send(JSON.stringify({ type: 'echo', received: safeParse(data.toString()) }));
+        });
+      });
+      // Vite's own HMR socket handles its upgrades separately, by subprotocol.
+      server.httpServer?.on('upgrade', (req, socket, head) => {
+        if (req.url?.startsWith('/api/socket')) sockets.handleUpgrade(req, socket, head, (ws) => sockets.emit('connection', ws, req));
       });
     },
   };

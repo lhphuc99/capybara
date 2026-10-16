@@ -6,5 +6,7 @@ export type { SocketFactory, SocketLike } from './transport.js';
 export { consolePlugin } from './plugins/console.js';
 export { networkPlugin } from './plugins/network.js';
 export type { NetworkPluginOptions } from './plugins/network.js';
+export { hookWebSockets } from './plugins/websocket.js';
+export type { WebSocketEventKind, WebSocketHookOptions } from './plugins/websocket.js';
 export { storagePlugin } from './plugins/storage.js';
 export type { StorageAdapter } from './plugins/storage.js';
