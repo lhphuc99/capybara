@@ -1,0 +1,13 @@
+{
+  "expo": {
+    "name": "Devsight Example",
+    "slug": "devsight-example",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {}
+  }
+}

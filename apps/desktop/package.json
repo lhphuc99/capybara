@@ -1,0 +1,47 @@
+{
+  "name": "@devsight/desktop",
+  "productName": "Devsight",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Devsight as a desktop app: the server and the UI in one window",
+  "type": "module",
+  "main": "dist/main.cjs",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "start": "npm run build && electron .",
+    "package": "npm run build && electron-builder --mac",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@devsight/protocol": "0.1.0",
+    "@types/ws": "^8.18.2",
+    "devsight": "0.1.0",
+    "electron": "44.7.2",
+    "electron-builder": "^26.15.3",
+    "rolldown": "^1.2.14",
+    "ws": "^8.22.0"
+  },
+  "build": {
+    "appId": "dev.devsight.desktop",
+    "files": [
+      "dist/**"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "npmRebuild": false,
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "identity": "-",
+      "hardenedRuntime": false
+    }
+  },
+  "engines": {
+    "node": ">=22.12"
+  }
+}

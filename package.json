@@ -1,0 +1,35 @@
+{
+  "name": "devsight-monorepo",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*",
+    "examples/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w @devsight/protocol && npm run build -w @devsight/core && npm run build -w @devsight/web && npm run build -w @devsight/react-native && npm run build -w @devsight/ui && npm run build -w devsight && npm run build -w @devsight/desktop",
+    "start": "node packages/cli/dist/bin.js",
+    "desktop": "npm run start -w @devsight/desktop",
+    "desktop:package": "npm run build && npm run package -w @devsight/desktop",
+    "dev:ui": "npm run dev -w @devsight/ui",
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "example:web": "npm run dev -w example-web",
+    "example:expo": "npm run start -w example-expo"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "happy-dom": "^21.0.1",
+    "typescript": "~6.0.3",
+    "vitest": "^5.0.4"
+  },
+  "overrides": {
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
+  },
+  "engines": {
+    "node": ">=20.19"
+  }
+}

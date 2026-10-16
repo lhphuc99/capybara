@@ -1,0 +1,10 @@
+{
+  "expo": {
+    "name": "Devsight MMKV Test",
+    "slug": "devsight-mmkv-native",
+    "version": "1.0.0",
+    "ios": {
+      "bundleIdentifier": "dev.devsight.mmkvtest"
+    }
+  }
+}

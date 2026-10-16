@@ -1,0 +1,371 @@
+import http from 'node:http';
+import { createContext, runInContext } from 'node:vm';
+import type { AddressInfo } from 'node:net';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { WebSocket, WebSocketServer } from 'ws';
+import { startMetroBridge, type MetroBridge } from '../src/metro.js';
+import { createServer, type DevsightServer } from '../src/server.js';
+
+const cleanups: Array<() => unknown | Promise<unknown>> = [];
+afterEach(async () => {
+  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
+});
+
+const until = (assertion: () => void) => vi.waitFor(assertion, { timeout: 4_000, interval: 10 });
+
+type Command = { id: number; method: string; params: Record<string, any> };
+
+async function fixture(options: { sdk?: boolean; ready?: boolean; multiple?: boolean; fallbackOrigin?: boolean } = {}) {
+  const metro = http.createServer((_req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify(visible ? [null, { id: 'invalid' }, {
+      id: 'app',
+      title: 'Hermes app',
+      webSocketDebuggerUrl: `ws://localhost:${metroPort}/inspector/debug`,
+      reactNative: { capabilities: { supportsMultipleDebuggers: options.multiple ?? true } },
+    }] : []));
+  });
+  const wss = new WebSocketServer({ server: metro });
+  await new Promise<void>((resolve, reject) => {
+    metro.once('error', reject);
+    metro.listen(0, 'localhost', resolve);
+  });
+  const metroPort = (metro.address() as AddressInfo).port;
+  cleanups.push(async () => {
+    for (const ws of wss.clients) ws.terminate();
+    await new Promise<void>((resolve) => wss.close(() => resolve()));
+    await new Promise<void>((resolve) => metro.close(() => resolve()));
+  });
+
+  let visible = true;
+  let sdk = options.sdk ?? false;
+  let ready = options.ready ?? true;
+  let socket: WebSocket | undefined;
+  let connections = 0;
+  let contextId = 1;
+  const commands: Command[] = [];
+  const origins: string[] = [];
+  const bodies = new Map<string, { body: string; base64Encoded: boolean }>();
+  const runtimeTimers = new Set<ReturnType<typeof setInterval>>();
+  const vm = createContext({
+    setInterval: (fn: () => void, delay: number) => {
+      const timer = setInterval(fn, delay);
+      timer.unref();
+      runtimeTimers.add(timer);
+      return timer;
+    },
+    clearInterval: (timer: ReturnType<typeof setInterval>) => { clearInterval(timer); runtimeTimers.delete(timer); },
+  });
+  cleanups.push(() => { for (const timer of runtimeTimers) clearInterval(timer); });
+  const handles = new Map<string, unknown>();
+  let nextHandle = 0;
+  // These values originate in a different JS runtime, like Hermes RemoteObjects.
+  runInContext(`globalThis.objects = {
+    user: { name: 'Ada', roles: ['admin'] },
+    error: new Error('Uncaught (in promise, id: 0) failed'),
+    nullObject: null
+  };
+  globalThis.modules = new Map([[1, {
+    isInitialized: true, publicModule: { exports: { default: {
+      getAllKeys: async () => ['user'], getItem: async () => '{"name":"Ada"}',
+      setItem: () => { throw new Error('Must not write'); }
+    } } }
+  }]]);
+  globalThis.__r = { getModules: () => modules }`, vm);
+  const event = (method: string, params: unknown) => socket?.send(JSON.stringify({ method, params }));
+  const reply = (ws: WebSocket, id: number, result: unknown) => ws.send(JSON.stringify({ id, result }));
+
+  wss.on('connection', (ws, req) => {
+    origins.push(req.headers.origin ?? '');
+    if (options.fallbackOrigin && req.headers.origin?.includes('127.0.0.1')) {
+      ws.close();
+      return;
+    }
+    socket = ws;
+    connections++;
+    ws.on('error', () => {});
+    ws.on('message', (data) => {
+      const command = JSON.parse(data.toString()) as Command;
+      commands.push(command);
+      const { id, method, params } = command;
+      if (method === 'ReactNativeApplication.enable') {
+        event('ReactNativeApplication.metadataUpdated', {
+          platform: 'ios', deviceName: 'iPhone simulator', reactNativeVersion: '0.86.3',
+        });
+      } else if (method === 'Runtime.enable') {
+        event('Runtime.executionContextCreated', { context: { id: contextId } });
+      } else if (method === 'Runtime.evaluate') {
+        if (params.expression.includes('__DEVSIGHT_CLIENT__')) {
+          reply(ws, id, { result: { value: JSON.stringify({ sdk, ready, name: 'No SDK app' }) } });
+        } else {
+          const value = runInContext(params.expression, vm);
+          if (params.returnByValue === false) {
+            const objectId = `handle-${++nextHandle}`;
+            handles.set(objectId, value);
+            reply(ws, id, { result: { type: 'object', objectId } });
+          } else reply(ws, id, { result: { value } });
+        }
+        return;
+      } else if (method === 'Runtime.callFunctionOn') {
+        if (params.objectId) {
+          vm.receiver = handles.get(params.objectId);
+          reply(ws, id, { result: { value: runInContext(`(${params.functionDeclaration}).call(receiver)`, vm) } });
+          return;
+        }
+        vm.handles = params.arguments.map((arg: { objectId: string }) => arg.objectId);
+        const value = runInContext(`(${params.functionDeclaration}).apply(null, handles.map(id => objects[id]))`, vm);
+        reply(ws, id, { result: { value } });
+        return;
+      } else if (method === 'Network.getResponseBody') {
+        const body = bodies.get(params.requestId);
+        if (body) reply(ws, id, body);
+        else ws.send(JSON.stringify({ id, error: { message: 'Body evicted' } }));
+        return;
+      } else if (method === 'Runtime.releaseObject') {
+        handles.delete(params.objectId);
+      }
+      reply(ws, id, {});
+    });
+  });
+
+  let server: DevsightServer = createServer({ port: 0, host: '127.0.0.1' });
+  const { port } = await server.start();
+  cleanups.push(() => server.close());
+  const messages: any[] = [];
+  const viewers: WebSocket[] = [];
+  const view = async () => {
+    const viewer = new WebSocket(`ws://127.0.0.1:${port}/viewer`, { origin: `http://127.0.0.1:${port}` });
+    viewers.push(viewer);
+    viewer.on('message', (data) => messages.push(JSON.parse(data.toString())));
+    await new Promise<void>((resolve, reject) => {
+      viewer.once('open', resolve);
+      viewer.once('error', reject);
+    });
+    return viewer;
+  };
+  const viewer = await view();
+  cleanups.push(() => viewers.forEach((ws) => ws.terminate()));
+  let bridge: MetroBridge | undefined;
+  cleanups.push(() => bridge?.stop());
+
+  return {
+    messages, commands, bodies, origins, viewer, event,
+    run: (code: string) => runInContext(code, vm),
+    events: () => messages.filter((m) => m.t === 'events').flatMap((m) => m.events),
+    sessions: () => messages.filter((m) => m.t === 'session' && m.session.connected),
+    connections: () => connections,
+    start: () => { bridge = startMetroBridge({ port, metroPorts: [metroPort], pollInterval: 25, version: 'test' }); },
+    stop: () => bridge?.stop(),
+    setSdk: (value: boolean) => { sdk = value; },
+    setVisible: (value: boolean) => { visible = value; },
+    disconnect: () => socket?.terminate(),
+    reload: () => {
+      event('Runtime.executionContextsCleared', {});
+      event('Runtime.executionContextCreated', { context: { id: ++contextId } });
+    },
+    restartServer: async () => {
+      await server.close();
+      server = createServer({ port, host: '127.0.0.1' });
+      await server.start();
+      await view();
+    },
+    log: (args: unknown[], type = 'log') => event('Runtime.consoleAPICalled', {
+      type, args, executionContextId: contextId, timestamp: 1_800_000_000_000,
+    }),
+    request: (id: string, url = 'https://api.example.test/users', postData?: string) => event('Network.requestWillBeSent', {
+      requestId: id, timestamp: 10, wallTime: 1_800_000_000, type: 'Fetch',
+      request: { url, method: postData ? 'POST' : 'GET', headers: { 'Content-Type': 'application/json' }, postData },
+    }),
+    finish: (id: string, status = 200, mimeType = 'application/json', size = 32) => {
+      event('Network.responseReceived', {
+        requestId: id, timestamp: 10.125,
+        response: { status, statusText: status === 404 ? 'Not Found' : 'OK', mimeType, headers: { 'X-Response': 'yes' } },
+      });
+      event('Network.loadingFinished', { requestId: id, timestamp: 10.5, encodedDataLength: size });
+    },
+    metroPort,
+  };
+}
+
+describe('Metro discovery and CDP event relay', () => {
+  it('discovers a private MMKV instance through CDP and restores hooks before disconnecting', async () => {
+    const f = await fixture();
+    f.run(`
+      class MMKV {
+        getFunctionFromCache() { return () => 'private value'; }
+        getString(key) { return this.getFunctionFromCache()(key); }
+        getNumber() {} getBoolean() {} set() { throw new Error('Unexpected write'); }
+        getAllKeys() { return ['user']; }
+      }
+      const originalMMKV = MMKV.prototype.getFunctionFromCache;
+      const privateRead = (() => { const storage = new MMKV(); return () => storage.getString('user'); })();
+      modules.set(2, { isInitialized: true, verboseName: '/node_modules/react-native-mmkv/src/MMKV.ts', publicModule: { exports: { MMKV } } });
+    `);
+    f.start();
+    await until(() => expect(f.sessions()).toHaveLength(1));
+    expect(f.run('privateRead()')).toBe('private value');
+    const sessionId = f.sessions()[0].session.info.id;
+    f.viewer.send(JSON.stringify({ t: 'command', id: 'private-list', sessionId, plugin: 'storage', method: 'list' }));
+    await until(() => expect(f.messages.find(m => m.id === 'private-list')).toBeDefined());
+    const result = f.messages.find(m => m.id === 'private-list');
+    expect(result.ok).toBe(true);
+    expect(result.result.some((item: any) => item.id.startsWith('mmkv-runtime:'))).toBe(true);
+    f.stop();
+    await until(() => expect(f.run('MMKV.prototype.getFunctionFromCache === originalMMKV')).toBe(true));
+    expect(f.run('globalThis.__DEVSIGHT_MMKV_TRACKER_V1__')).toBeUndefined();
+  });
+
+  it('discovers a late app and serializes console objects, primitives, rejections and exceptions without an SDK', async () => {
+    const f = await fixture();
+    f.setVisible(false);
+    f.start();
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(f.connections()).toBe(0);
+    f.setVisible(true);
+    await until(() => expect(f.sessions()).toHaveLength(1));
+    expect(f.sessions()[0].session.info).toMatchObject({
+      appName: 'No SDK app', platform: 'ios', sdk: { name: 'metro', version: 'test' },
+    });
+    f.log([{ type: 'string', value: 'hello' }, { type: 'object', objectId: 'user' }, { type: 'number', unserializableValue: 'NaN' }]);
+    f.log([{ type: 'object', objectId: 'error' }], 'error');
+    f.log([{ type: 'object', objectId: 'nullObject' }]);
+    f.event('Runtime.exceptionThrown', { exceptionDetails: { text: 'Uncaught exception' } });
+    await until(() => expect(f.events()).toHaveLength(4));
+    expect(f.events()[0]).toMatchObject({ ts: 1_800_000_000_000, payload: {
+      level: 'log', args: ['hello', { name: 'Ada', roles: ['admin'] }, { $t: 'number', v: 'NaN' }],
+    } });
+    expect(f.events()[1].payload).toMatchObject({ level: 'error', source: 'unhandledrejection' });
+    expect(f.events()[2].payload.args).toEqual([null]);
+    expect(f.events()[3].payload).toMatchObject({ level: 'error', source: 'uncaught' });
+    expect(f.commands.filter((c) => c.method === 'Runtime.releaseObject')).toHaveLength(3);
+    expect(f.commands.find((c) => c.method === 'Runtime.evaluate' && c.params.expression.includes('__DEVSIGHT_SERIALIZE__'))?.params.contextId).toBe(1);
+    expect(f.events().map((e) => e.seq)).toEqual([1, 2, 3, 4]);
+  });
+
+  it('captures POST headers/body, 404 responses, base64 bodies, failed and aborted requests', async () => {
+    const f = await fixture();
+    f.start();
+    await until(() => expect(f.sessions()).toHaveLength(1));
+    f.bodies.set('post', { body: Buffer.from('{"error":"missing"}').toString('base64'), base64Encoded: true });
+    f.request('post', undefined, '{"name":"Ada"}');
+    f.finish('post', 404);
+    f.request('fail');
+    f.event('Network.loadingFailed', { requestId: 'fail', timestamp: 10.2, errorText: 'Connection refused' });
+    f.request('abort');
+    f.event('Network.loadingFailed', { requestId: 'abort', timestamp: 10.3, canceled: true });
+    await until(() => expect(f.events()).toHaveLength(6));
+    expect(f.events()[0].payload).toMatchObject({ method: 'POST', initiator: 'fetch', headers: { 'Content-Type': 'application/json' }, body: { text: '{"name":"Ada"}' } });
+    expect(f.events()[1].payload).toMatchObject({ status: 404, duration: 125, headers: { 'X-Response': 'yes' }, body: { text: '{"error":"missing"}' } });
+    expect(f.events()[3]).toMatchObject({ kind: 'network.error', payload: { message: 'Connection refused', duration: 200 } });
+    expect(f.events()[5].payload).toMatchObject({ aborted: true, duration: 300 });
+  });
+
+  it('skips binary/oversized body downloads and keeps the status when a body is unavailable', async () => {
+    const f = await fixture();
+    f.start();
+    await until(() => expect(f.sessions()).toHaveLength(1));
+    f.request('binary'); f.finish('binary', 200, 'image/png');
+    f.request('large'); f.finish('large', 200, 'text/plain', 5 * 1024 * 1024);
+    f.request('gone'); f.finish('gone');
+    f.request('metro', `http://localhost:${f.metroPort}/symbolicate`); f.finish('metro');
+    await until(() => expect(f.events()).toHaveLength(6));
+    expect(f.events()[1].payload.body).toMatchObject({ kind: 'binary' });
+    expect(f.events()[3].payload.body).toMatchObject({ kind: 'unknown', summary: 'Too large to capture' });
+    expect(f.events()[5].payload).toMatchObject({ status: 200 });
+    expect(f.events()[5].payload.body).toBeUndefined();
+    expect(f.commands.filter((c) => c.method === 'Network.getResponseBody').map((c) => c.params.requestId)).toEqual(['gone']);
+  });
+
+  it('holds startup events until SDK detection and skips an SDK app without duplicate sessions', async () => {
+    const f = await fixture({ ready: false });
+    f.start();
+    await until(() => expect(f.commands.some((c) => c.method === 'Network.enable')).toBe(true));
+    f.log([{ type: 'object', objectId: 'user' }]);
+    f.setSdk(true);
+    f.log([{ type: 'string', value: 'Running "App"' }]);
+    await until(() => expect(f.commands.some((c) => c.method === 'Runtime.releaseObject')).toBe(true));
+    expect(f.sessions()).toHaveLength(0);
+    expect(f.events()).toHaveLength(0);
+  });
+
+  it('starts a new session after reload and allows request IDs to be reused', async () => {
+    const f = await fixture();
+    f.start();
+    await until(() => expect(f.sessions()).toHaveLength(1));
+    f.request('same'); f.finish('same');
+    await until(() => expect(f.events()).toHaveLength(2));
+    f.reload();
+    await until(() => expect(f.sessions()).toHaveLength(2));
+    const ids = f.sessions().map((m) => m.session.info.id);
+    expect(ids[0]).not.toBe(ids[1]);
+    await until(() => expect(f.messages.some((m) => m.t === 'session' && m.session.info.id === ids[0] && !m.session.connected)).toBe(true));
+    f.request('same'); f.finish('same');
+    await until(() => expect(f.events()).toHaveLength(4));
+    expect(f.events().map((e) => e.seq)).toEqual([1, 2, 1, 2]);
+  });
+
+  it('rediscovers a disconnected Metro target and reconnects after the relay server restarts', async () => {
+    const f = await fixture();
+    f.start();
+    await until(() => expect(f.sessions()).toHaveLength(1));
+    f.disconnect();
+    await until(() => expect(f.sessions()).toHaveLength(2));
+    await f.restartServer();
+    await until(() => expect(f.sessions()).toHaveLength(3));
+    f.log([{ type: 'string', value: 'after reconnect' }]);
+    await until(() => expect(f.events().at(-1)?.payload.args).toEqual(['after reconnect']));
+    f.stop();
+    const connections = f.connections();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(f.connections()).toBe(connections);
+    expect(f.messages.at(-1)).toMatchObject({ t: 'session', session: { connected: false } });
+  });
+
+  it('does not attach to targets that would disconnect another debugger', async () => {
+    const f = await fixture({ multiple: false });
+    f.start();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(f.connections()).toBe(0);
+    expect(f.sessions()).toHaveLength(0);
+  });
+
+  it('cancels a connection stopped before CDP initialization without creating a ghost session', async () => {
+    const f = await fixture();
+    f.start();
+    await until(() => expect(f.connections()).toBe(1));
+    f.stop();
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(f.commands).toHaveLength(0);
+    expect(f.sessions()).toHaveLength(0);
+    expect(f.connections()).toBe(1);
+  });
+
+  it('tries the alternative localhost Origin after Expo rejects the first socket', async () => {
+    const f = await fixture({ fallbackOrigin: true });
+    f.start();
+    await until(() => expect(f.sessions()).toHaveLength(1));
+    expect(f.origins).toEqual([`http://127.0.0.1:${f.metroPort}`, `http://localhost:${f.metroPort}`]);
+    f.viewer.send(JSON.stringify({ t: 'command', id: 'storage', sessionId: f.sessions()[0].session.info.id, plugin: 'storage', method: 'clear' }));
+    await until(() => expect(f.messages.find((m) => m.t === 'result')).toMatchObject({ ok: false, error: expect.stringContaining('read-only') }));
+  });
+
+  it('routes read-only storage commands from the viewer to the app through CDP', async () => {
+    const f = await fixture();
+    f.start();
+    await until(() => expect(f.sessions()).toHaveLength(1));
+    const command = (id: string, method: string, params?: unknown) => f.viewer.send(JSON.stringify({
+      t: 'command', id, sessionId: f.sessions()[0].session.info.id, plugin: 'storage', method, params,
+    }));
+    const result = (id: string) => f.messages.find((m) => m.t === 'result' && m.id === id);
+    command('list', 'list');
+    await until(() => expect(result('list')).toMatchObject({ ok: true, result: [{ readOnly: true, canClear: false }] }));
+    const adapter = result('list').result[0].id;
+    command('entries', 'entries', { adapter });
+    await until(() => expect(result('entries')).toMatchObject({ ok: true, result: { total: 1, entries: [{ key: 'user', value: '{"name":"Ada"}' }] } }));
+    command('get', 'get', { adapter, key: 'user' });
+    await until(() => expect(result('get')).toMatchObject({ ok: true, result: { value: '{"name":"Ada"}' } }));
+    command('write', 'set', { adapter, key: 'user', value: 'changed' });
+    await until(() => expect(result('write')).toMatchObject({ ok: false, error: expect.stringContaining('read-only') }));
+    expect(f.commands.filter((c) => c.method === 'Runtime.releaseObject')).toHaveLength(3);
+  });
+});

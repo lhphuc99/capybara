@@ -1,0 +1,14 @@
+node_modules/
+dist/
+*.tsbuildinfo
+coverage/
+*.log
+.DS_Store
+
+# Expo
+.expo/
+examples/expo/ios/
+examples/expo/android/
+
+# Desktop app packages (electron-builder)
+apps/desktop/release/

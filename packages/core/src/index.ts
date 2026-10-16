@@ -1,0 +1,10 @@
+export { CLIENT_GLOBAL, createClient, getActiveClient } from './client.js';
+export type { ClientOptions, DevsightClient, Plugin, PluginContext } from './client.js';
+export { serialize } from './serialize.js';
+export type { SerializeOptions } from './serialize.js';
+export type { SocketFactory, SocketLike } from './transport.js';
+export { consolePlugin } from './plugins/console.js';
+export { networkPlugin } from './plugins/network.js';
+export type { NetworkPluginOptions } from './plugins/network.js';
+export { storagePlugin } from './plugins/storage.js';
+export type { StorageAdapter } from './plugins/storage.js';

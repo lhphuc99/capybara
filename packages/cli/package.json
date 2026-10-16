@@ -1,0 +1,40 @@
+{
+  "name": "devsight",
+  "version": "0.1.0",
+  "description": "Debug React Native and web apps: logs, network and storage in a local UI",
+  "type": "module",
+  "bin": {
+    "devsight": "./dist/bin.js"
+  },
+  "main": "./dist/server.js",
+  "types": "./dist/server.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/server.d.ts",
+      "default": "./dist/server.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node scripts/copy-ui.mjs",
+    "dev": "tsc -p tsconfig.json --watch",
+    "start": "node dist/bin.js",
+    "test": "vitest run",
+    "test:mmkv-compat": "node scripts/check-mmkv-compat.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@devsight/core": "0.1.0",
+    "@devsight/protocol": "0.1.0",
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.18.2"
+  },
+  "engines": {
+    "node": ">=20.19"
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "name": "@devsight/react-native",
+  "version": "0.1.0",
+  "description": "React Native SDK for Devsight: logs, network and storage for React Native and Expo apps",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@devsight/core": "0.1.0",
+    "@devsight/protocol": "0.1.0"
+  },
+  "peerDependencies": {
+    "react-native": ">=0.76"
+  },
+  "devDependencies": {
+    "react-native": "0.86.3"
+  }
+}

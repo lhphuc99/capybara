@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "devsight",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["packages/cli/dist/bin.js", "--no-open"],
+      "port": 7357
+    },
+    {
+      "name": "example-web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "-w", "example-web"],
+      "port": 5173
+    },
+    {
+      "name": "example-expo",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "ios", "-w", "example-expo"],
+      "port": 8081
+    }
+  ]
+}
