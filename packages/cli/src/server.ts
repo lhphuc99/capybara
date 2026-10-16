@@ -8,6 +8,7 @@ import {
   type CommandResult,
   type CapybaraEvent,
   type EventOf,
+  type LatestVersions,
   type ServerInfo,
   type ServerToClient,
   type ServerToViewer,
@@ -22,6 +23,7 @@ import { serveStatic } from './static.js';
 
 export { reverseAndroidPorts } from './adb.js';
 export { DEFAULT_METRO_PORTS, startMetroBridge, type MetroBridge, type MetroBridgeOptions } from './metro.js';
+export { fetchLatestVersions } from './updates.js';
 
 export interface ServerOptions {
   /** 0 picks a free port. */
@@ -39,6 +41,11 @@ export interface ServerOptions {
   /** Milliseconds to wait for an app to answer a command. Default 10s. */
   commandTimeout?: number;
   version?: string;
+  /**
+   * Looks up the newest CLI and SDK versions (e.g. `fetchLatestVersions`), so the UI can say what is
+   * out of date. Called once the server is listening, then twice a day. Without it nothing is looked up.
+   */
+  latestVersions?: () => Promise<LatestVersions | undefined>;
 }
 
 export interface CapybaraServer {
@@ -63,6 +70,7 @@ interface PendingCommand {
 
 /** Apps killed without a close frame (force-quit, lost Wi-Fi) are only noticed by missing pongs. */
 const HEARTBEAT_MS = 15_000;
+const LATEST_REFRESH_MS = 12 * 60 * 60 * 1_000;
 
 export function createServer(options: ServerOptions): CapybaraServer {
   const maxSessions = options.maxSessions ?? 20;
@@ -75,6 +83,9 @@ export function createServer(options: ServerOptions): CapybaraServer {
   const alive = new WeakMap<WebSocket, boolean>();
   let commandCounter = 0;
   let port = options.port;
+  let latest: LatestVersions | undefined;
+  let latestTimer: ReturnType<typeof setInterval> | undefined;
+  let closed = false;
 
   const httpServer = http.createServer((req, res) => {
     if (!isAllowedHost(req.headers.host)) {
@@ -135,7 +146,14 @@ export function createServer(options: ServerOptions): CapybaraServer {
     eventCount: s.events.length,
   });
 
-  const serverInfo = (): ServerInfo => ({ version: options.version ?? '0.0.0', port, addresses: lanAddresses() });
+  const serverInfo = (): ServerInfo => ({ version: options.version ?? '0.0.0', port, addresses: lanAddresses(), latest });
+
+  const refreshLatest = async () => {
+    const found = await options.latestVersions?.().catch(() => undefined);
+    if (!found || closed || JSON.stringify(found) === JSON.stringify(latest)) return;
+    latest = found;
+    broadcast({ t: 'server', server: serverInfo() });
+  };
 
   const prune = () => {
     if (sessions.size <= maxSessions) return;
@@ -340,6 +358,11 @@ export function createServer(options: ServerOptions): CapybaraServer {
           httpServer.off('error', onError);
           const address = httpServer.address();
           if (address && typeof address === 'object') port = address.port;
+          if (options.latestVersions) {
+            void refreshLatest();
+            latestTimer = setInterval(() => void refreshLatest(), LATEST_REFRESH_MS);
+            latestTimer.unref();
+          }
           resolve({ port });
         };
         httpServer.once('error', onError);
@@ -350,7 +373,9 @@ export function createServer(options: ServerOptions): CapybaraServer {
 
     close: () =>
       new Promise((resolve) => {
+        closed = true;
         clearInterval(heartbeat);
+        clearInterval(latestTimer);
         for (const command of pending.values()) clearTimeout(command.timer);
         pending.clear();
         for (const ws of wss.clients) ws.terminate();

@@ -93,12 +93,21 @@ App (RN / web)                                 Máy dev
 - Chế độ QA: panel trong app, export/import phiên.
 - Next.js server (`instrumentation.ts`) và nối request client ↔ server bằng trace id.
 - MCP server để Claude Code/Cursor đọc log/network: đã có bản chỉ đọc (xem Trạng thái).
-- Đóng gói desktop app: đã có bản macOS, Windows, Linux chưa ký (xem Trạng thái). Còn ký code (Developer ID + notarize, chứng chỉ ký Windows), bản macOS Intel/universal, Windows arm64, gói deb/rpm, tự cập nhật.
+- Đóng gói desktop app: đã có bản macOS, Windows, Linux chưa ký (xem Trạng thái). Còn ký code (Developer ID + notarize, chứng chỉ ký Windows), bản macOS Intel/universal, Windows arm64, gói deb/rpm, tự cài bản cập nhật trên macOS (Squirrel.Mac cần app ký bằng một danh tính cố định: Developer ID hoặc chứng chỉ tự ký, cần thử).
 
 ## Trạng thái (16/10/2026)
 
 **Đã xong và đã chạy thử**
 
+- Báo bản mới (16/10/2026), sẽ có từ 0.2.0:
+  - Server tra version mới nhất của CLI và hai SDK trên registry npm (registry npm đang dùng, nếu chạy qua npm) khi khởi động và mỗi 12 giờ, rồi gửi cho UI qua `ServerInfo.latest` và message `server`. Tắt bằng `--no-update-check` hoặc `CAPYBARA_NO_UPDATE_CHECK`.
+  - CLI in một dòng khi npm có bản mới.
+  - UI hiện thông báo kèm lệnh cài khi SDK của app đang chọn cũ hơn. Không tra được npm thì so với version của server, vì mọi gói cùng version. CLI cũ hơn cũng có thông báo, trừ trong app desktop. Bấm × thì ẩn tới khi có bản mới hơn nữa.
+  - App desktop hỏi GitHub (`releases/latest`) 10 giây sau khi mở và mỗi 12 giờ, có thêm mục Check for Updates…. Bản cài NSIS và AppImage tải và cài qua electron-updater; bản macOS, zip và tar.gz mở trang release.
+  - Đã thử: CLI với registry giả (in dòng báo, viewer nhận `latest`), tắt bằng biến môi trường, chụp UI ở theme sáng và tối với cả hai loại thông báo.
+  - Cập nhật thật trên Linux: hai bản AppImage arm64 build thử (0.1.1 và 0.1.2, provider `generic` trỏ về một server local) chạy trong Docker Ubuntu 24.04 với Xvfb, bằng user thường. Bản 0.1.1 tự hỏi sau 10 giây, xdotool bấm Update rồi Restart. App tải 0.1.2 (server thử không hỗ trợ Range nên tải cả file thay vì tải phần khác), thay file AppImage và mở lại; server của app mới báo version 0.1.2.
+  - macOS: bản đóng gói ghi version 0.0.9 tìm thấy release 0.1.0 trên GitHub và hỏi theo kiểu mở trang tải.
+  - Chưa thử trên Windows (bộ cài NSIS), vì không có máy Windows.
 - Phát hành (16/10/2026): scope `@capybara` trên npm đã thuộc về tài khoản khác, nên các gói đổi tên thành `capybara-devtools` (CLI; lệnh sau khi cài vẫn là `capybara`) và `@capybara-devtools/*`. Có changesets (5 gói chung một version), workflow CI và Release (publish npm qua trusted publishing), lệnh `desktop:release` upload bản cài lên bản nháp GitHub Release. 0.1.0 đã lên npm ngày 16/10/2026, publish từ máy; các bước ở [RELEASING.md](RELEASING.md). Cài lại từ npm vào project trống: CLI chạy, có UI, SDK import được. Đã thử: đóng gói 5 gói, cài vào project trống, chạy CLI, server trả UI, import SDK, kiểm tra type.
 - Đổi tên Devsight → Capybara (16/10/2026): package `@capybara/*` và CLI `capybara`, biến môi trường `CAPYBARA_PORT` và `VITE_CAPYBARA_SERVER`, global `__CAPYBARA_*__`, bundle ID `dev.capybara.*`, máy ảo test `Capybara-MMKV-Test` và `Capybara-Android-Test`. App mẫu native đổi bundle ID nên lần chạy fixture tới cần build lại; bản cũ (`dev.devsight.*`) vẫn còn trên simulator.
 - Copy (16/10/2026): tab Logs có **Copy all** (các dòng khớp bộ lọc) và icon copy từng dòng khi rê chuột; object được copy đầy đủ dạng JSON (Date, Map, Set, giá trị bị cắt cũng ghi rõ), lỗi kèm stack. Tab Storage có **Copy** cho giá trị đang chọn, mọi nhánh trong cây JSON (cả ở Logs và Network) có icon copy riêng. Copy xong hiện dấu ✓ trên nút và toast "Copied to clipboard"; nếu không ghi được clipboard thì toast báo lỗi. Đã thử trên app desktop: bấm thật vào các nút rồi đọc lại clipboard, nội dung đúng như mong đợi.

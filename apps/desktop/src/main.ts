@@ -2,9 +2,10 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { DEFAULT_PORT } from '@capybara-devtools/protocol';
-import { reverseAndroidPorts, startMetroBridge, type MetroBridge, type ServerOptions } from 'capybara-devtools';
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, shell } from 'electron';
+import { fetchLatestVersions, reverseAndroidPorts, startMetroBridge, type MetroBridge, type ServerOptions } from 'capybara-devtools';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, shell, type MenuItemConstructorOptions } from 'electron';
 import { listen, PortInUseError, startOrReuse, type Started } from './server.js';
+import { checkForUpdates, startUpdateChecks } from './updater.js';
 
 const TAKEOVER_INTERVAL_MS = 2_000;
 const APPEARANCES = ['system', 'light', 'dark'] as const;
@@ -45,20 +46,42 @@ async function main() {
     saveAppearance(value);
   });
 
+  const updates: MenuItemConstructorOptions[] = app.isPackaged
+    ? [{ label: 'Check for Updates…', click: () => void checkForUpdates(() => mainWindow, true) }]
+    : [];
   // Electron's default menu has a Help menu linking to electronjs.org.
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([
-      { role: process.platform === 'darwin' ? 'appMenu' : 'fileMenu' },
+      process.platform === 'darwin'
+        ? {
+            label: app.name,
+            submenu: [
+              { role: 'about' },
+              ...updates,
+              { type: 'separator' },
+              { role: 'services' },
+              { type: 'separator' },
+              { role: 'hide' },
+              { role: 'hideOthers' },
+              { role: 'unhide' },
+              { type: 'separator' },
+              { role: 'quit' },
+            ],
+          }
+        : { role: 'fileMenu' },
       { role: 'editMenu' },
       { role: 'viewMenu' },
       { role: 'windowMenu' },
+      ...(process.platform !== 'darwin' && updates.length > 0 ? [{ label: 'Help', submenu: updates }] : []),
     ]),
   );
 
+  const checkUpdates = !process.env.CAPYBARA_NO_UPDATE_CHECK;
   const options: ServerOptions = {
     port: Number(process.env.CAPYBARA_PORT || DEFAULT_PORT),
     uiDir: join(app.getAppPath(), 'dist', 'ui'),
     version: app.getVersion(),
+    latestVersions: checkUpdates ? () => fetchLatestVersions() : undefined,
   };
   const started = await start(options);
   if (!started) {
@@ -75,6 +98,7 @@ async function main() {
     takeOverWhenFree(options);
   }
   showWindow();
+  if (app.isPackaged && checkUpdates) startUpdateChecks(() => mainWindow);
 }
 
 async function start(options: ServerOptions): Promise<Started | undefined> {

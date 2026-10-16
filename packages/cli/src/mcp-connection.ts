@@ -142,6 +142,9 @@ export class ViewerConnection {
 
   private receive(message: ServerToViewer): void {
     switch (message.t) {
+      case 'server':
+        this.server = message.server;
+        break;
       case 'session':
         this.sessions.set(message.session.info.id, message.session);
         break;

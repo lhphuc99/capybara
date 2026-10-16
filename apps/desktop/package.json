@@ -26,6 +26,7 @@
     "capybara-devtools": "0.1.0",
     "electron": "44.7.2",
     "electron-builder": "^26.15.3",
+    "electron-updater": "^6.8.9",
     "rolldown": "^1.2.14",
     "ws": "^8.22.0"
   },
@@ -42,8 +43,7 @@
       "provider": "github",
       "owner": "lhphuc99",
       "repo": "capybara",
-      "releaseType": "draft",
-      "publishAutoUpdate": false
+      "releaseType": "draft"
     },
     "npmRebuild": false,
     "toolsets": {

@@ -578,6 +578,28 @@ code {
   margin: 4px 0 0;
 }
 
+.update-banner {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-selected);
+  font-size: 12px;
+}
+
+.update-banner code {
+  background: var(--bg);
+}
+
+.update-banner .dismiss {
+  margin-left: auto;
+  font-size: 15px;
+  line-height: 1;
+}
+
 .code {
   margin: 0;
   padding: 10px 12px;

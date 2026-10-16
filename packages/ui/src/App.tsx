@@ -3,6 +3,7 @@ import { AppearanceMenu } from './components/AppearanceMenu';
 import { EmptyState } from './components/EmptyState';
 import { SessionPicker } from './components/SessionPicker';
 import { Toaster } from './components/Toaster';
+import { UpdateBanner } from './components/UpdateBanner';
 import type { ConnectionStatus } from './connection';
 import { statusTone } from './format';
 import { LogsPanel } from './panels/LogsPanel';
@@ -69,6 +70,7 @@ export function App() {
         <AppearanceMenu />
       </header>
       <main className="main">
+        <UpdateBanner server={server} session={session?.meta.info} />
         {!session ? (
           <EmptyState status={status} server={server} />
         ) : !session.loaded ? (

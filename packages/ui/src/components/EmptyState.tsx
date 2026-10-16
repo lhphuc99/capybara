@@ -62,8 +62,8 @@ if (__DEV__) init({ appName: 'My app', storage: [asyncStorage(AsyncStorage)] });
           </>
         ) : null}
         The SDK finds the server through the Metro bundle URL. Android devices on USB are covered by{' '}
-        <code>adb reverse</code>, which the server runs for you. The SDK packages are not published yet;
-        install them from this workspace or local package archives.
+        <code>adb reverse</code>, which the server runs for you. Install the SDKs with{' '}
+        <code>npm install @capybara-devtools/web</code> or <code>npm install @capybara-devtools/react-native</code>.
       </p>
     </div>
   );

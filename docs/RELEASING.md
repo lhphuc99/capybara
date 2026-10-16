@@ -58,6 +58,8 @@ GH_TOKEN=<token> npm run desktop:release
 
 Lệnh này build cả ba hệ điều hành như `desktop:package:all`, viết ghi chú từ `CHANGELOG.md` (`scripts/release-notes.mjs`), rồi upload lên một bản **nháp** GitHub Release `vX.Y.Z`. Chạy lại thì file cùng tên được ghi đè. Vào trang Releases kiểm tra rồi bấm Publish. Website lấy link tải từ release mới nhất này.
 
+Ngoài bản cài, release còn có các file `latest.yml`, `latest-mac.yml`, `latest-linux.yml`, `latest-linux-arm64.yml` và `.blockmap`: app desktop đọc chúng để tự cập nhật, nên đừng xoá. Từ 0.2.0, app đã cài sẽ thấy release mới khi bản nháp được Publish (không thấy bản nháp). Bản 0.1.0 không có phần tự cập nhật, nên người dùng 0.1.0 phải tải bản mới bằng tay một lần.
+
 `GH_TOKEN` là fine-grained personal access token của tài khoản `lhphuc99`: Repository access chỉ chọn `capybara`, Permissions → Contents: Read and write. Nếu đã cài GitHub CLI và đăng nhập thì dùng `GH_TOKEN=$(gh auth token)`.
 
 ## Đưa app desktop lên package manager

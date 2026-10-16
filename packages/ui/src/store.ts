@@ -136,6 +136,9 @@ export function receive(message: Exclude<ServerToViewer, CommandResult>): void {
       if (selectedId) send({ t: 'history', sessionId: selectedId });
       break;
     }
+    case 'server':
+      setState({ ...state, server: message.server });
+      break;
     case 'session': {
       const id = message.session.info.id;
       const existing = state.sessions[id];

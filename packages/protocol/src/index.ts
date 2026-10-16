@@ -1,3 +1,5 @@
+import type { LatestVersions } from './versions.js';
+
 /** Bump on breaking changes to any message shape below; the server rejects mismatched clients. */
 export const PROTOCOL_VERSION = 1;
 export const DEFAULT_PORT = 7357;
@@ -273,6 +275,8 @@ export interface ServerInfo {
   port: number;
   /** Non-internal IPv4 addresses of the machine running the server. */
   addresses: string[];
+  /** Newest versions on npm, once the server has looked them up. Missing when the check is off or failed. */
+  latest?: LatestVersions;
 }
 
 /** One step of a diagnosis: a browser rule that passed or failed, or something the server saw on the way. */
@@ -301,6 +305,8 @@ export type ViewerToServer =
 
 export type ServerToViewer =
   | { t: 'init'; server: ServerInfo; sessions: SessionMeta[] }
+  /** Sent when the server info changes after `init`, e.g. once the npm lookup is done. */
+  | { t: 'server'; server: ServerInfo }
   | { t: 'session'; session: SessionMeta }
   | { t: 'session.removed'; sessionId: string }
   | { t: 'history'; sessionId: string; events: CapybaraEvent[] }
@@ -309,3 +315,4 @@ export type ServerToViewer =
   | CommandResult;
 
 export * from './values.js';
+export * from './versions.js';

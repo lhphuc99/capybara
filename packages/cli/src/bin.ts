@@ -3,10 +3,11 @@ import { spawn } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { DEFAULT_PORT } from '@capybara-devtools/protocol';
+import { CLI_PACKAGE, DEFAULT_PORT, isNewerVersion } from '@capybara-devtools/protocol';
 import { reverseAndroidPorts } from './adb.js';
 import { DEFAULT_METRO_PORTS, startMetroBridge, type MetroBridge } from './metro.js';
 import { createServer, lanAddresses } from './server.js';
+import { fetchLatestVersions } from './updates.js';
 
 const HELP = `Usage: capybara [options]
        capybara mcp [options]   Serve this data to AI assistants (see capybara mcp --help)
@@ -18,6 +19,7 @@ Options:
       --allow-origin <url>  Extra origin allowed to open the UI socket, repeatable
       --metro-port <port>   Metro dev server to read React Native apps from, repeatable (default ${DEFAULT_METRO_PORTS.join(', ')})
       --no-metro            Only show apps that have the SDK
+      --no-update-check     Don't look up newer versions on npm (or set $CAPYBARA_NO_UPDATE_CHECK)
   -h, --help                Show this help
   -v, --version             Show the version
 `;
@@ -69,6 +71,17 @@ for (const value of values.metro ? (values['metro-port'] ?? DEFAULT_METRO_PORTS.
   metroPorts.push(metroPort);
 }
 
+let announced: string | undefined;
+const checkLatest = async () => {
+  const latest = await fetchLatestVersions();
+  const newest = latest?.[CLI_PACKAGE];
+  if (newest && newest !== announced && isNewerVersion(newest, version)) {
+    announced = newest;
+    console.log(`  Capybara ${newest} is available (this is ${version}). Run npx ${CLI_PACKAGE}@latest to use it.\n`);
+  }
+  return latest;
+};
+
 const uiDir = fileURLToPath(new URL('./ui/', import.meta.url));
 const server = createServer({
   port,
@@ -76,6 +89,7 @@ const server = createServer({
   uiDir: existsSync(uiDir) ? uiDir : undefined,
   allowedOrigins: values['allow-origin'] ?? [],
   version,
+  latestVersions: values['update-check'] && !process.env.CAPYBARA_NO_UPDATE_CHECK ? checkLatest : undefined,
 });
 
 let metroBridge: MetroBridge | undefined;
@@ -112,6 +126,7 @@ function parseCli() {
       'allow-origin': { type: 'string', multiple: true },
       metro: { type: 'boolean', default: true },
       'metro-port': { type: 'string', multiple: true },
+      'update-check': { type: 'boolean', default: true },
       help: { type: 'boolean', short: 'h' },
       version: { type: 'boolean', short: 'v' },
     },

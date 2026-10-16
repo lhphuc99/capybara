@@ -23,6 +23,8 @@ npm start          # UI at http://localhost:7357
 npm run desktop    # or the same in a desktop app, see below
 ```
 
+When a newer version is on npm, `npx capybara-devtools` says so when it starts, and the UI shows a notice when a connected app uses an older SDK, with the command that updates it. The server asks the npm registry (the one npm is set up with) when it starts and twice a day; `--no-update-check` or `CAPYBARA_NO_UPDATE_CHECK=1` turns that off.
+
 ### React Native / Expo — no SDK needed
 
 Start Metro on the same computer, open your development app on a simulator or phone, then run `npm run desktop` or `npm start` here. Capybara discovers apps on Metro ports **8081 and 8082** and streams console logs, exceptions and network requests into the UI. The Storage tab also reads AsyncStorage and discoverable MMKV instances. No Capybara package installation or code changes in your app are needed.
@@ -130,6 +132,7 @@ Packages land in `apps/desktop/release/`, named like `Capybara-0.1.0-win-x64.exe
 - If `npx capybara-devtools` is already running, the window shows that server, and the app takes over the port once the CLI stops. If another program holds the port, the app says so and lets you try again.
 - On macOS, closing the window keeps the server running in the Dock. Quit with ⌘Q. On Windows and Linux, closing the window quits.
 - No build is signed for distribution. On another Mac the first launch is blocked until you allow it in System Settings → Privacy & Security. On Windows, SmartScreen warns about an unknown publisher: choose More info → Run anyway.
+- Updates: the app looks for a new GitHub release 10 seconds after it starts and twice a day, and asks before doing anything. The Windows installer and the AppImage download the update, then restart into it; the macOS app, the Windows zip and the tar.gz open the release page to download it. **Check for Updates…** is in the Capybara menu on macOS and the Help menu elsewhere. `CAPYBARA_NO_UPDATE_CHECK=1` turns the automatic checks off.
 - Windows: the installer installs for the current user, without admin rights. On first launch Windows Firewall asks about network access; allow it on private networks if phones connect over Wi-Fi. Apps on the same computer, emulators and USB devices connect through localhost and don't need it.
 - Linux: `chmod +x` the AppImage, then run it; it doesn't need libfuse2. Ubuntu 24.04 and later block the user namespaces that Chromium's sandbox needs. There the AppImage starts without the sandbox, while `capybara-desktop` from the tar.gz refuses to start until you pass `--no-sandbox` or make `chrome-sandbox` owned by root with mode 4755.
 - Needs Node 22.12 or later. Electron downloads its binary (about 130 MB) the first time it runs.
