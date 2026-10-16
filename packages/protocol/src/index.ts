@@ -307,3 +307,5 @@ export type ServerToViewer =
   | { t: 'events'; sessionId: string; events: CapybaraEvent[] }
   | { t: 'cleared'; sessionId: string }
   | CommandResult;
+
+export * from './values.js';

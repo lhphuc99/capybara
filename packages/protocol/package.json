@@ -1,7 +1,7 @@
 {
   "name": "@capybara/protocol",
   "version": "0.1.0",
-  "description": "Wire protocol shared by the Capybara SDKs, server and UI",
+  "description": "Wire protocol, and helpers to read its values, shared by the Capybara SDKs, server and UI",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
