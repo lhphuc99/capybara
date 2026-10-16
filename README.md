@@ -6,9 +6,15 @@ Debug React Native and web apps from one place: logs, network (including WebSock
 
 **[Website](https://capybara-devtools.chanieshop.com)** · [Download](https://capybara-devtools.chanieshop.com/#download)
 
-> Status: MVP, not published to npm yet. Formerly called Devsight.
+> Status: MVP. Formerly called Devsight.
 
-## Quick start (from this repo)
+## Quick start
+
+```bash
+npx capybara-devtools    # UI at http://localhost:7357
+```
+
+Or use the [desktop app](#desktop-app). From this repo:
 
 ```bash
 npm install
@@ -143,8 +149,6 @@ For Claude Desktop, Cursor and other clients, add it to their MCP settings:
 { "mcpServers": { "capybara": { "command": "npx", "args": ["capybara-devtools", "mcp"] } } }
 ```
 
-Until the package is published, run it from this repo instead: `node <repo>/packages/cli/dist/bin.js mcp`.
-
 | Tool | What it reads |
 | --- | --- |
 | `list_sessions` | Connected apps and their session ids |
@@ -168,7 +172,7 @@ npm run example:nextjs  # Next.js App Router with a route handler, http://localh
 npm run example:expo    # Expo Go; no Capybara SDK loaded, uses Metro discovery
 ```
 
-The Expo example's AsyncStorage can be read through Metro without loading the Capybara SDK. To test storage editing, add `import './capybara';` as the first import in `examples/expo/index.ts`, then reload the app. The SDK packages are not published yet; outside this workspace, build and `npm pack` the protocol, core and platform SDK packages and install those local archives together.
+The Expo example's AsyncStorage can be read through Metro without loading the Capybara SDK. To test storage editing, add `import './capybara';` as the first import in `examples/expo/index.ts`, then reload the app.
 
 ## Packages
 
