@@ -8,7 +8,7 @@
     "build": "vite build"
   },
   "dependencies": {
-    "@devsight/web": "0.1.0",
+    "@capybara/web": "0.1.0",
     "react": "19.2.3",
     "react-dom": "19.2.3"
   },

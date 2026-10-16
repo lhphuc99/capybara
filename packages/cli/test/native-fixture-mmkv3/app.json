@@ -1,13 +1,13 @@
 {
   "expo": {
-    "name": "Devsight MMKV3 Test",
-    "slug": "devsight-mmkv3-native",
+    "name": "Capybara MMKV3 Test",
+    "slug": "capybara-mmkv3-native",
     "version": "1.0.0",
     "ios": {
-      "bundleIdentifier": "dev.devsight.mmkv3test"
+      "bundleIdentifier": "dev.capybara.mmkv3test"
     },
     "android": {
-      "package": "dev.devsight.mmkv3test"
+      "package": "dev.capybara.mmkv3test"
     }
   }
 }

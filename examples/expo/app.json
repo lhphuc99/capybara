@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Devsight Example",
-    "slug": "devsight-example",
+    "name": "Capybara Example",
+    "slug": "capybara-example",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",

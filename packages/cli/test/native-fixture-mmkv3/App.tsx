@@ -3,13 +3,13 @@ import { StyleSheet, Text, View } from 'react-native';
 import { runTestAction, subscribe } from './scenarios';
 
 export default function App() {
-  const [status, setStatus] = useState('Ready for the Devsight native test runner');
+  const [status, setStatus] = useState('Ready for the Capybara native test runner');
   useEffect(() => subscribe(setStatus), []);
   useEffect(() => { void runTestAction('seedAsync'); }, []);
   return (
     <View style={styles.screen}>
-      <Text style={styles.title}>Devsight MMKV 3 Test</Text>
-      <Text style={styles.text}>Isolated sample app · no Devsight SDK</Text>
+      <Text style={styles.title}>Capybara MMKV 3 Test</Text>
+      <Text style={styles.text}>Isolated sample app · no Capybara SDK</Text>
       <Text style={styles.text}>Native MMKV 3.3.3 · Hermes</Text>
       <Text style={styles.status}>{status}</Text>
       <Text style={styles.text}>The runner checks exported storage, private storage, encrypted storage, and hook cleanup through Metro.</Text>

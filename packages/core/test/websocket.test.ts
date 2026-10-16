@@ -113,13 +113,13 @@ describe('WebSocket capture', () => {
   it("never records the SDK's own connection", async () => {
     vi.stubGlobal('WebSocket', BrowserSocket);
     const client = createClient({
-      url: 'ws://devsight.test/client',
+      url: 'ws://capybara.test/client',
       session: { appName: 'Test', platform: 'web', sdk: { name: 'test', version: '0' } },
       plugins: [networkPlugin({ fetch: false, xhr: false })],
       flushInterval: 1,
     });
     const transport = BrowserSocket.instances[0]!;
-    expect(transport.url).toBe('ws://devsight.test/client');
+    expect(transport.url).toBe('ws://capybara.test/client');
     transport.fire('open');
     transport.fire('message', { data: JSON.stringify({ t: 'welcome', lastSeq: 0 }) });
 
@@ -184,8 +184,8 @@ describe('WebSocket capture', () => {
     const viaGlobal = new (globalThis.WebSocket as unknown as typeof NativeSocket)('ws://global.test', 'chat');
     viaGlobal.deliver('open');
     viaGlobal.deliver('close', { code: 1006, reason: 'Expected HTTP 101 response but was 401' });
-    const internal = new Saved('ws://devsight.test/client');
-    (internal as unknown as Record<string, unknown>).__DEVSIGHT_INTERNAL__ = true;
+    const internal = new Saved('ws://capybara.test/client');
+    (internal as unknown as Record<string, unknown>).__CAPYBARA_INTERNAL__ = true;
     internal.deliver('open');
     internal.send('event batch');
 

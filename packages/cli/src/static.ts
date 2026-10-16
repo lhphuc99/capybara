@@ -17,10 +17,10 @@ const MIME: Record<string, string> = {
 
 const PLACEHOLDER = `<!doctype html>
 <meta charset="utf-8">
-<title>Devsight</title>
+<title>Capybara</title>
 <body style="font: 15px system-ui; margin: 40px; color: #333">
-<h1 style="font-size: 20px">Devsight server is running</h1>
-<p>The UI has not been built. Run <code>npm run build -w @devsight/ui</code>, then <code>npm run build -w devsight</code>.</p>
+<h1 style="font-size: 20px">Capybara server is running</h1>
+<p>The UI has not been built. Run <code>npm run build -w @capybara/ui</code>, then <code>npm run build -w capybara</code>.</p>
 </body>`;
 
 export function serveStatic(req: IncomingMessage, res: ServerResponse, root: string | undefined): void {

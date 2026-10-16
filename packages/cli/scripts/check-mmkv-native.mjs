@@ -1,4 +1,4 @@
-// End-to-end test against the isolated Devsight fixture apps on a simulator, never a user's app.
+// End-to-end test against the isolated Capybara fixture apps on a simulator, never a user's app.
 // Build CLI first, launch test/native-fixture (MMKV 4, Metro port 8095) or
 // test/native-fixture-mmkv3 (MMKV 3, port 8096), then run this script with that port.
 import assert from 'node:assert/strict';
@@ -14,10 +14,10 @@ async function until(fn, timeout = 15_000) {
   do { const result = await fn(); if (result) return result; await delay(50); } while (Date.now() < deadline);
   throw new Error('Timed out waiting for fixture');
 }
-const fixtures = { 'dev.devsight.mmkvtest': 4, 'dev.devsight.mmkv3test': 3 };
+const fixtures = { 'dev.capybara.mmkvtest': 4, 'dev.capybara.mmkv3test': 3 };
 const targets = await (await fetch(`http://localhost:${metroPort}/json/list`)).json();
 const target = targets.find(item => Object.hasOwn(fixtures, item.appId));
-assert.ok(target, 'Only the isolated Devsight fixture apps may be used');
+assert.ok(target, 'Only the isolated Capybara fixture apps may be used');
 assert.ok(target.reactNative?.capabilities?.supportsMultipleDebuggers);
 const mmkvMajor = fixtures[target.appId];
 const cdp = new WebSocket(target.webSocketDebuggerUrl, { origin: `http://127.0.0.1:${metroPort}`, handshakeTimeout: 3_000 });
@@ -92,15 +92,15 @@ try {
   await new Promise((resolve, reject) => { cdp.once('open', resolve); cdp.once('error', reject); });
   // Hermes rejects object handles (callFunctionOn, releaseObject) until Runtime is enabled per session.
   await call('Runtime.enable');
-  assert.equal(await evaluate('typeof globalThis.__DEVSIGHT_CLIENT__'), 'undefined');
-  assert.equal(await evaluate('typeof globalThis.__DEVSIGHT_MMKV_TRACKER_V1__'), 'undefined');
+  assert.equal(await evaluate('typeof globalThis.__CAPYBARA_CLIENT__'), 'undefined');
+  assert.equal(await evaluate('typeof globalThis.__CAPYBARA_MMKV_TRACKER_V1__'), 'undefined');
   if (mmkvMajor === 3) {
     assert.equal(await evaluate(`${mmkvClass}.prototype.getFunctionFromCache.name`), 'getFunctionFromCache');
     originalMethod = (await call('Runtime.evaluate', { expression: `${mmkvClass}.prototype.getFunctionFromCache`, returnByValue: false })).result.objectId;
     assert.ok(originalMethod);
   }
   assert.equal(await hooked(), false);
-  pass('fixture has no Devsight SDK or preinstalled tracker');
+  pass('fixture has no Capybara SDK or preinstalled tracker');
 
   server = createServer({ port: 0, host: '127.0.0.1' });
   const { port } = await server.start();
@@ -123,13 +123,13 @@ try {
   pass(mmkvMajor === 4 ? 'bridge attached and shadowed the real native factory' : 'bridge attached and wrapped the real MMKV class method');
   await action('seedAsync');
   let stores = await command('list');
-  const exported = stores.find(store => store.label.includes('devsight-fixture-exported'));
+  const exported = stores.find(store => store.label.includes('capybara-fixture-exported'));
   assert.ok(exported);
   assert.equal((await command('get', { adapter: exported.id, key: 'message' })).value, 'exported native store');
   pass('exported native MMKV is readable');
   const asyncStore = stores.find(store => store.label.startsWith('AsyncStorage'));
   assert.ok(asyncStore);
-  assert.equal((await command('get', { adapter: asyncStore.id, key: 'devsight-fixture-async' })).value, 'native AsyncStorage');
+  assert.equal((await command('get', { adapter: asyncStore.id, key: 'capybara-fixture-async' })).value, 'native AsyncStorage');
   pass('native AsyncStorage is readable without SDK');
 
   if (mmkvMajor === 4) {
@@ -141,7 +141,7 @@ try {
     assert.equal(stores.some(store => store.label.includes('private-before')), false);
     assert.equal(await action('readBefore'), 'private before connection');
     stores = await command('list');
-    const before = stores.find(store => store.label.includes('devsight-fixture-private-before'));
+    const before = stores.find(store => store.label.includes('capybara-fixture-private-before'));
     assert.ok(before, 'Class hook must capture an existing private instance once the app uses it');
     assert.equal((await command('get', { adapter: before.id, key: 'message' })).value, 'private before connection');
     pass('private native MMKV created before attachment is found once the app uses it again');
@@ -154,7 +154,7 @@ try {
   report.nativeObject = mmkvMajor === 4 ? created.nativeName : created.nativeGetString;
   assert.match(report.nativeObject, mmkvMajor === 4 ? /MMKV/ : /native code/);
   stores = await command('list');
-  const after = stores.find(store => store.label.includes('devsight-fixture-private-after'));
+  const after = stores.find(store => store.label.includes('capybara-fixture-private-after'));
   assert.ok(after, 'Hook must capture the actual private native instance');
   const list = await command('entries', { adapter: after.id });
   assert.equal(list.total, 9);
@@ -172,7 +172,7 @@ try {
 
   assert.equal(await action('createEncrypted'), 'encrypted native store');
   stores = await command('list');
-  const encrypted = stores.find(store => store.label.includes('devsight-fixture-encrypted'));
+  const encrypted = stores.find(store => store.label.includes('capybara-fixture-encrypted'));
   assert.ok(encrypted);
   assert.equal((await command('get', { adapter: encrypted.id, key: 'message' })).value, 'encrypted native store');
   pass('encrypted private MMKV is read through its existing native instance');
@@ -181,10 +181,10 @@ try {
   pass('refresh observes app-side writes');
   assert.match(await command('set', { adapter: after.id, key: 'message', value: 'forbidden' }, true), /read-only/);
   assert.equal(await action('readAfter'), 'changed by the app');
-  pass('Devsight refuses writes without changing fixture data');
+  pass('Capybara refuses writes without changing fixture data');
 
   bridge.stop(); bridge = undefined;
-  await until(async () => await evaluate('typeof globalThis.__DEVSIGHT_MMKV_TRACKER_V1__') === 'undefined');
+  await until(async () => await evaluate('typeof globalThis.__CAPYBARA_MMKV_TRACKER_V1__') === 'undefined');
   assert.equal(await hooked(), false);
   assert.equal(await action('readAfter'), 'changed by the app');
   pass(`disconnect restores ${mmkvMajor === 4 ? 'native factory' : 'the MMKV class method'} and app storage still works`);

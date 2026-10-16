@@ -1,4 +1,4 @@
-import type { Plugin } from '@devsight/core';
+import type { Plugin } from '@capybara/core';
 
 type GlobalHandler = (error: unknown, isFatal?: boolean) => void;
 

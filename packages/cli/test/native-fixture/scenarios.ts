@@ -4,7 +4,7 @@ import { createMMKV, type MMKV } from 'react-native-mmkv';
 const listeners = new Set<(message: string) => void>();
 function report(message: string) {
   for (const listener of listeners) listener(message);
-  console.log('[Devsight native fixture]', message);
+  console.log('[Capybara native fixture]', message);
 }
 export function subscribe(listener: (message: string) => void) {
   listeners.add(listener);
@@ -21,24 +21,24 @@ function seed(store: MMKV, label: string) {
   store.set('short', 'abc');
   store.set('emoji 😀', 'astral key');
 }
-export const exportedStore = createMMKV({ id: 'devsight-fixture-exported' });
+export const exportedStore = createMMKV({ id: 'capybara-fixture-exported' });
 seed(exportedStore, 'exported native store');
 
 // These instances are intentionally reachable only through closures. No global/SDK registry.
 const privateActions = (() => {
-  const before = createMMKV({ id: 'devsight-fixture-private-before' });
+  const before = createMMKV({ id: 'capybara-fixture-private-before' });
   seed(before, 'private before connection');
   let after: MMKV | undefined;
   let encrypted: MMKV | undefined;
   return {
     readBefore() { return before.getString('message'); },
     createAfter() {
-      after = createMMKV({ id: 'devsight-fixture-private-after' });
+      after = createMMKV({ id: 'capybara-fixture-private-after' });
       seed(after, 'private after connection');
       return { message: after.getString('message'), nativeName: (after as unknown as { name: string }).name };
     },
     createEncrypted() {
-      encrypted = createMMKV({ id: 'devsight-fixture-encrypted', encryptionKey: 'fixture-only-key' });
+      encrypted = createMMKV({ id: 'capybara-fixture-encrypted', encryptionKey: 'fixture-only-key' });
       seed(encrypted, 'encrypted native store');
       return encrypted.getString('message');
     },
@@ -55,7 +55,7 @@ const privateActions = (() => {
 
 export async function runTestAction(action: string) {
   if (action === 'seedAsync') {
-    await AsyncStorage.setItem('devsight-fixture-async', 'native AsyncStorage');
+    await AsyncStorage.setItem('capybara-fixture-async', 'native AsyncStorage');
     return true;
   }
   if (!(action in privateActions)) throw new Error('Unknown fixture action');

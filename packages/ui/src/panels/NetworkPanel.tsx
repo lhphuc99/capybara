@@ -1,4 +1,4 @@
-import type { BodyPreview, NetworkDiagnosis } from '@devsight/protocol';
+import type { BodyPreview, NetworkDiagnosis } from '@capybara/protocol';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { JsonTree } from '../components/JsonTree';
@@ -292,7 +292,7 @@ function SocketMessages({ entry }: { entry: SocketEntry }) {
           <p>{entry.error}</p>
         </div>
       )}
-      {socket.existing && <p className="callout inline">Already open when Devsight attached, so earlier messages are missing.</p>}
+      {socket.existing && <p className="callout inline">Already open when Capybara attached, so earlier messages are missing.</p>}
       {visible.length === 0 ? (
         <div className="empty small">
           <strong>{socket.messages.length === 0 ? 'No messages yet' : 'No matching messages'}</strong>
@@ -408,7 +408,7 @@ function SocketGeneral({ entry }: { entry: SocketEntry }) {
   return (
     <>
       <KeyValues title="General" rows={rows} />
-      {socket.existing && <p className="note">Already open when Devsight attached; its start time is when Devsight first saw it.</p>}
+      {socket.existing && <p className="note">Already open when Capybara attached; its start time is when Capybara first saw it.</p>}
     </>
   );
 }
@@ -477,7 +477,7 @@ const VERDICTS: Record<NetworkDiagnosis['verdict'], string> = {
   cors: 'Blocked by CORS',
   unreachable: 'The server could not be reached',
   ok: 'CORS allows this request',
-  unknown: 'Devsight could not check this request',
+  unknown: 'Capybara could not check this request',
 };
 
 function FailureView({ entry, session }: { entry: NetworkEntry; session: SessionState }) {
@@ -510,7 +510,7 @@ function FailureView({ entry, session }: { entry: NetworkEntry; session: Session
           {diagnosis.state === 'error' ? (
             <span className="note diagnose-error">{diagnosis.message}</span>
           ) : (
-            <span className="note">Devsight asks the server again from this computer and applies the browser's rules.</span>
+            <span className="note">Capybara asks the server again from this computer and applies the browser's rules.</span>
           )}
         </div>
       )}

@@ -1,7 +1,7 @@
 import type {
   BodyPreview,
   CommandResult,
-  DevsightEvent,
+  CapybaraEvent,
   LogLevel,
   LogSource,
   NetworkErrorPayload,
@@ -10,7 +10,7 @@ import type {
   ServerInfo,
   ServerToViewer,
   SessionMeta,
-} from '@devsight/protocol';
+} from '@capybara/protocol';
 import { useSyncExternalStore } from 'react';
 import { send, type ConnectionStatus } from './connection';
 
@@ -240,7 +240,7 @@ function sameApp(a: SessionMeta, b: SessionMeta): boolean {
   );
 }
 
-function applyEvents(session: SessionState, events: DevsightEvent[]): SessionState {
+function applyEvents(session: SessionState, events: CapybaraEvent[]): SessionState {
   let { logs, network, storageVersions, lastSeq } = session;
   let logsCopied = false;
   let networkCopied = false;

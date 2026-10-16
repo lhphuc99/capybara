@@ -103,11 +103,11 @@ export function inspectStorage(method: string, params: { adapter?: string; key?:
     if (typeof req?.getModules !== 'function') throw new Error('Metro module discovery is unavailable in this runtime');
     const registry = req.getModules();
     const tracker = (globalThis as unknown as {
-      __DEVSIGHT_MMKV_TRACKER_V1__?: {
+      __CAPYBARA_MMKV_TRACKER_V1__?: {
         capture(value: unknown): void;
         entries(): Array<{ id: string; store: object }>;
       };
-    }).__DEVSIGHT_MMKV_TRACKER_V1__;
+    }).__CAPYBARA_MMKV_TRACKER_V1__;
     // Metro inlineRequires leaves this module unloaded until the app first touches storage.
     // Loading this specific library module does not create a new store or write any keys.
     if (typeof req === 'function') {

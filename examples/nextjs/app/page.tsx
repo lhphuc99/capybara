@@ -45,7 +45,7 @@ const actions: Action[] = [
 ];
 
 export default function Page() {
-  const [result, setResult] = useState('Start Devsight, then try an action.');
+  const [result, setResult] = useState('Start Capybara, then try an action.');
 
   async function run(action: Action) {
     try {
@@ -58,7 +58,7 @@ export default function Page() {
 
   return (
     <main style={{ fontFamily: 'system-ui, sans-serif', padding: 24, maxWidth: 640 }}>
-      <h1>Devsight Next.js example</h1>
+      <h1>Capybara Next.js example</h1>
       <p>
         The SDK starts in <code>instrumentation-client.ts</code>, before the page code runs.
       </p>

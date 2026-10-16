@@ -1,4 +1,4 @@
-import type { SerializedValue, SpecialValue } from '@devsight/protocol';
+import type { SerializedValue, SpecialValue } from '@capybara/protocol';
 
 export interface SerializeOptions {
   maxDepth?: number;

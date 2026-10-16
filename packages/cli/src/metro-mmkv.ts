@@ -47,10 +47,10 @@ export function trackMMKV(action: 'watch' | 'stop', owner: string) {
     dispose(): void;
   };
   const root = globalThis as unknown as {
-    __DEVSIGHT_MMKV_TRACKER_V1__?: Tracker;
+    __CAPYBARA_MMKV_TRACKER_V1__?: Tracker;
     __r?: { getModules?: () => Map<string | number, any> };
   };
-  let tracker = root.__DEVSIGHT_MMKV_TRACKER_V1__;
+  let tracker = root.__CAPYBARA_MMKV_TRACKER_V1__;
   if (tracker && tracker.version !== 1) return;
   if (action === 'stop') {
     if (tracker) {
@@ -92,7 +92,7 @@ export function trackMMKV(action: 'watch' | 'stop', owner: string) {
       patches.length = 0;
       stores.clear();
       owners.clear();
-      if (root.__DEVSIGHT_MMKV_TRACKER_V1__ === created) delete root.__DEVSIGHT_MMKV_TRACKER_V1__;
+      if (root.__CAPYBARA_MMKV_TRACKER_V1__ === created) delete root.__CAPYBARA_MMKV_TRACKER_V1__;
     };
     const active = () => {
       if (disposed) return false;
@@ -186,7 +186,7 @@ export function trackMMKV(action: 'watch' | 'stop', owner: string) {
       }) : [],
     };
     tracker = created;
-    root.__DEVSIGHT_MMKV_TRACKER_V1__ = created;
+    root.__CAPYBARA_MMKV_TRACKER_V1__ = created;
     expiry = setInterval(() => { active(); }, 5_000);
   }
   tracker.owners.set(owner, Date.now() + 15_000);

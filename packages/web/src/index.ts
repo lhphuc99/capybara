@@ -4,12 +4,12 @@ import {
   getActiveClient,
   networkPlugin,
   storagePlugin,
-  type DevsightClient,
+  type CapybaraClient,
   type NetworkPluginOptions,
   type Plugin,
   type StorageAdapter,
-} from '@devsight/core';
-import { CLIENT_PATH, DEFAULT_PORT } from '@devsight/protocol';
+} from '@capybara/core';
+import { CLIENT_PATH, DEFAULT_PORT } from '@capybara/protocol';
 import { windowErrorsPlugin } from './errors.js';
 import { cookieStorage, webStorage } from './storage.js';
 
@@ -21,7 +21,7 @@ const DEV_SERVER_NOISE = [/\/__nextjs_[\w-]+(\?|$)/, /\/_next\/webpack-hmr(\?|$)
 export interface InitOptions {
   /** Shown in the session picker. Defaults to the page title. */
   appName?: string;
-  /** Machine running `devsight`. Defaults to the hostname the page was loaded from. */
+  /** Machine running `capybara`. Defaults to the hostname the page was loaded from. */
   host?: string;
   port?: number;
   /** Pass false to skip setup, e.g. `enabled: import.meta.env.DEV`. */
@@ -34,7 +34,7 @@ export interface InitOptions {
   plugins?: Plugin[];
 }
 
-export function init(options: InitOptions = {}): DevsightClient | undefined {
+export function init(options: InitOptions = {}): CapybaraClient | undefined {
   // The window check makes this a no-op during server rendering, so the same entry works in Next.js.
   if (options.enabled === false || typeof window === 'undefined') return undefined;
   // Hot reload re-runs the entry file; patching again would record everything twice.
@@ -61,7 +61,7 @@ export function init(options: InitOptions = {}): DevsightClient | undefined {
     session: {
       appName: options.appName ?? (document.title || window.location.host || 'Web app'),
       platform: 'web',
-      sdk: { name: '@devsight/web', version: SDK_VERSION },
+      sdk: { name: '@capybara/web', version: SDK_VERSION },
       url: window.location.href,
       userAgent: navigator.userAgent,
     },
@@ -96,6 +96,6 @@ function formatHost(host: string): string {
   return host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
 }
 
-export { getActiveClient } from '@devsight/core';
-export type { DevsightClient, NetworkPluginOptions, Plugin, StorageAdapter } from '@devsight/core';
+export { getActiveClient } from '@capybara/core';
+export type { CapybaraClient, NetworkPluginOptions, Plugin, StorageAdapter } from '@capybara/core';
 export { cookieStorage, webStorage } from './storage.js';

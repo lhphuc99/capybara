@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { CLIENT_GLOBAL, serialize } from '@devsight/core';
+import { CLIENT_GLOBAL, serialize } from '@capybara/core';
 import {
   CLIENT_PATH,
   METRO_SDK,
@@ -10,7 +10,7 @@ import {
   type SerializedValue,
   type ServerToClient,
   type SessionInfo,
-} from '@devsight/protocol';
+} from '@capybara/protocol';
 import { WebSocket, type RawData } from 'ws';
 import { readMetroStorage } from './metro-storage.js';
 import { watchMetroMMKV } from './metro-mmkv.js';
@@ -33,7 +33,7 @@ import {
 export const DEFAULT_METRO_PORTS = [8081, 8082];
 
 export interface MetroBridgeOptions {
-  /** Port of the Devsight server the apps are reported to. */
+  /** Port of the Capybara server the apps are reported to. */
   port: number;
   metroPorts?: number[];
   /** Reported as the SDK version of these sessions. */
@@ -57,7 +57,7 @@ const MAX_BODY_FETCH = 4 * 1024 * 1024;
 const MAX_HELD_EVENTS = 2_000;
 const MAX_SOCKET_MESSAGE = 16 * 1024;
 
-const SERIALIZER_GLOBAL = '__DEVSIGHT_SERIALIZE__';
+const SERIALIZER_GLOBAL = '__CAPYBARA_SERIALIZE__';
 const INSTALL_SERIALIZER = `globalThis.${SERIALIZER_GLOBAL} = ${serialize.toString()}`;
 /** Returns null until the serializer is installed in this JS context, e.g. right after a reload. */
 const SERIALIZE_ARGS = `function () {
@@ -191,7 +191,7 @@ interface Run {
 export function startMetroBridge(options: MetroBridgeOptions): MetroBridge {
   const metroPorts = options.metroPorts ?? DEFAULT_METRO_PORTS;
   const interval = options.pollInterval ?? 2_000;
-  const devsightUrl = `ws://127.0.0.1:${options.port}${CLIENT_PATH}`;
+  const capybaraUrl = `ws://127.0.0.1:${options.port}${CLIENT_PATH}`;
   const version = options.version ?? '0.0.0';
   const apps = new Map<string, { close(): void }>();
   let stopped = false;
@@ -204,7 +204,7 @@ export function startMetroBridge(options: MetroBridgeOptions): MetroBridge {
           typeof target.id !== 'string' || typeof target.webSocketDebuggerUrl !== 'string') continue;
       const key = `${metroPort} ${target.id}`;
       if (stopped || apps.has(key)) continue;
-      apps.set(key, watchApp(target, metroPort, devsightUrl, version, () => apps.delete(key)));
+      apps.set(key, watchApp(target, metroPort, capybaraUrl, version, () => apps.delete(key)));
     }
   };
 
@@ -239,7 +239,7 @@ async function listTargets(metroPort: number): Promise<MetroTarget[] | undefined
 function watchApp(
   target: MetroTarget,
   metroPort: number,
-  devsightUrl: string,
+  capybaraUrl: string,
   version: string,
   onEnd: () => void,
 ): { close(): void } {
@@ -381,7 +381,7 @@ function watchApp(
       ignoreProtocols: [],
       maxMessage: MAX_SOCKET_MESSAGE,
     });
-    current.session = openSession(devsightUrl, sessionInfo(probe?.name), end, (command) => {
+    current.session = openSession(capybaraUrl, sessionInfo(probe?.name), end, (command) => {
       if (command.plugin !== 'storage') return Promise.reject(new Error('This plugin is unavailable through Metro'));
       return readMetroStorage(call, current.contextId, () => run === current, command.method, command.params);
     });

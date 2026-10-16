@@ -1,4 +1,4 @@
-import { METRO_SDK, type StorageAdapterInfo, type StorageEntries, type StorageEntry } from '@devsight/protocol';
+import { METRO_SDK, type StorageAdapterInfo, type StorageEntries, type StorageEntry } from '@capybara/protocol';
 import { useEffect, useMemo, useState } from 'react';
 import { JsonTree } from '../components/JsonTree';
 import { storageCommand } from '../connection';
@@ -125,7 +125,7 @@ function StorageBrowser({ session }: { session: SessionState }) {
           <strong>No storage configured</strong>
           <p>Pass the storages your app uses to init():</p>
           <pre className="code left">{`import AsyncStorage from '@react-native-async-storage/async-storage';
-import { asyncStorage, mmkvStorage } from '@devsight/react-native';
+import { asyncStorage, mmkvStorage } from '@capybara/react-native';
 
 init({ storage: [asyncStorage(AsyncStorage), mmkvStorage(storage)] });`}</pre>
         </div>

@@ -191,7 +191,7 @@ const groups: Array<{ title: string; actions: Action[] }> = [
 ];
 
 export function App() {
-  const [status, setStatus] = useState('Click a button and watch it show up in Devsight.');
+  const [status, setStatus] = useState('Click a button and watch it show up in Capybara.');
 
   const run = async (action: Action) => {
     try {
@@ -205,7 +205,7 @@ export function App() {
   return (
     <main className="page">
       <header>
-        <h1>Devsight example</h1>
+        <h1>Capybara example</h1>
         <p>
           Run <code>npm start</code> in the repo and open{' '}
           <a href="http://localhost:7357" target="_blank" rel="noreferrer">

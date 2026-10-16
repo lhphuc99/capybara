@@ -1,5 +1,5 @@
 {
-  "name": "devsight-monorepo",
+  "name": "capybara-monorepo",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -9,11 +9,11 @@
     "examples/*"
   ],
   "scripts": {
-    "build": "npm run build -w @devsight/protocol && npm run build -w @devsight/core && npm run build -w @devsight/web && npm run build -w @devsight/react-native && npm run build -w @devsight/ui && npm run build -w devsight && npm run build -w @devsight/desktop",
+    "build": "npm run build -w @capybara/protocol && npm run build -w @capybara/core && npm run build -w @capybara/web && npm run build -w @capybara/react-native && npm run build -w @capybara/ui && npm run build -w capybara && npm run build -w @capybara/desktop",
     "start": "node packages/cli/dist/bin.js",
-    "desktop": "npm run start -w @devsight/desktop",
-    "desktop:package": "npm run build && npm run package -w @devsight/desktop",
-    "dev:ui": "npm run dev -w @devsight/ui",
+    "desktop": "npm run start -w @capybara/desktop",
+    "desktop:package": "npm run build && npm run package -w @capybara/desktop",
+    "dev:ui": "npm run dev -w @capybara/ui",
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "example:web": "npm run dev -w example-web",

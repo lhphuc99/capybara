@@ -16,10 +16,10 @@ const versions = {
   '3.3.3': 'GMsfOmNzx0p5+CtrCFRVtpOOMYNJXuksBVARSQrCFaZwjUyHJdQzcN900GGaFFNTxw2fs8s5Xje//RDKj9+PZA==',
   '4.3.2': '49OAyfkg0/TMWiWELZN6VuVQPZPhizwL4DTmp8b7B1md3dB/s3LH3mGfC3T+lp9W0y/rqxZMEnotLFTIbOAenQ==',
 };
-const cache = process.argv[2] ?? join(tmpdir(), 'devsight-mmkv-compat');
+const cache = process.argv[2] ?? join(tmpdir(), 'capybara-mmkv-compat');
 mkdirSync(cache, { recursive: true });
 for (const [version, integrity] of Object.entries(versions)) {
-  const archive = join(cache, `devsight-mmkv-${version}.tgz`);
+  const archive = join(cache, `capybara-mmkv-${version}.tgz`);
   if (!existsSync(archive)) {
     const response = await fetch(`https://registry.npmjs.org/react-native-mmkv/-/react-native-mmkv-${version}.tgz`, { signal: AbortSignal.timeout(30_000) });
     if (!response.ok) throw new Error(`Download ${version}: HTTP ${response.status}`);
@@ -126,6 +126,6 @@ for (const [version, integrity] of Object.entries(versions)) {
   } finally {
     track('stop');
   }
-  assert.equal(run('globalThis.__DEVSIGHT_MMKV_TRACKER_V1__'), undefined);
+  assert.equal(run('globalThis.__CAPYBARA_MMKV_TRACKER_V1__'), undefined);
   assert.equal(run('Object.hasOwn(factory, "createMMKV")'), false);
 }

@@ -1,9 +1,9 @@
 {
-  "name": "@devsight/desktop",
-  "productName": "Devsight",
+  "name": "@capybara/desktop",
+  "productName": "Capybara",
   "version": "0.1.0",
   "private": true,
-  "description": "Devsight as a desktop app: the server and the UI in one window",
+  "description": "Capybara as a desktop app: the server and the UI in one window",
   "type": "module",
   "main": "dist/main.cjs",
   "scripts": {
@@ -14,16 +14,16 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "devDependencies": {
-    "@devsight/protocol": "0.1.0",
+    "@capybara/protocol": "0.1.0",
     "@types/ws": "^8.18.2",
-    "devsight": "0.1.0",
+    "capybara": "0.1.0",
     "electron": "44.7.2",
     "electron-builder": "^26.15.3",
     "rolldown": "^1.2.14",
     "ws": "^8.22.0"
   },
   "build": {
-    "appId": "dev.devsight.desktop",
+    "appId": "dev.capybara.desktop",
     "files": [
       "dist/**"
     ],
@@ -33,6 +33,7 @@
     "npmRebuild": false,
     "mac": {
       "category": "public.app-category.developer-tools",
+      "icon": "build/icon.icon",
       "target": [
         "dmg",
         "zip"

@@ -1,4 +1,4 @@
-import type { BodyPreview, NetworkErrorPayload } from '@devsight/protocol';
+import type { BodyPreview, NetworkErrorPayload } from '@capybara/protocol';
 import type { Plugin, PluginContext } from '../client.js';
 import { errorMessage, now, randomId, utf8Length } from '../utils.js';
 import { hookWebSockets } from './websocket.js';
@@ -89,7 +89,7 @@ function resolveSettings(options: NetworkPluginOptions): Settings {
 /**
  * Browsers never tell a page why a request failed. What a page can know: whether it is offline,
  * whether the URL is mixed content, and CSP blocks, which arrive as `securitypolicyviolation`
- * events. Anything else cross-origin is reported as such for the Devsight server to diagnose.
+ * events. Anything else cross-origin is reported as such for the Capybara server to diagnose.
  */
 function failureExplainer(): FailureExplainer {
   const g = globalThis as {

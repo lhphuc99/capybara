@@ -4,7 +4,7 @@ import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WebSocket, WebSocketServer } from 'ws';
 import { startMetroBridge, type MetroBridge } from '../src/metro.js';
-import { createServer, type DevsightServer } from '../src/server.js';
+import { createServer, type CapybaraServer } from '../src/server.js';
 
 const cleanups: Array<() => unknown | Promise<unknown>> = [];
 afterEach(async () => {
@@ -96,7 +96,7 @@ async function fixture(options: { sdk?: boolean; ready?: boolean; multiple?: boo
       } else if (method === 'Runtime.enable') {
         event('Runtime.executionContextCreated', { context: { id: contextId } });
       } else if (method === 'Runtime.evaluate') {
-        if (params.expression.includes('__DEVSIGHT_CLIENT__')) {
+        if (params.expression.includes('__CAPYBARA_CLIENT__')) {
           reply(ws, id, { result: { value: JSON.stringify({ sdk, ready, name: 'No SDK app' }) } });
         } else {
           const value = runInContext(params.expression, vm);
@@ -137,7 +137,7 @@ async function fixture(options: { sdk?: boolean; ready?: boolean; multiple?: boo
     });
   });
 
-  let server: DevsightServer = createServer({ port: 0, host: '127.0.0.1' });
+  let server: CapybaraServer = createServer({ port: 0, host: '127.0.0.1' });
   const { port } = await server.start();
   cleanups.push(() => server.close());
   const messages: any[] = [];
@@ -221,7 +221,7 @@ describe('Metro discovery and CDP event relay', () => {
     expect(result.result.some((item: any) => item.id.startsWith('mmkv-runtime:'))).toBe(true);
     f.stop();
     await until(() => expect(f.run('MMKV.prototype.getFunctionFromCache === originalMMKV')).toBe(true));
-    expect(f.run('globalThis.__DEVSIGHT_MMKV_TRACKER_V1__')).toBeUndefined();
+    expect(f.run('globalThis.__CAPYBARA_MMKV_TRACKER_V1__')).toBeUndefined();
   });
 
   it('discovers a late app and serializes console objects, primitives, rejections and exceptions without an SDK', async () => {
@@ -247,7 +247,7 @@ describe('Metro discovery and CDP event relay', () => {
     expect(f.events()[2].payload.args).toEqual([null]);
     expect(f.events()[3].payload).toMatchObject({ level: 'error', source: 'uncaught' });
     expect(f.commands.filter((c) => c.method === 'Runtime.releaseObject')).toHaveLength(3);
-    expect(f.commands.find((c) => c.method === 'Runtime.evaluate' && c.params.expression.includes('__DEVSIGHT_SERIALIZE__'))?.params.contextId).toBe(1);
+    expect(f.commands.find((c) => c.method === 'Runtime.evaluate' && c.params.expression.includes('__CAPYBARA_SERIALIZE__'))?.params.contextId).toBe(1);
     expect(f.events().map((e) => e.seq)).toEqual([1, 2, 3, 4]);
   });
 
@@ -378,9 +378,9 @@ describe('Metro discovery and CDP event relay', () => {
       early.deliver('open');
     `);
     f.start();
-    await until(() => expect(f.run('typeof __DEVSIGHT_WS_TRACKER_V1__')).toBe('object'));
+    await until(() => expect(f.run('typeof __CAPYBARA_WS_TRACKER_V1__')).toBe('object'));
     expect(f.commands.find((c) => c.method === 'Runtime.addBinding')?.params).toEqual({
-      name: '__devsightWebSocket', executionContextId: 1,
+      name: '__capybaraWebSocket', executionContextId: 1,
     });
 
     f.run(`
@@ -411,7 +411,7 @@ describe('Metro discovery and CDP event relay', () => {
     expect(sockets[6].payload.data).toMatchObject({ kind: 'text', text: '{"pong":true}', size: 13 });
 
     f.stop();
-    await until(() => expect(f.run('typeof __DEVSIGHT_WS_TRACKER_V1__')).toBe('undefined'));
+    await until(() => expect(f.run('typeof __CAPYBARA_WS_TRACKER_V1__')).toBe('undefined'));
     expect(f.run('Object.prototype.hasOwnProperty.call(WebSocket.prototype, "dispatchEvent")')).toBe(false);
     expect(f.run('globalThis.WebSocket === WebSocket')).toBe(true);
     // Sent once the app has answered the stop evaluation.

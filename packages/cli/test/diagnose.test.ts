@@ -10,7 +10,7 @@ afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => new Promise((resolve) => server.close(resolve))));
 });
 
-/** A local API that records what Devsight sent it. */
+/** A local API that records what Capybara sent it. */
 async function api(handler: (req: http.IncomingMessage, res: http.ServerResponse) => void) {
   const seen: { method: string; path: string; headers: http.IncomingHttpHeaders }[] = [];
   const server = http.createServer((req, res) => {
@@ -145,8 +145,8 @@ describe('diagnoseRequest: connection failures', () => {
 
     const refused = await diagnose({ url: `http://127.0.0.1:${port}/api` });
     expect(refused).toMatchObject({ verdict: 'unreachable', summary: `Nothing is listening on 127.0.0.1:${port} (connection refused), so the request never got an answer.` });
-    const dns = await diagnose({ url: 'http://devsight-check.invalid/api' });
-    expect(dns).toMatchObject({ verdict: 'unreachable', summary: 'devsight-check.invalid could not be found (DNS), so the request never got an answer.' });
+    const dns = await diagnose({ url: 'http://capybara-check.invalid/api' });
+    expect(dns).toMatchObject({ verdict: 'unreachable', summary: 'capybara-check.invalid could not be found (DNS), so the request never got an answer.' });
     const blocked = await diagnose({ url: 'http://127.0.0.1:6666/api' });
     expect(blocked).toMatchObject({ verdict: 'unreachable', sent: [] });
     expect(blocked.summary).toContain('Browsers refuse to connect to port 6666');

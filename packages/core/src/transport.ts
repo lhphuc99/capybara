@@ -25,7 +25,7 @@ export interface ReconnectOptions {
 const OPEN = 1;
 
 /** Marks the SDK's own socket so WebSocket capture skips it; the hook checks the same literal. */
-export const INTERNAL_SOCKET = '__DEVSIGHT_INTERNAL__';
+export const INTERNAL_SOCKET = '__CAPYBARA_INTERNAL__';
 
 export const defaultSocketFactory: SocketFactory = (url) => {
   const WebSocketCtor = (globalThis as { WebSocket?: new (url: string) => SocketLike }).WebSocket;

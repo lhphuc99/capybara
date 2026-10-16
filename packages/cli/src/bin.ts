@@ -3,15 +3,15 @@ import { spawn } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { DEFAULT_PORT } from '@devsight/protocol';
+import { DEFAULT_PORT } from '@capybara/protocol';
 import { reverseAndroidPorts } from './adb.js';
 import { DEFAULT_METRO_PORTS, startMetroBridge, type MetroBridge } from './metro.js';
 import { createServer, lanAddresses } from './server.js';
 
-const HELP = `Usage: devsight [options]
+const HELP = `Usage: capybara [options]
 
 Options:
-  -p, --port <port>         Port for the UI and app connections (default ${DEFAULT_PORT}, or $DEVSIGHT_PORT)
+  -p, --port <port>         Port for the UI and app connections (default ${DEFAULT_PORT}, or $CAPYBARA_PORT)
       --host <address>      Address to bind (default: all interfaces)
       --no-open             Don't open the UI in a browser
       --allow-origin <url>  Extra origin allowed to open the UI socket, repeatable
@@ -41,9 +41,9 @@ if (values.version) {
   process.exit(0);
 }
 
-const port = Number(values.port ?? process.env.DEVSIGHT_PORT ?? DEFAULT_PORT);
+const port = Number(values.port ?? process.env.CAPYBARA_PORT ?? DEFAULT_PORT);
 if (!Number.isInteger(port) || port < 0 || port > 65_535) {
-  console.error(`Invalid port: ${values.port ?? process.env.DEVSIGHT_PORT}`);
+  console.error(`Invalid port: ${values.port ?? process.env.CAPYBARA_PORT}`);
   process.exit(1);
 }
 
@@ -76,7 +76,7 @@ try {
   if (values.open) openBrowser(`http://localhost:${actual}`);
 } catch (error) {
   if ((error as NodeJS.ErrnoException).code === 'EADDRINUSE') {
-    console.error(`Port ${port} is already in use. Is Devsight already running? Choose another port with --port.`);
+    console.error(`Port ${port} is already in use. Is Capybara already running? Choose another port with --port.`);
   } else {
     console.error(error);
   }
@@ -107,7 +107,7 @@ function parseCli() {
 }
 
 function printBanner(actualPort: number) {
-  const lines = ['', `  Devsight ${version}`, '', `  UI        http://localhost:${actualPort}`];
+  const lines = ['', `  Capybara ${version}`, '', `  UI        http://localhost:${actualPort}`];
   for (const address of lanAddresses()) lines.push(`  Network   http://${address}:${actualPort}`);
   if (metroPorts.length > 0) {
     const ports = metroPorts.map((p) => `localhost:${p}`).join(', ');

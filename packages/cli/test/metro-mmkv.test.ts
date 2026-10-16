@@ -39,8 +39,8 @@ function runtime(source = '', weakRef = true) {
   const run = (code: string) => runInContext(code, context);
   const watch = (owner = 'test') => run(`(${trackMMKV.toString()})('watch', ${JSON.stringify(owner)})`);
   const stop = (owner = 'test') => run(`(${trackMMKV.toString()})('stop', ${JSON.stringify(owner)})`);
-  const entries = () => run('globalThis.__DEVSIGHT_MMKV_TRACKER_V1__?.entries() ?? []');
-  cleanups.push(() => run('globalThis.__DEVSIGHT_MMKV_TRACKER_V1__?.dispose()'));
+  const entries = () => run('globalThis.__CAPYBARA_MMKV_TRACKER_V1__?.entries() ?? []');
+  cleanups.push(() => run('globalThis.__CAPYBARA_MMKV_TRACKER_V1__?.dispose()'));
   const inspect = async (method: string, params: object = {}) => {
     const state = run(`(${inspectStorage.toString()})(${JSON.stringify(method)}, ${JSON.stringify(params)})`);
     await vi.waitFor(() => expect(state.done).toBe(true), { interval: 1 });
@@ -128,7 +128,7 @@ describe('MMKV runtime discovery', () => {
     expect((await app.inspect('get', { adapter: before.id, key: 'user' })).value).toBe('Ada');
   });
 
-  it('refreshes leases without stacking hooks and tolerates concurrent Devsight connections', () => {
+  it('refreshes leases without stacking hooks and tolerates concurrent Capybara connections', () => {
     const app = runtime('expose(1, { MMKV });');
     app.watch('one');
     const wrapper = app.run('MMKV.prototype.getFunctionFromCache');

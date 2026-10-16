@@ -1,8 +1,8 @@
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { DEFAULT_PORT } from '@devsight/protocol';
-import { reverseAndroidPorts, startMetroBridge, type MetroBridge, type ServerOptions } from 'devsight';
+import { DEFAULT_PORT } from '@capybara/protocol';
+import { reverseAndroidPorts, startMetroBridge, type MetroBridge, type ServerOptions } from 'capybara';
 import { app, BrowserWindow, dialog, Menu, nativeTheme, shell } from 'electron';
 import { listen, PortInUseError, startOrReuse, type Started } from './server.js';
 
@@ -45,7 +45,7 @@ async function main() {
   );
 
   const options: ServerOptions = {
-    port: Number(process.env.DEVSIGHT_PORT || DEFAULT_PORT),
+    port: Number(process.env.CAPYBARA_PORT || DEFAULT_PORT),
     uiDir: join(app.getAppPath(), 'dist', 'ui'),
     version: app.getVersion(),
   };
@@ -56,11 +56,11 @@ async function main() {
   }
   url = `http://localhost:${started.port}`;
   if (started.server) {
-    console.log(`Devsight server on port ${started.port}`);
+    console.log(`Capybara server on port ${started.port}`);
     reverseAndroidPorts(started.port, findAdb());
     metroBridge = startMetroBridge({ port: started.port, version: app.getVersion() });
   } else {
-    console.log(`Using the Devsight server already running on port ${started.port}`);
+    console.log(`Using the Capybara server already running on port ${started.port}`);
     takeOverWhenFree(options);
   }
   showWindow();
@@ -74,7 +74,7 @@ async function start(options: ServerOptions): Promise<Started | undefined> {
       const inUse = error instanceof PortInUseError;
       const { response } = await dialog.showMessageBox({
         type: 'error',
-        message: inUse ? `Port ${options.port} is in use` : 'Devsight could not start its server',
+        message: inUse ? `Port ${options.port} is in use` : 'Capybara could not start its server',
         detail: inUse
           ? `Another program is using port ${options.port}, the port apps connect to. Quit that program, then try again.`
           : String(error),
@@ -87,7 +87,7 @@ async function start(options: ServerOptions): Promise<Started | undefined> {
   }
 }
 
-/** Once the other process exits (e.g. `npx devsight` is stopped), apps reconnect to this app instead. */
+/** Once the other process exits (e.g. `npx capybara` is stopped), apps reconnect to this app instead. */
 function takeOverWhenFree(options: ServerOptions) {
   if (quitting) return;
   takeoverTimer = setTimeout(async () => {
@@ -137,7 +137,7 @@ function createWindow(): BrowserWindow {
     height: 800,
     minWidth: 640,
     minHeight: 400,
-    title: 'Devsight',
+    title: 'Capybara',
     // The UI's --bg, so the window doesn't flash white before the page paints.
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#0e1116' : '#ffffff',
     webPreferences: {

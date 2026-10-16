@@ -2,7 +2,7 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "devsight",
+      "name": "capybara",
       "runtimeExecutable": "node",
       "runtimeArgs": ["packages/cli/dist/bin.js", "--no-open"],
       "port": 7357

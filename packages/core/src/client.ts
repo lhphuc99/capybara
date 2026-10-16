@@ -8,7 +8,7 @@ import {
   type SerializedValue,
   type ServerToClient,
   type SessionInfo,
-} from '@devsight/protocol';
+} from '@capybara/protocol';
 import { serialize, type SerializeOptions } from './serialize.js';
 import { Connection, nativeSocketFactory, type SocketFactory } from './transport.js';
 import { errorMessage, randomId } from './utils.js';
@@ -45,7 +45,7 @@ export interface ClientOptions {
   socketFactory?: SocketFactory;
 }
 
-export interface DevsightClient {
+export interface CapybaraClient {
   readonly session: SessionInfo;
   /** True once the server has acknowledged this session. */
   readonly connected: boolean;
@@ -56,7 +56,7 @@ export interface DevsightClient {
 }
 
 /** Where the active client lives on `globalThis`. The Metro bridge checks it to leave apps with the SDK alone. */
-export const CLIENT_GLOBAL = '__DEVSIGHT_CLIENT__';
+export const CLIENT_GLOBAL = '__CAPYBARA_CLIENT__';
 const MAX_BATCH_EVENTS = 200;
 const MAX_BATCH_CHARS = 512 * 1024;
 
@@ -65,11 +65,11 @@ interface Buffered {
   json: string;
 }
 
-export function getActiveClient(): DevsightClient | undefined {
-  return (globalThis as Record<string, unknown>)[CLIENT_GLOBAL] as DevsightClient | undefined;
+export function getActiveClient(): CapybaraClient | undefined {
+  return (globalThis as Record<string, unknown>)[CLIENT_GLOBAL] as CapybaraClient | undefined;
 }
 
-export function createClient(options: ClientOptions): DevsightClient {
+export function createClient(options: ClientOptions): CapybaraClient {
   // Two clients would patch console and network twice.
   getActiveClient()?.stop();
 
@@ -185,7 +185,7 @@ export function createClient(options: ClientOptions): DevsightClient {
           void handleCommand(message.id, message.plugin, message.method, message.params);
           break;
         case 'reject':
-          originalConsole.warn(`[devsight] Server rejected this app: ${message.reason}`);
+          originalConsole.warn(`[capybara] Server rejected this app: ${message.reason}`);
           connection.stop();
           break;
       }
@@ -206,11 +206,11 @@ export function createClient(options: ClientOptions): DevsightClient {
       const teardown = plugin.setup?.(ctx);
       if (typeof teardown === 'function') teardowns.push(teardown);
     } catch (error) {
-      originalConsole.warn(`[devsight] Plugin "${plugin.name}" failed to start:`, error);
+      originalConsole.warn(`[capybara] Plugin "${plugin.name}" failed to start:`, error);
     }
   }
 
-  const client: DevsightClient = {
+  const client: CapybaraClient = {
     session,
     get connected() {
       return ready;

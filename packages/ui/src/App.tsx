@@ -9,7 +9,7 @@ import { StoragePanel } from './panels/StoragePanel';
 import { useStore, type SessionState } from './store';
 
 type Tab = 'logs' | 'network' | 'storage';
-const TAB_KEY = 'devsight:tab';
+const TAB_KEY = 'capybara:tab';
 
 function initialTab(): Tab {
   try {
@@ -47,7 +47,7 @@ export function App() {
       <header className="topbar">
         <div className="brand">
           <Logo />
-          Devsight
+          Capybara
         </div>
         <SessionPicker sessions={sessions} selectedId={selectedId} />
         {session && (
@@ -112,11 +112,20 @@ function ConnectionBadge({ status, session }: { status: ConnectionStatus; sessio
   );
 }
 
+/** The app icon (assets/icon.svg), cropped to its rounded square. */
 function Logo() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden>
-      <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" fill="none" stroke="currentColor" strokeWidth="2" />
-      <circle cx="12" cy="12" r="3.2" fill="currentColor" />
+    <svg width="20" height="20" viewBox="100 100 824 824" aria-hidden>
+      <rect x="100" y="100" width="824" height="824" rx="185" fill="#F4A13A" />
+      <g fill="none" stroke="#3A2417" strokeWidth="40" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M196 646C236 540 380 454 524 434L752 466Q796 472 796 516V646" />
+        <path d="M470 446A30 32 0 0 1 528 432" />
+        <path d="M150 646H874M272 724H520M612 724H752" />
+        <path d="M566 500Q600 526 634 500" strokeWidth="32" />
+      </g>
+      <circle cx="776" cy="498" r="11" fill="#3A2417" />
+      <circle cx="660" cy="390" r="46" fill="#FFD45E" stroke="#3A2417" strokeWidth="26" />
+      <path d="M662 344C670 314 700 304 728 314C720 342 690 352 662 344Z" fill="#5E8C31" />
     </svg>
   );
 }

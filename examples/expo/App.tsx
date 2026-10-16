@@ -52,7 +52,7 @@ const groups: Array<{ title: string; actions: Action[] }> = [
           fetch(`${API}/posts`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title: 'Hello', body: 'From Devsight', userId: 1 }),
+            body: JSON.stringify({ title: 'Hello', body: 'From Capybara', userId: 1 }),
           }).then((r) => `status ${r.status}`),
       },
       {
@@ -100,7 +100,7 @@ const groups: Array<{ title: string; actions: Action[] }> = [
 
 export default function App() {
   const dark = useColorScheme() === 'dark';
-  const [status, setStatus] = useState('Tap a button and watch it show up in Devsight.');
+  const [status, setStatus] = useState('Tap a button and watch it show up in Capybara.');
   const colors = dark ? darkColors : lightColors;
 
   const run = async (action: Action) => {
@@ -114,7 +114,7 @@ export default function App() {
 
   return (
     <ScrollView style={{ backgroundColor: colors.bg }} contentContainerStyle={styles.content}>
-      <Text style={[styles.title, { color: colors.text }]}>Devsight example</Text>
+      <Text style={[styles.title, { color: colors.text }]}>Capybara example</Text>
       <Text style={[styles.subtitle, { color: colors.muted }]}>
         Run `npm start` in the repo, then open localhost:7357 on your computer.
       </Text>

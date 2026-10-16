@@ -5,9 +5,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
-import { createServer, type DevsightServer, type ServerOptions } from '../src/server.js';
+import { createServer, type CapybaraServer, type ServerOptions } from '../src/server.js';
 
-let server: DevsightServer | undefined;
+let server: CapybaraServer | undefined;
 let port = 0;
 const sockets: WebSocket[] = [];
 
@@ -235,7 +235,7 @@ describe('access control', () => {
 
 describe('static UI', () => {
   it('serves files, falls back to index.html for routes, and blocks traversal', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'devsight-ui-'));
+    const dir = mkdtempSync(join(tmpdir(), 'capybara-ui-'));
     mkdirSync(join(dir, 'assets'));
     writeFileSync(join(dir, 'index.html'), '<!doctype html><title>UI</title>');
     writeFileSync(join(dir, 'assets', 'app.js'), 'console.log(1)');

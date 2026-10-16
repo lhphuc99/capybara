@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import { hookWebSockets, type WebSocketEventKind, type WebSocketHookOptions } from '@devsight/core';
+import { hookWebSockets, type WebSocketEventKind, type WebSocketHookOptions } from '@capybara/core';
 
 type CdpCall = <T>(method: string, params?: object) => Promise<T>;
 
 /** React Native's inspector forwards calls of this runtime function as Runtime.bindingCalled. */
-export const WEBSOCKET_BINDING = '__devsightWebSocket';
+export const WEBSOCKET_BINDING = '__capybaraWebSocket';
 
 const KINDS = new Set<string>(['ws.connect', 'ws.open', 'ws.message', 'ws.error', 'ws.close']);
 
@@ -55,7 +55,7 @@ export function parseWebSocketReport(payload: unknown): { kind: WebSocketEventKi
 }
 
 /**
- * Self-contained, evaluated in the app. One hook serves every connected Devsight; each refreshes a
+ * Self-contained, evaluated in the app. One hook serves every connected Capybara; each refreshes a
  * lease, and the hook is removed when the last lease ends, so a vanished debugger cannot leave it.
  */
 export function trackWebSockets(
@@ -66,8 +66,8 @@ export function trackWebSockets(
   options: WebSocketHookOptions,
 ) {
   type Tracker = { version: 1; owners: Map<string, number>; dispose(): void };
-  const root = globalThis as unknown as Record<string, unknown> & { __DEVSIGHT_WS_TRACKER_V1__?: Tracker };
-  let tracker = root.__DEVSIGHT_WS_TRACKER_V1__;
+  const root = globalThis as unknown as Record<string, unknown> & { __CAPYBARA_WS_TRACKER_V1__?: Tracker };
+  let tracker = root.__CAPYBARA_WS_TRACKER_V1__;
   if (tracker && tracker.version !== 1) return;
   if (action === 'stop') {
     if (tracker) {
@@ -94,7 +94,7 @@ export function trackWebSockets(
         clearInterval(expiry);
         owners.clear();
         unhook();
-        if (root.__DEVSIGHT_WS_TRACKER_V1__ === created) delete root.__DEVSIGHT_WS_TRACKER_V1__;
+        if (root.__CAPYBARA_WS_TRACKER_V1__ === created) delete root.__CAPYBARA_WS_TRACKER_V1__;
       },
     };
     expiry = setInterval(() => {
@@ -103,7 +103,7 @@ export function trackWebSockets(
       if (!owners.size) created.dispose();
     }, 5_000);
     tracker = created;
-    root.__DEVSIGHT_WS_TRACKER_V1__ = created;
+    root.__CAPYBARA_WS_TRACKER_V1__ = created;
   }
   tracker.owners.set(owner, Date.now() + 15_000);
 }

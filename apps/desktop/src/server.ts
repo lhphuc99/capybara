@@ -1,30 +1,30 @@
 import net from 'node:net';
-import { VIEWER_PATH } from '@devsight/protocol';
-import { createServer, type DevsightServer, type ServerOptions } from 'devsight';
+import { VIEWER_PATH } from '@capybara/protocol';
+import { createServer, type CapybaraServer, type ServerOptions } from 'capybara';
 import { WebSocket, type RawData } from 'ws';
 
 export class PortInUseError extends Error {
   constructor(readonly port: number) {
-    super(`Port ${port} is in use by a program other than Devsight`);
+    super(`Port ${port} is in use by a program other than Capybara`);
   }
 }
 
 export interface Started {
   port: number;
-  /** Null when another Devsight process (e.g. `npx devsight`) already serves the port. */
-  server: DevsightServer | null;
+  /** Null when another Capybara process (e.g. `npx capybara`) already serves the port. */
+  server: CapybaraServer | null;
 }
 
-/** Starts a server, or reuses the Devsight server that already has the port. */
+/** Starts a server, or reuses the Capybara server that already has the port. */
 export async function startOrReuse(options: ServerOptions): Promise<Started> {
   const own = await listen(options);
   if (own) return own;
-  if (await isDevsightServer(options.port)) return { port: options.port, server: null };
+  if (await isCapybaraServer(options.port)) return { port: options.port, server: null };
   throw new PortInUseError(options.port);
 }
 
 /** Resolves to null when the port is taken. */
-export async function listen(options: ServerOptions): Promise<{ port: number; server: DevsightServer } | null> {
+export async function listen(options: ServerOptions): Promise<{ port: number; server: CapybaraServer } | null> {
   if (!options.host && options.port !== 0 && (await isHeldElsewhere(options.port))) return null;
   const server = createServer(options);
   try {
@@ -53,8 +53,8 @@ async function isHeldElsewhere(port: number): Promise<boolean> {
   return false;
 }
 
-/** Connects the way the UI does and waits for the greeting a Devsight server sends every viewer. */
-export function isDevsightServer(port: number, timeout = 2_000): Promise<boolean> {
+/** Connects the way the UI does and waits for the greeting a Capybara server sends every viewer. */
+export function isCapybaraServer(port: number, timeout = 2_000): Promise<boolean> {
   return new Promise((resolve) => {
     const ws = new WebSocket(`ws://localhost:${port}${VIEWER_PATH}`, { origin: `http://localhost:${port}` });
     const finish = (result: boolean) => {

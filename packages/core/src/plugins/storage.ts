@@ -1,4 +1,4 @@
-import type { StorageAdapterInfo, StorageEntries, StorageEntry, StorageOp } from '@devsight/protocol';
+import type { StorageAdapterInfo, StorageEntries, StorageEntry, StorageOp } from '@capybara/protocol';
 import type { Plugin } from '../client.js';
 import { utf8Length } from '../utils.js';
 

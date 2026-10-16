@@ -123,7 +123,7 @@ export interface NetworkResponsePayload {
 /**
  * Why a request failed, as far as the app can tell. Browsers never tell a page why a request
  * failed, so `cross-origin` only says the cause is unknown there: usually CORS, otherwise the
- * server being unreachable. The Devsight server can find out with a `diagnose` request.
+ * server being unreachable. The Capybara server can find out with a `diagnose` request.
  */
 export type NetworkFailureCause = 'offline' | 'mixed-content' | 'csp' | 'cross-origin';
 
@@ -200,11 +200,11 @@ export interface EventPayloads {
 
 export type EventKind = keyof EventPayloads;
 
-export type DevsightEvent = {
+export type CapybaraEvent = {
   [K in EventKind]: { seq: number; ts: number; kind: K; payload: EventPayloads[K] };
 }[EventKind];
 
-export type EventOf<K extends EventKind> = Extract<DevsightEvent, { kind: K }>;
+export type EventOf<K extends EventKind> = Extract<CapybaraEvent, { kind: K }>;
 
 // ---------------------------------------------------------------------------
 // Storage commands
@@ -252,7 +252,7 @@ export type CommandResult =
 
 export type ClientToServer =
   | { t: 'hello'; protocol: number; session: SessionInfo }
-  | { t: 'events'; events: DevsightEvent[] }
+  | { t: 'events'; events: CapybaraEvent[] }
   | CommandResult;
 
 export type ServerToClient =
@@ -303,7 +303,7 @@ export type ServerToViewer =
   | { t: 'init'; server: ServerInfo; sessions: SessionMeta[] }
   | { t: 'session'; session: SessionMeta }
   | { t: 'session.removed'; sessionId: string }
-  | { t: 'history'; sessionId: string; events: DevsightEvent[] }
-  | { t: 'events'; sessionId: string; events: DevsightEvent[] }
+  | { t: 'history'; sessionId: string; events: CapybaraEvent[] }
+  | { t: 'events'; sessionId: string; events: CapybaraEvent[] }
   | { t: 'cleared'; sessionId: string }
   | CommandResult;

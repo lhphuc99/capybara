@@ -1,4 +1,4 @@
-import type { LogLevel, LogSource, SerializedValue } from '@devsight/protocol';
+import type { LogLevel, LogSource, SerializedValue } from '@capybara/protocol';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { memo, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { JsonTree } from '../components/JsonTree';

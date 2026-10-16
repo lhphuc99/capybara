@@ -1,4 +1,4 @@
-import type { Platform, SerializedValue, SessionInfo, SpecialValue } from '@devsight/protocol';
+import type { Platform, SerializedValue, SessionInfo, SpecialValue } from '@capybara/protocol';
 import type { NetworkEntry } from './store';
 
 export function isSpecial(value: SerializedValue): value is SpecialValue {

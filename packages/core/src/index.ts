@@ -1,5 +1,5 @@
 export { CLIENT_GLOBAL, createClient, getActiveClient } from './client.js';
-export type { ClientOptions, DevsightClient, Plugin, PluginContext } from './client.js';
+export type { ClientOptions, CapybaraClient, Plugin, PluginContext } from './client.js';
 export { serialize } from './serialize.js';
 export type { SerializeOptions } from './serialize.js';
 export type { SocketFactory, SocketLike } from './transport.js';

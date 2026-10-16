@@ -1,4 +1,4 @@
-import type { ServerInfo } from '@devsight/protocol';
+import type { ServerInfo } from '@capybara/protocol';
 import type { ConnectionStatus } from '../connection';
 
 interface Props {
@@ -10,9 +10,9 @@ export function EmptyState({ status, server }: Props) {
   if (status !== 'open') {
     return (
       <div className="onboarding">
-        <h1>Connecting to the Devsight server…</h1>
+        <h1>Connecting to the Capybara server…</h1>
         <p>
-          Start it with <code>npx devsight</code>. This page reconnects on its own.
+          Start it with <code>npx capybara</code>. This page reconnects on its own.
         </p>
       </div>
     );
@@ -27,8 +27,8 @@ export function EmptyState({ status, server }: Props) {
       <h1>Open your React Native app</h1>
       <p>
         Start Metro on this computer and open a development build on your simulator or phone.
-        Devsight automatically finds apps on ports 8081 and 8082 and shows their logs and network requests.
-        No Devsight package or app code changes are needed.
+        Capybara automatically finds apps on ports 8081 and 8082 and shows their logs and network requests.
+        No Capybara package or app code changes are needed.
       </p>
       <p className="note">
         Requires Hermes and a Metro target that supports multiple debuggers. Network capture depends on
@@ -38,7 +38,7 @@ export function EmptyState({ status, server }: Props) {
 
       <h2>Web: connect with the SDK</h2>
       <p>Load the SDK before the rest of your code to capture early logs and requests.</p>
-      <pre className="code">{`import { init } from '@devsight/web';
+      <pre className="code">{`import { init } from '@capybara/web';
 
 if (import.meta.env.DEV) init({ appName: 'My web app' });`}</pre>
 
@@ -51,7 +51,7 @@ if (import.meta.env.DEV) init({ appName: 'My web app' });`}</pre>
       <h2>Optional: edit React Native storage</h2>
       <p>Install the SDK for storage editing and explicitly configured instances. Apps with the SDK are skipped by the Metro bridge.</p>
       <pre className="code">{`import AsyncStorage from '@react-native-async-storage/async-storage';
-import { asyncStorage, init } from '@devsight/react-native';
+import { asyncStorage, init } from '@capybara/react-native';
 
 if (__DEV__) init({ appName: 'My app', storage: [asyncStorage(AsyncStorage)] });`}</pre>
 

@@ -1,6 +1,6 @@
 import http from 'node:http';
 import https from 'node:https';
-import type { DiagnosisCheck, NetworkDiagnosis } from '@devsight/protocol';
+import type { DiagnosisCheck, NetworkDiagnosis } from '@capybara/protocol';
 
 export interface DiagnoseInput {
   url: string;
@@ -25,7 +25,7 @@ const BROWSER_HEADERS = new Set([
   'content-length', 'cookie', 'date', 'dnt', 'expect', 'host', 'keep-alive', 'origin', 'referer', 'te', 'trailer',
   'transfer-encoding', 'upgrade', 'user-agent', 'via',
 ]);
-/** Never sent again from Devsight: they carry the user's credentials. */
+/** Never sent again from Capybara: they carry the user's credentials. */
 const SECRET_HEADERS = new Set(['authorization', 'proxy-authorization']);
 /** What the SDK's `redactHeaders` option leaves behind. */
 const REDACTED = '[redacted]';
@@ -95,7 +95,7 @@ export async function diagnoseRequest(input: DiagnoseInput): Promise<NetworkDiag
       // Browsers also trust local CAs (mkcert, a company proxy) from the system store, which Node
       // does not read. Keep checking CORS without verification and leave the verdict open.
       certificate = describeNetworkError(error, target);
-      check('info', 'Certificate', `${certificate}. That is fine if the browser trusts it, for example a mkcert or company CA. Devsight checked the rest without verifying it.`);
+      check('info', 'Certificate', `${certificate}. That is fine if the browser trusts it, for example a mkcert or company CA. Capybara checked the rest without verifying it.`);
       return ask(method, target, headers, note);
     }
   };
@@ -195,7 +195,7 @@ export async function diagnoseRequest(input: DiagnoseInput): Promise<NetworkDiag
         break;
       }
       if (hop === MAX_REDIRECTS) {
-        check('info', 'Redirects', `Devsight stopped after ${MAX_REDIRECTS} redirects.`);
+        check('info', 'Redirects', `Capybara stopped after ${MAX_REDIRECTS} redirects.`);
         break;
       }
       if (next.origin !== target.origin && target.origin !== origin) tainted = true;
@@ -205,7 +205,7 @@ export async function diagnoseRequest(input: DiagnoseInput): Promise<NetworkDiag
     // A simple POST goes out without a preflight, and sending it again could change data.
     const answer = await ask('OPTIONS', url, { Origin: origin, 'Access-Control-Request-Method': method }, ` (the ${method} itself is not sent again)`);
     if (typeof answer === 'string') return unreachable(answer);
-    cors('OPTIONS', `The server's answer to OPTIONS`, `the browser most likely hid the answer to the ${method} (Devsight did not send the ${method} again, since that could change data)`, answer);
+    cors('OPTIONS', `The server's answer to OPTIONS`, `the browser most likely hid the answer to the ${method} (Capybara did not send the ${method} again, since that could change data)`, answer);
   } else if (!crossOrigin) {
     const answer = await ask('HEAD', url, {}, ` (the ${method} itself is not sent again)`);
     if (typeof answer === 'string') return unreachable(answer);
@@ -223,7 +223,7 @@ export async function diagnoseRequest(input: DiagnoseInput): Promise<NetworkDiag
   if (method === 'GET' || method === 'HEAD') {
     return result('ok', `The server allows ${origin}, so CORS is not the problem, at least without the app's credentials. Other causes: a different answer when the app sends its Authorization header or cookies, ${ELSEWHERE}.`);
   }
-  return result('ok', `The server allows ${origin} when asked with OPTIONS. Devsight did not send the ${method} again, since that could change data, so it cannot see that answer: if it lacks Access-Control-Allow-Origin (common for error responses), the browser hides it. Other causes: ${ELSEWHERE}.`);
+  return result('ok', `The server allows ${origin} when asked with OPTIONS. Capybara did not send the ${method} again, since that could change data, so it cannot see that answer: if it lacks Access-Control-Allow-Origin (common for error responses), the browser hides it. Other causes: ${ELSEWHERE}.`);
 }
 
 function exchange(method: string, url: URL, headers: Record<string, string>, insecure: boolean): Promise<Answer> {

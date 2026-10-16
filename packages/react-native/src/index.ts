@@ -4,12 +4,12 @@ import {
   getActiveClient,
   networkPlugin,
   storagePlugin,
-  type DevsightClient,
+  type CapybaraClient,
   type NetworkPluginOptions,
   type Plugin,
   type StorageAdapter,
-} from '@devsight/core';
-import { CLIENT_PATH, DEFAULT_PORT, type DeviceInfo, type Platform as DevsightPlatform } from '@devsight/protocol';
+} from '@capybara/core';
+import { CLIENT_PATH, DEFAULT_PORT, type DeviceInfo, type Platform as CapybaraPlatform } from '@capybara/protocol';
 import { NativeModules, Platform } from 'react-native';
 import { errorUtilsPlugin } from './errors.js';
 import { devToolSockets, formatHost, hostFromUrl, portFromUrl } from './host.js';
@@ -22,7 +22,7 @@ const DEV_SERVER_NOISE = [/\/symbolicate(\?|$)/, /\/open-stack-frame(\?|$)/];
 export interface InitOptions {
   /** Shown in the session picker. */
   appName?: string;
-  /** Machine running `devsight`. Defaults to the host serving the JS bundle (Metro). */
+  /** Machine running `capybara`. Defaults to the host serving the JS bundle (Metro). */
   host?: string;
   port?: number;
   /** Pass false to skip setup, e.g. `enabled: __DEV__`. */
@@ -35,7 +35,7 @@ export interface InitOptions {
   plugins?: Plugin[];
 }
 
-export function init(options: InitOptions = {}): DevsightClient | undefined {
+export function init(options: InitOptions = {}): CapybaraClient | undefined {
   if (options.enabled === false) return undefined;
   // Fast Refresh can re-run the entry file; patching again would record everything twice.
   const existing = getActiveClient();
@@ -63,7 +63,7 @@ export function init(options: InitOptions = {}): DevsightClient | undefined {
     session: {
       appName: options.appName ?? `React Native (${Platform.OS})`,
       platform: platformName(),
-      sdk: { name: '@devsight/react-native', version: SDK_VERSION },
+      sdk: { name: '@capybara/react-native', version: SDK_VERSION },
       device: deviceInfo(),
       runtime: runtimeName(),
     },
@@ -99,7 +99,7 @@ function defaultHost(): string {
   return Platform.OS === 'android' ? '10.0.2.2' : 'localhost';
 }
 
-function platformName(): DevsightPlatform {
+function platformName(): CapybaraPlatform {
   const os: string = Platform.OS;
   return os === 'ios' || os === 'android' || os === 'windows' || os === 'macos' || os === 'web' ? os : 'unknown';
 }
@@ -133,7 +133,7 @@ function runtimeName(): string {
   return version ? `${engine} · RN ${version.major}.${version.minor}.${version.patch}` : engine;
 }
 
-export { getActiveClient } from '@devsight/core';
-export type { DevsightClient, NetworkPluginOptions, Plugin, StorageAdapter } from '@devsight/core';
+export { getActiveClient } from '@capybara/core';
+export type { CapybaraClient, NetworkPluginOptions, Plugin, StorageAdapter } from '@capybara/core';
 export { asyncStorage, mmkvStorage } from './storage.js';
 export type { AdapterOptions, AsyncStorageLike, MMKVLike } from './storage.js';

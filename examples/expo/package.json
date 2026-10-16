@@ -9,7 +9,7 @@
     "android": "expo start --android"
   },
   "dependencies": {
-    "@devsight/react-native": "0.1.0",
+    "@capybara/react-native": "0.1.0",
     "@react-native-async-storage/async-storage": "2.2.0",
     "expo": "~57.0.26",
     "react": "19.2.3",

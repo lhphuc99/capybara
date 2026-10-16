@@ -1,8 +1,8 @@
 {
-  "name": "@devsight/ui",
+  "name": "@capybara/ui",
   "version": "0.1.0",
   "private": true,
-  "description": "Devsight viewer UI, bundled into the devsight CLI",
+  "description": "Capybara viewer UI, bundled into the capybara CLI",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -17,7 +17,7 @@
     "react-dom": "19.2.3"
   },
   "devDependencies": {
-    "@devsight/protocol": "0.1.0",
+    "@capybara/protocol": "0.1.0",
     "@types/react": "~19.2.2",
     "@types/react-dom": "~19.2.2",
     "@vitejs/plugin-react": "^6.1.2",

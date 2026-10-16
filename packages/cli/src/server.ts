@@ -6,7 +6,7 @@ import {
   VIEWER_PATH,
   type ClientToServer,
   type CommandResult,
-  type DevsightEvent,
+  type CapybaraEvent,
   type EventOf,
   type ServerInfo,
   type ServerToClient,
@@ -14,7 +14,7 @@ import {
   type SessionInfo,
   type SessionMeta,
   type ViewerToServer,
-} from '@devsight/protocol';
+} from '@capybara/protocol';
 import { WebSocket, WebSocketServer, type RawData } from 'ws';
 import { diagnoseRequest } from './diagnose.js';
 import { isAllowedHost, isAllowedViewerOrigin } from './security.js';
@@ -41,14 +41,14 @@ export interface ServerOptions {
   version?: string;
 }
 
-export interface DevsightServer {
+export interface CapybaraServer {
   start(): Promise<{ port: number }>;
   close(): Promise<void>;
 }
 
 interface Session {
   info: SessionInfo;
-  events: DevsightEvent[];
+  events: CapybaraEvent[];
   lastSeq: number;
   socket: WebSocket | null;
   lastSeen: number;
@@ -64,7 +64,7 @@ interface PendingCommand {
 /** Apps killed without a close frame (force-quit, lost Wi-Fi) are only noticed by missing pongs. */
 const HEARTBEAT_MS = 15_000;
 
-export function createServer(options: ServerOptions): DevsightServer {
+export function createServer(options: ServerOptions): CapybaraServer {
   const maxSessions = options.maxSessions ?? 20;
   const maxEvents = options.maxEventsPerSession ?? 5_000;
   const commandTimeout = options.commandTimeout ?? 10_000;
@@ -177,9 +177,9 @@ export function createServer(options: ServerOptions): DevsightServer {
 
   const ingest = (session: Session, events: unknown) => {
     if (!Array.isArray(events)) return;
-    const fresh: DevsightEvent[] = [];
+    const fresh: CapybaraEvent[] = [];
     // After a reconnect the app replays from its buffer; anything at or below lastSeq is a duplicate.
-    for (const event of events as DevsightEvent[]) {
+    for (const event of events as CapybaraEvent[]) {
       if (event && typeof event.seq === 'number' && typeof event.kind === 'string' && event.seq > session.lastSeq) {
         fresh.push(event);
         session.lastSeq = event.seq;

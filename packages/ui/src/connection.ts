@@ -6,7 +6,7 @@ import {
   type ServerToViewer,
   type StorageCommands,
   type ViewerToServer,
-} from '@devsight/protocol';
+} from '@capybara/protocol';
 
 export type ConnectionStatus = 'connecting' | 'open' | 'closed';
 
@@ -26,9 +26,9 @@ let commandCounter = 0;
 const pending = new Map<string, PendingCommand>();
 
 function viewerUrl(): string {
-  const configured = import.meta.env.VITE_DEVSIGHT_SERVER;
+  const configured = import.meta.env.VITE_CAPYBARA_SERVER;
   if (configured) return `${configured}${VIEWER_PATH}`;
-  // Under `vite dev` the page comes from Vite, not from the Devsight server.
+  // Under `vite dev` the page comes from Vite, not from the Capybara server.
   if (import.meta.env.DEV) return `ws://${location.hostname}:${DEFAULT_PORT}${VIEWER_PATH}`;
   return `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}${VIEWER_PATH}`;
 }
@@ -57,7 +57,7 @@ export function connect(handlers: Handlers): void {
       if (socket === ws) socket = null;
       for (const [id, command] of pending) {
         clearTimeout(command.timer);
-        command.reject(new Error('Lost the connection to the Devsight server'));
+        command.reject(new Error('Lost the connection to the Capybara server'));
         pending.delete(id);
       }
       handlers.onStatus('closed');
@@ -74,7 +74,7 @@ export function send(message: ViewerToServer): void {
 function request<T>(message: (id: string) => ViewerToServer, timeout = 15_000): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     if (socket?.readyState !== WebSocket.OPEN) {
-      reject(new Error('Not connected to the Devsight server'));
+      reject(new Error('Not connected to the Capybara server'));
       return;
     }
     const id = `v${++commandCounter}`;

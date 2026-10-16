@@ -1,4 +1,4 @@
-import type { BodyPreview, EventPayloads } from '@devsight/protocol';
+import type { BodyPreview, EventPayloads } from '@capybara/protocol';
 
 export type WebSocketEventKind = 'ws.connect' | 'ws.open' | 'ws.message' | 'ws.error' | 'ws.close';
 
@@ -83,7 +83,7 @@ export function hookWebSockets(
     const list = protocols === undefined || protocols === null ? [] : (Array.isArray(protocols) ? protocols : [protocols]).map(String);
     const address = String(socket.url || url || '');
     // The SDK's own connection (INTERNAL_SOCKET in transport.ts); recording it would feed itself.
-    if (socket.__DEVSIGHT_INTERNAL__ || isIgnored(address, list)) {
+    if (socket.__CAPYBARA_INTERNAL__ || isIgnored(address, list)) {
       sockets.set(socket, ignored);
       return undefined;
     }

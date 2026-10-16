@@ -1,4 +1,4 @@
-import type { SerializedValue } from '@devsight/protocol';
+import type { SerializedValue } from '@capybara/protocol';
 import { useState, type ReactNode } from 'react';
 import { formatKey, isSpecial, preview } from '../format';
 

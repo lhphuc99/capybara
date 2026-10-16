@@ -1,10 +1,10 @@
 {
-  "name": "devsight",
+  "name": "capybara",
   "version": "0.1.0",
   "description": "Debug React Native and web apps: logs, network and storage in a local UI",
   "type": "module",
   "bin": {
-    "devsight": "./dist/bin.js"
+    "capybara": "./dist/bin.js"
   },
   "main": "./dist/server.js",
   "types": "./dist/server.d.ts",
@@ -27,8 +27,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@devsight/core": "0.1.0",
-    "@devsight/protocol": "0.1.0",
+    "@capybara/core": "0.1.0",
+    "@capybara/protocol": "0.1.0",
     "ws": "^8.22.0"
   },
   "devDependencies": {

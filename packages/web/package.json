@@ -1,7 +1,7 @@
 {
-  "name": "@devsight/web",
+  "name": "@capybara/web",
   "version": "0.1.0",
-  "description": "Browser SDK for Devsight: logs, network and storage for React, Vite and Next.js apps",
+  "description": "Browser SDK for Capybara: logs, network and storage for React, Vite and Next.js apps",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -24,7 +24,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@devsight/core": "0.1.0",
-    "@devsight/protocol": "0.1.0"
+    "@capybara/core": "0.1.0",
+    "@capybara/protocol": "0.1.0"
   }
 }

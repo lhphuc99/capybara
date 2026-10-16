@@ -128,7 +128,7 @@ code {
 }
 
 .brand svg {
-  color: var(--accent);
+  flex: none;
 }
 
 .main {
