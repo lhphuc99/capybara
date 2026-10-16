@@ -14,7 +14,7 @@ import { NativeModules, Platform } from 'react-native';
 import { errorUtilsPlugin } from './errors.js';
 import { devToolSockets, formatHost, hostFromUrl, portFromUrl } from './host.js';
 
-export const SDK_VERSION = '0.1.0';
+export const SDK_VERSION = '0.2.0';
 
 /** Requests React Native sends to Metro on its own (LogBox symbolication, "open in editor"). */
 const DEV_SERVER_NOISE = [/\/symbolicate(\?|$)/, /\/open-stack-frame(\?|$)/];
