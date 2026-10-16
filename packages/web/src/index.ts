@@ -17,6 +17,8 @@ export const SDK_VERSION = '0.1.0';
 
 /** Traffic of a dev server's own tooling: Next.js error overlay requests and its HMR socket. */
 const DEV_SERVER_NOISE = [/\/__nextjs_[\w-]+(\?|$)/, /\/_next\/webpack-hmr(\?|$)/];
+/** React's development build prints this on every page when the React DevTools extension is missing. */
+const CONSOLE_NOISE = [/Download the React DevTools for a better development experience/];
 
 export interface InitOptions {
   /** Shown in the session picker. Defaults to the page title. */
@@ -42,7 +44,7 @@ export function init(options: InitOptions = {}): CapybaraClient | undefined {
   if (existing) return existing;
 
   const plugins: Plugin[] = [];
-  if (options.logs !== false) plugins.push(consolePlugin(), windowErrorsPlugin());
+  if (options.logs !== false) plugins.push(consolePlugin({ ignore: CONSOLE_NOISE }), windowErrorsPlugin());
   if (options.network !== false) {
     const network = typeof options.network === 'object' ? options.network : {};
     plugins.push(

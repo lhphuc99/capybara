@@ -3,7 +3,14 @@ import type { Plugin } from '../client.js';
 
 const LEVELS: LogLevel[] = ['debug', 'log', 'info', 'warn', 'error'];
 
-export function consolePlugin(): Plugin {
+export interface ConsolePluginOptions {
+  /** Calls whose first argument is a string matching one of these are not recorded; they still print. */
+  ignore?: RegExp[];
+}
+
+export function consolePlugin(options: ConsolePluginOptions = {}): Plugin {
+  const ignore = options.ignore ?? [];
+  const ignored = (args: unknown[]) => typeof args[0] === 'string' && ignore.some((pattern) => pattern.test(args[0] as string));
   return {
     name: 'console',
     setup(ctx) {
@@ -17,7 +24,7 @@ export function consolePlugin(): Plugin {
         if (typeof original !== 'function') continue;
         originals.set(level, original);
         target[level] = function (this: unknown, ...args: unknown[]) {
-          if (!capturing) {
+          if (!capturing && !ignored(args)) {
             capturing = true;
             try {
               ctx.emit('log', { level, source: 'console', args: args.map((arg) => ctx.serialize(arg)) });

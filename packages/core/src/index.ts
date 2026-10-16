@@ -3,7 +3,7 @@ export type { ClientOptions, CapybaraClient, Plugin, PluginContext } from './cli
 export { serialize } from './serialize.js';
 export type { SerializeOptions } from './serialize.js';
 export type { SocketFactory, SocketLike } from './transport.js';
-export { consolePlugin } from './plugins/console.js';
+export { consolePlugin, type ConsolePluginOptions } from './plugins/console.js';
 export { networkPlugin } from './plugins/network.js';
 export type { NetworkPluginOptions } from './plugins/network.js';
 export { hookWebSockets } from './plugins/websocket.js';

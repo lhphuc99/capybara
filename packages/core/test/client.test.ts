@@ -158,6 +158,25 @@ describe('createClient', () => {
     }
   });
 
+  it('prints but does not record console calls that match an ignore pattern', () => {
+    const calls: unknown[][] = [];
+    const realInfo = console.info;
+    console.info = (...args: unknown[]) => calls.push(args);
+    try {
+      const { client, sockets } = setup([consolePlugin({ ignore: [/React DevTools/] })]);
+      sockets[0]!.open();
+      sockets[0]!.receive({ t: 'welcome', lastSeq: 0 });
+      console.info('%cDownload the React DevTools for a better development experience', 'font-weight:bold');
+      console.info('kept', 'React DevTools');
+      vi.runOnlyPendingTimers();
+      expect(calls).toHaveLength(2);
+      expect(sockets[0]!.events()).toMatchObject([{ kind: 'log', payload: { level: 'info', args: ['kept', 'React DevTools'] } }]);
+      client.stop();
+    } finally {
+      console.info = realInfo;
+    }
+  });
+
   it('replaces an earlier client instead of patching twice', () => {
     const realLog = console.log;
     const stub = () => {};
