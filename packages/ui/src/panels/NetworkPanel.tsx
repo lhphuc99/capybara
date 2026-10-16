@@ -1,8 +1,9 @@
 import type { BodyPreview, NetworkDiagnosis } from '@capybara/protocol';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { JsonTree } from '../components/JsonTree';
 import { diagnose } from '../connection';
+import { useFollow } from '../follow';
 import {
   copyText,
   decodeSocketIo,
@@ -37,7 +38,6 @@ export function NetworkPanel({ session }: { session: SessionState }) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [follow, setFollow] = useState(true);
   const bodyRef = useRef<HTMLDivElement>(null);
   const { network } = session;
 
@@ -65,10 +65,7 @@ export function NetworkPanel({ session }: { session: SessionState }) {
     useFlushSync: false,
   });
 
-  useLayoutEffect(() => {
-    const body = bodyRef.current;
-    if (follow && body) body.scrollTop = body.scrollHeight;
-  });
+  const { onScroll, onWheel } = useFollow(bodyRef, virtualizer.getTotalSize(), ROW_HEIGHT);
 
   useEffect(() => {
     if (!selected) return;
@@ -78,13 +75,6 @@ export function NetworkPanel({ session }: { session: SessionState }) {
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [selected]);
-
-  const onScroll = () => {
-    const body = bodyRef.current;
-    if (!body) return;
-    const atBottom = body.scrollHeight - body.scrollTop - body.clientHeight < ROW_HEIGHT;
-    if (atBottom !== follow) setFollow(atBottom);
-  };
 
   return (
     <section className="panel">
@@ -134,7 +124,7 @@ export function NetworkPanel({ session }: { session: SessionState }) {
               <p>Requests made with fetch, XMLHttpRequest or axios, and WebSocket connections, show up here.</p>
             </div>
           ) : (
-            <div className="net-body" ref={bodyRef} onScroll={onScroll}>
+            <div className="net-body" ref={bodyRef} onScroll={onScroll} onWheel={onWheel}>
               <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
                 {virtualizer.getVirtualItems().map((item) => {
                   const entry = visible[item.index]!;
@@ -228,7 +218,6 @@ function SocketMessages({ entry }: { entry: SocketEntry }) {
   const [direction, setDirection] = useState<'all' | 'sent' | 'received'>('all');
   const [query, setQuery] = useState('');
   const [selectedSeq, setSelectedSeq] = useState<number | null>(null);
-  const [follow, setFollow] = useState(true);
   const listRef = useRef<HTMLDivElement>(null);
   const socketIo = entry.url.includes('/socket.io/');
   const matcher = useMemo(() => makeMatcher(query), [query]);
@@ -252,17 +241,7 @@ function SocketMessages({ entry }: { entry: SocketEntry }) {
     useFlushSync: false,
   });
 
-  useLayoutEffect(() => {
-    const list = listRef.current;
-    if (follow && list) list.scrollTop = list.scrollHeight;
-  });
-
-  const onScroll = () => {
-    const list = listRef.current;
-    if (!list) return;
-    const atBottom = list.scrollHeight - list.scrollTop - list.clientHeight < MESSAGE_ROW_HEIGHT;
-    if (atBottom !== follow) setFollow(atBottom);
-  };
+  const { onScroll, onWheel } = useFollow(listRef, virtualizer.getTotalSize(), MESSAGE_ROW_HEIGHT);
 
   return (
     <div className="ws-pane">
@@ -298,7 +277,7 @@ function SocketMessages({ entry }: { entry: SocketEntry }) {
           <strong>{socket.messages.length === 0 ? 'No messages yet' : 'No matching messages'}</strong>
         </div>
       ) : (
-        <div className="ws-list" ref={listRef} onScroll={onScroll}>
+        <div className="ws-list" ref={listRef} onScroll={onScroll} onWheel={onWheel}>
           <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
             {virtualizer.getVirtualItems().map((item) => {
               const message = visible[item.index]!;

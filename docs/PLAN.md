@@ -173,6 +173,7 @@ Khi thử WebSocket:
 
 Khi thử web và Next.js:
 
+- Danh sách Logs, Network và message WebSocket không cuộn lên được bằng trackpad: đoạn ghim xuống cuối chạy sau mọi lần render, mà react-virtual render lại khi cuộn, nên mỗi bước cuộn vài pixel (chưa qua ngưỡng 32px) bị kéo về cuối. Bánh xe chuột cuộn từng nấc lớn nên không gặp. Giờ chỉ ghim khi chiều cao nội dung đổi, và cuộn lên là dừng theo dõi ngay (hook `useFollow`). Đã thử trên app desktop: 80 bước 3px cuộn đủ 240px; đang cuộn lên thì log mới không kéo xuống; ở cuối thì vẫn bám theo log mới.
 - Dev overlay của Next.js gửi `/__nextjs_original-stack-frames` mỗi khi có `console.error`, lẫn vào tab Network. SDK web giờ bỏ qua `/__nextjs_*`, như SDK React Native bỏ qua `/symbolicate`.
 - Ghi cookie trước đây không phát event nên tab Storage không tự refresh. Giờ dùng Cookie Store API ở trình duyệt có hỗ trợ (đã kiểm trên Chrome).
 

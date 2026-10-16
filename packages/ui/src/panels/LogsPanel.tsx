@@ -1,7 +1,8 @@
 import type { LogLevel, LogSource, SerializedValue } from '@capybara/protocol';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { memo, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useMemo, useRef, useState } from 'react';
 import { JsonTree } from '../components/JsonTree';
+import { useFollow } from '../follow';
 import { formatLogMessage, formatTime, isSpecial, makeMatcher } from '../format';
 import { clearSession, type LogEntry, type SessionState } from '../store';
 
@@ -45,7 +46,6 @@ export function LogsPanel({ session }: { session: SessionState }) {
   const [query, setQuery] = useState('');
   const [hidden, setHidden] = useState<ReadonlySet<LogLevel>>(() => new Set());
   const [expanded, setExpanded] = useState<ReadonlySet<number>>(() => new Set());
-  const [follow, setFollow] = useState(true);
   const listRef = useRef<HTMLDivElement>(null);
   const { logs } = session;
 
@@ -70,18 +70,7 @@ export function LogsPanel({ session }: { session: SessionState }) {
     useFlushSync: false,
   });
 
-  // Runs after every render, including the ones caused by row measurement, so the view stays pinned.
-  useLayoutEffect(() => {
-    const list = listRef.current;
-    if (follow && list) list.scrollTop = list.scrollHeight;
-  });
-
-  const onScroll = () => {
-    const list = listRef.current;
-    if (!list) return;
-    const atBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 32;
-    if (atBottom !== follow) setFollow(atBottom);
-  };
+  const { follow, setFollow, onScroll, onWheel } = useFollow(listRef, virtualizer.getTotalSize(), 32);
 
   const toggleLevel = (level: LogLevel) => {
     const next = new Set(hidden);
@@ -136,7 +125,7 @@ export function LogsPanel({ session }: { session: SessionState }) {
             <p>Anything the app writes with console.log, console.warn or console.error shows up here.</p>
           </div>
         ) : (
-          <div className="log-list" ref={listRef} onScroll={onScroll}>
+          <div className="log-list" ref={listRef} onScroll={onScroll} onWheel={onWheel}>
             <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
               {virtualizer.getVirtualItems().map((item) => {
                 const entry = visible[item.index]!;
