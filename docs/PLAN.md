@@ -1,6 +1,6 @@
 # Capybara — Kế hoạch MVP
 
-> Tên chính thức là Capybara, đổi từ Devsight ngày 16/10/2026 (thư mục repo vẫn tên `devsight`). Trên npm, scope `@capybara` chưa có package nào; gói `capybara` từng có người đăng và đã bị gỡ ngày 3/10/2026, nên cần kiểm tra lại trước khi publish.
+> Tên chính thức là Capybara, đổi từ Devsight ngày 16/10/2026. Trên npm, scope `@capybara` chưa có package nào; gói `capybara` từng có người đăng và đã bị gỡ ngày 3/10/2026, nên cần kiểm tra lại trước khi publish.
 
 ## Mục tiêu
 
