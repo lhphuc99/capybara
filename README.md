@@ -4,6 +4,8 @@
 
 Debug React Native and web apps from one place: logs, network (including WebSockets) and storage, streamed live to a local UI.
 
+**[Website](https://capybara-devtools.chanieshop.com)** · [Download](https://capybara-devtools.chanieshop.com/#download)
+
 > Status: MVP, not published to npm yet. Formerly called Devsight.
 
 ## Quick start (from this repo)
@@ -106,6 +108,8 @@ The SDK finds your machine from the Metro bundle URL, so simulators and phones o
 
 The same server and UI in a window of their own, with a Dock or taskbar icon and no terminal to keep open. The code is in `apps/desktop` (Electron).
 
+Download it from the [website](https://capybara-devtools.chanieshop.com/#download) or [GitHub Releases](https://github.com/lhphuc99/capybara/releases), or build it yourself:
+
 ```bash
 npm run desktop                  # build it and open the window; run `npm run build` once before
 npm run desktop:package          # macOS: .dmg and .zip
@@ -191,5 +195,7 @@ npm run dev:ui
 ```
 
 For a change that should go into the next release, run `npx changeset`, pick the packages and describe the change for users; commit the file it writes in `.changeset/`. All packages share one version number.
+
+The website is in `website/`, outside the workspaces, with its own dependencies; see [website/README.md](website/README.md). Changes to it deploy to capybara-devtools.chanieshop.com when they reach `main`.
 
 Architecture, protocol and roadmap (Vietnamese): [docs/PLAN.md](docs/PLAN.md). Releasing (Vietnamese): [docs/RELEASING.md](docs/RELEASING.md).
