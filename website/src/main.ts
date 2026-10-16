@@ -1,4 +1,4 @@
-import { REPO, REPO_URL } from './config';
+import { NPM_PUBLISHED, REPO, REPO_URL } from './config';
 import {
   archFromHints,
   detectPlatform,
@@ -89,11 +89,20 @@ function showRelease(release: ParsedRelease | null) {
   const releases = `${REPO_URL}/releases`;
 
   if (!release) {
-    const fromSource = `${REPO_URL}#quick-start-from-this-repo`;
-    hero.textContent = 'Run from source';
-    hero.href = fromSource;
-    meta.textContent = 'The first release is on its way.';
-    summary.replaceChildren('The first release is on its way. Until then, ', link(fromSource, 'run Capybara from source'), '.');
+    if (NPM_PUBLISHED) {
+      const command = document.createElement('code');
+      command.textContent = 'npx capybara-devtools';
+      hero.textContent = 'Get started';
+      hero.href = '#get-started';
+      meta.textContent = 'The desktop app is on its way. Today, run npx capybara-devtools.';
+      summary.replaceChildren('The first desktop release is on its way. Until then, run ', command, ' and use Capybara in your browser.');
+    } else {
+      const fromSource = `${REPO_URL}#quick-start-from-this-repo`;
+      hero.textContent = 'Run from source';
+      hero.href = fromSource;
+      meta.textContent = 'The first release is on its way.';
+      summary.replaceChildren('The first release is on its way. Until then, ', link(fromSource, 'run Capybara from source'), '.');
+    }
     for (const list of document.querySelectorAll<HTMLElement>('[data-files]')) {
       list.replaceChildren(item(span('unavailable', 'Coming with the first release')));
     }

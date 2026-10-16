@@ -465,9 +465,13 @@ h3 {
   min-width: 0;
 }
 
-ol.step-body {
+.step-body ol {
   margin: 0;
   padding-left: 20px;
+}
+
+.step-body li .code-block {
+  margin-top: 10px;
 }
 
 .step li + li {
