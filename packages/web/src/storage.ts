@@ -1,5 +1,5 @@
-import type { StorageAdapter } from '@capybara/core';
-import type { StorageOp } from '@capybara/protocol';
+import type { StorageAdapter } from '@capybara-devtools/core';
+import type { StorageOp } from '@capybara-devtools/protocol';
 
 type Listener = (op: StorageOp, key?: string) => void;
 

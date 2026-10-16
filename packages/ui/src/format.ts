@@ -7,7 +7,7 @@ import {
   type Platform,
   type SerializedValue,
   type SessionInfo,
-} from '@capybara/protocol';
+} from '@capybara-devtools/protocol';
 import type { LogEntry, NetworkEntry } from './store';
 
 export {
@@ -21,7 +21,7 @@ export {
   preview,
   valueText,
   type Matcher,
-} from '@capybara/protocol';
+} from '@capybara-devtools/protocol';
 
 export const LOG_SOURCE_LABELS: Record<LogSource, string | null> = {
   console: null,

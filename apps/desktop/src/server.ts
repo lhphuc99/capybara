@@ -1,6 +1,6 @@
 import net from 'node:net';
-import { VIEWER_PATH } from '@capybara/protocol';
-import { createServer, type CapybaraServer, type ServerOptions } from 'capybara';
+import { VIEWER_PATH } from '@capybara-devtools/protocol';
+import { createServer, type CapybaraServer, type ServerOptions } from 'capybara-devtools';
 import { WebSocket, type RawData } from 'ws';
 
 export class PortInUseError extends Error {
@@ -11,7 +11,7 @@ export class PortInUseError extends Error {
 
 export interface Started {
   port: number;
-  /** Null when another Capybara process (e.g. `npx capybara`) already serves the port. */
+  /** Null when another Capybara process (e.g. `npx capybara-devtools`) already serves the port. */
   server: CapybaraServer | null;
 }
 

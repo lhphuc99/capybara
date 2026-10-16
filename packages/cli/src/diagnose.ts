@@ -1,6 +1,6 @@
 import http from 'node:http';
 import https from 'node:https';
-import type { DiagnosisCheck, NetworkDiagnosis } from '@capybara/protocol';
+import type { DiagnosisCheck, NetworkDiagnosis } from '@capybara-devtools/protocol';
 
 export interface DiagnoseInput {
   url: string;

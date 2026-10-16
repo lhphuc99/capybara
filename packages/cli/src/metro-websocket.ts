@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { hookWebSockets, type WebSocketEventKind, type WebSocketHookOptions } from '@capybara/core';
+import { hookWebSockets, type WebSocketEventKind, type WebSocketHookOptions } from '@capybara-devtools/core';
 
 type CdpCall = <T>(method: string, params?: object) => Promise<T>;
 

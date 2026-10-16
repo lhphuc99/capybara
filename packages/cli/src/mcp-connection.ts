@@ -8,7 +8,7 @@ import {
   type SessionMeta,
   type StorageCommands,
   type ViewerToServer,
-} from '@capybara/protocol';
+} from '@capybara-devtools/protocol';
 import { WebSocket } from 'ws';
 
 const TIMEOUT_MS = 10_000;
@@ -170,7 +170,7 @@ export class ViewerConnection {
 
 function notRunning(address: string): Error {
   return new Error(
-    `Capybara is not running on ${address}. Open the Capybara app or run \`npx capybara\`, then try again. ` +
+    `Capybara is not running on ${address}. Open the Capybara app or run \`npx capybara-devtools\`, then try again. ` +
       'If it uses another port, start the MCP server with --port.',
   );
 }

@@ -1,4 +1,4 @@
-import type { SerializedValue } from '@capybara/protocol';
+import type { SerializedValue } from '@capybara-devtools/protocol';
 import { useState, type ReactNode } from 'react';
 import { formatKey, isSpecial, preview, valueText } from '../format';
 import { CopyButton } from './CopyButton';

@@ -6,7 +6,7 @@ import {
   type ServerToViewer,
   type StorageCommands,
   type ViewerToServer,
-} from '@capybara/protocol';
+} from '@capybara-devtools/protocol';
 
 export type ConnectionStatus = 'connecting' | 'open' | 'closed';
 

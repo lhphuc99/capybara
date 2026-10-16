@@ -1,7 +1,26 @@
 {
-  "name": "@capybara/react-native",
+  "name": "@capybara-devtools/react-native",
   "version": "0.1.0",
   "description": "React Native SDK for Capybara: logs, network and storage for React Native and Expo apps",
+  "keywords": [
+    "capybara",
+    "react-native",
+    "expo",
+    "devtools",
+    "debugger",
+    "logs",
+    "network",
+    "asyncstorage",
+    "mmkv"
+  ],
+  "homepage": "https://github.com/lhphuc99/capybara#readme",
+  "bugs": "https://github.com/lhphuc99/capybara/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lhphuc99/capybara.git",
+    "directory": "packages/react-native"
+  },
+  "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -24,13 +43,16 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@capybara/core": "0.1.0",
-    "@capybara/protocol": "0.1.0"
+    "@capybara-devtools/core": "0.1.0",
+    "@capybara-devtools/protocol": "0.1.0"
   },
   "peerDependencies": {
     "react-native": ">=0.76"
   },
   "devDependencies": {
     "react-native": "0.86.3"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

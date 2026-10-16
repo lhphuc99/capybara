@@ -1,4 +1,4 @@
-import { METRO_SDK, type StorageAdapterInfo, type StorageEntries, type StorageEntry } from '@capybara/protocol';
+import { METRO_SDK, type StorageAdapterInfo, type StorageEntries, type StorageEntry } from '@capybara-devtools/protocol';
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { CopyButton } from '../components/CopyButton';
 import { JsonTree } from '../components/JsonTree';
@@ -129,7 +129,7 @@ function StorageBrowser({ session }: { session: SessionState }) {
           <strong>No storage configured</strong>
           <p>Pass the storages your app uses to init():</p>
           <pre className="code left">{`import AsyncStorage from '@react-native-async-storage/async-storage';
-import { asyncStorage, mmkvStorage } from '@capybara/react-native';
+import { asyncStorage, mmkvStorage } from '@capybara-devtools/react-native';
 
 init({ storage: [asyncStorage(AsyncStorage), mmkvStorage(storage)] });`}</pre>
         </div>

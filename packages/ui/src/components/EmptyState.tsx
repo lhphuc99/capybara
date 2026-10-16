@@ -1,4 +1,4 @@
-import type { ServerInfo } from '@capybara/protocol';
+import type { ServerInfo } from '@capybara-devtools/protocol';
 import type { ConnectionStatus } from '../connection';
 
 interface Props {
@@ -12,7 +12,7 @@ export function EmptyState({ status, server }: Props) {
       <div className="onboarding">
         <h1>Connecting to the Capybara server…</h1>
         <p>
-          Start it with <code>npx capybara</code>. This page reconnects on its own.
+          Start it with <code>npx capybara-devtools</code>. This page reconnects on its own.
         </p>
       </div>
     );
@@ -38,7 +38,7 @@ export function EmptyState({ status, server }: Props) {
 
       <h2>Web: connect with the SDK</h2>
       <p>Load the SDK before the rest of your code to capture early logs and requests.</p>
-      <pre className="code">{`import { init } from '@capybara/web';
+      <pre className="code">{`import { init } from '@capybara-devtools/web';
 
 if (import.meta.env.DEV) init({ appName: 'My web app' });`}</pre>
 
@@ -51,7 +51,7 @@ if (import.meta.env.DEV) init({ appName: 'My web app' });`}</pre>
       <h2>Optional: edit React Native storage</h2>
       <p>Install the SDK for storage editing and explicitly configured instances. Apps with the SDK are skipped by the Metro bridge.</p>
       <pre className="code">{`import AsyncStorage from '@react-native-async-storage/async-storage';
-import { asyncStorage, init } from '@capybara/react-native';
+import { asyncStorage, init } from '@capybara-devtools/react-native';
 
 if (__DEV__) init({ appName: 'My app', storage: [asyncStorage(AsyncStorage)] });`}</pre>
 

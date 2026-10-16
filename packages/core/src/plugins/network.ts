@@ -1,4 +1,4 @@
-import type { BodyPreview, NetworkErrorPayload } from '@capybara/protocol';
+import type { BodyPreview, NetworkErrorPayload } from '@capybara-devtools/protocol';
 import type { Plugin, PluginContext } from '../client.js';
 import { errorMessage, now, randomId, utf8Length } from '../utils.js';
 import { hookWebSockets } from './websocket.js';

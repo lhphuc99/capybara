@@ -8,7 +8,7 @@ import {
   type SerializedValue,
   type ServerToClient,
   type SessionInfo,
-} from '@capybara/protocol';
+} from '@capybara-devtools/protocol';
 import { serialize, type SerializeOptions } from './serialize.js';
 import { Connection, nativeSocketFactory, type SocketFactory } from './transport.js';
 import { errorMessage, randomId } from './utils.js';

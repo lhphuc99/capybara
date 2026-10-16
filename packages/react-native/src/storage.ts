@@ -1,4 +1,4 @@
-import type { StorageAdapter } from '@capybara/core';
+import type { StorageAdapter } from '@capybara-devtools/core';
 
 /** Matches the default export of @react-native-async-storage/async-storage. */
 export interface AsyncStorageLike {

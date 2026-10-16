@@ -1,10 +1,10 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getActiveClient, networkPlugin, type NetworkPluginOptions } from '@capybara/core';
+import { getActiveClient, networkPlugin, type NetworkPluginOptions } from '@capybara-devtools/core';
 import { cookieStorage, init, webStorage } from '../src/index.js';
 
-vi.mock('@capybara/core', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@capybara/core')>();
+vi.mock('@capybara-devtools/core', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@capybara-devtools/core')>();
   return { ...actual, networkPlugin: vi.fn(actual.networkPlugin) };
 });
 
@@ -99,7 +99,7 @@ describe('init', () => {
   it('creates one client per page and describes the session', () => {
     document.title = 'Shop';
     const client = init({ port: 1 });
-    expect(client?.session).toMatchObject({ appName: 'Shop', platform: 'web', sdk: { name: '@capybara/web' } });
+    expect(client?.session).toMatchObject({ appName: 'Shop', platform: 'web', sdk: { name: '@capybara-devtools/web' } });
     expect(init()).toBe(client);
   });
 

@@ -1,4 +1,4 @@
-import type { BodyPreview, LogLevel, NetworkInitiator, Platform, SerializedValue } from '@capybara/protocol';
+import type { BodyPreview, LogLevel, NetworkInitiator, Platform, SerializedValue } from '@capybara-devtools/protocol';
 
 /** The parts of a Chrome DevTools Protocol `RemoteObject` the Metro bridge reads. */
 export interface RemoteObject {

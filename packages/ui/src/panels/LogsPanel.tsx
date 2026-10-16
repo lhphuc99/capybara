@@ -1,4 +1,4 @@
-import type { LogLevel } from '@capybara/protocol';
+import type { LogLevel } from '@capybara-devtools/protocol';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { memo, useMemo, useRef, useState } from 'react';
 import { CopyButton } from '../components/CopyButton';

@@ -1,7 +1,26 @@
 {
-  "name": "@capybara/web",
+  "name": "@capybara-devtools/web",
   "version": "0.1.0",
   "description": "Browser SDK for Capybara: logs, network and storage for React, Vite and Next.js apps",
+  "keywords": [
+    "capybara",
+    "devtools",
+    "debugger",
+    "logs",
+    "network",
+    "localstorage",
+    "react",
+    "vite",
+    "nextjs"
+  ],
+  "homepage": "https://github.com/lhphuc99/capybara#readme",
+  "bugs": "https://github.com/lhphuc99/capybara/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lhphuc99/capybara.git",
+    "directory": "packages/web"
+  },
+  "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -24,7 +43,10 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@capybara/core": "0.1.0",
-    "@capybara/protocol": "0.1.0"
+    "@capybara-devtools/core": "0.1.0",
+    "@capybara-devtools/protocol": "0.1.0"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

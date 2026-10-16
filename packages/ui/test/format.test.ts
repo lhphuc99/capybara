@@ -1,4 +1,4 @@
-import type { SerializedValue } from '@capybara/protocol';
+import type { SerializedValue } from '@capybara-devtools/protocol';
 import { describe, expect, it } from 'vitest';
 import { decodeSocketIo, logEntryText, valueText } from '../src/format';
 import type { LogEntry } from '../src/store';

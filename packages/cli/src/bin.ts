@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { DEFAULT_PORT } from '@capybara/protocol';
+import { DEFAULT_PORT } from '@capybara-devtools/protocol';
 import { reverseAndroidPorts } from './adb.js';
 import { DEFAULT_METRO_PORTS, startMetroBridge, type MetroBridge } from './metro.js';
 import { createServer, lanAddresses } from './server.js';

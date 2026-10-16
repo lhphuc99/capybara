@@ -1,4 +1,4 @@
-import type { BodyPreview, NetworkDiagnosis } from '@capybara/protocol';
+import type { BodyPreview, NetworkDiagnosis } from '@capybara-devtools/protocol';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { JsonTree } from '../components/JsonTree';

@@ -14,7 +14,7 @@ import {
   type SessionInfo,
   type SessionMeta,
   type ViewerToServer,
-} from '@capybara/protocol';
+} from '@capybara-devtools/protocol';
 import { WebSocket, WebSocketServer, type RawData } from 'ws';
 import { diagnoseRequest } from './diagnose.js';
 import { isAllowedHost, isAllowedViewerOrigin } from './security.js';

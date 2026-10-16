@@ -1,7 +1,18 @@
 {
-  "name": "@capybara/protocol",
+  "name": "@capybara-devtools/protocol",
   "version": "0.1.0",
   "description": "Wire protocol, and helpers to read its values, shared by the Capybara SDKs, server and UI",
+  "keywords": [
+    "capybara"
+  ],
+  "homepage": "https://github.com/lhphuc99/capybara#readme",
+  "bugs": "https://github.com/lhphuc99/capybara/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lhphuc99/capybara.git",
+    "directory": "packages/protocol"
+  },
+  "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -21,5 +32,8 @@
     "build": "tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch",
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

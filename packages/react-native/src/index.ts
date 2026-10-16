@@ -8,8 +8,8 @@ import {
   type NetworkPluginOptions,
   type Plugin,
   type StorageAdapter,
-} from '@capybara/core';
-import { CLIENT_PATH, DEFAULT_PORT, type DeviceInfo, type Platform as CapybaraPlatform } from '@capybara/protocol';
+} from '@capybara-devtools/core';
+import { CLIENT_PATH, DEFAULT_PORT, type DeviceInfo, type Platform as CapybaraPlatform } from '@capybara-devtools/protocol';
 import { NativeModules, Platform } from 'react-native';
 import { errorUtilsPlugin } from './errors.js';
 import { devToolSockets, formatHost, hostFromUrl, portFromUrl } from './host.js';
@@ -63,7 +63,7 @@ export function init(options: InitOptions = {}): CapybaraClient | undefined {
     session: {
       appName: options.appName ?? `React Native (${Platform.OS})`,
       platform: platformName(),
-      sdk: { name: '@capybara/react-native', version: SDK_VERSION },
+      sdk: { name: '@capybara-devtools/react-native', version: SDK_VERSION },
       device: deviceInfo(),
       runtime: runtimeName(),
     },
@@ -133,7 +133,7 @@ function runtimeName(): string {
   return version ? `${engine} · RN ${version.major}.${version.minor}.${version.patch}` : engine;
 }
 
-export { getActiveClient } from '@capybara/core';
-export type { CapybaraClient, NetworkPluginOptions, Plugin, StorageAdapter } from '@capybara/core';
+export { getActiveClient } from '@capybara-devtools/core';
+export type { CapybaraClient, NetworkPluginOptions, Plugin, StorageAdapter } from '@capybara-devtools/core';
 export { asyncStorage, mmkvStorage } from './storage.js';
 export type { AdapterOptions, AsyncStorageLike, MMKVLike } from './storage.js';

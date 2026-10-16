@@ -1,7 +1,30 @@
 {
-  "name": "capybara",
+  "name": "capybara-devtools",
   "version": "0.1.0",
   "description": "Debug React Native and web apps: logs, network and storage in a local UI",
+  "keywords": [
+    "devtools",
+    "debugger",
+    "react-native",
+    "expo",
+    "react",
+    "nextjs",
+    "logs",
+    "network",
+    "websocket",
+    "storage",
+    "mmkv",
+    "asyncstorage",
+    "mcp"
+  ],
+  "homepage": "https://github.com/lhphuc99/capybara#readme",
+  "bugs": "https://github.com/lhphuc99/capybara/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lhphuc99/capybara.git",
+    "directory": "packages/cli"
+  },
+  "license": "MIT",
   "type": "module",
   "bin": {
     "capybara": "./dist/bin.js"
@@ -20,6 +43,7 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json && node scripts/copy-ui.mjs",
+    "prepack": "node scripts/check-package.mjs",
     "dev": "tsc -p tsconfig.json --watch",
     "start": "node dist/bin.js",
     "test": "vitest run",
@@ -27,8 +51,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@capybara/core": "0.1.0",
-    "@capybara/protocol": "0.1.0",
+    "@capybara-devtools/core": "0.1.0",
+    "@capybara-devtools/protocol": "0.1.0",
     "@modelcontextprotocol/sdk": "^1.31.0",
     "ws": "^8.22.0",
     "zod": "^3.25.76"

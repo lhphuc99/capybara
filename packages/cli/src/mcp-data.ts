@@ -17,7 +17,7 @@ import {
   type StorageAdapterInfo,
   type StorageEntries,
   type StorageEntry,
-} from '@capybara/protocol';
+} from '@capybara-devtools/protocol';
 
 export interface LogEntry {
   seq: number;
@@ -265,7 +265,7 @@ export function pickSession(sessions: SessionMeta[], id: string | undefined): Se
   const [newest] = [...sessions].sort((a, b) => Number(b.connected) - Number(a.connected) || b.info.startedAt - a.info.startedAt);
   if (!newest) {
     throw new Error(
-      'No app has connected to Capybara yet. Start a web app that calls init() from @capybara/web, or a React Native app through Metro.',
+      'No app has connected to Capybara yet. Start a web app that calls init() from @capybara-devtools/web, or a React Native app through Metro.',
     );
   }
   return newest;

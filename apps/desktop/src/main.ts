@@ -1,8 +1,8 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { DEFAULT_PORT } from '@capybara/protocol';
-import { reverseAndroidPorts, startMetroBridge, type MetroBridge, type ServerOptions } from 'capybara';
+import { DEFAULT_PORT } from '@capybara-devtools/protocol';
+import { reverseAndroidPorts, startMetroBridge, type MetroBridge, type ServerOptions } from 'capybara-devtools';
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, shell } from 'electron';
 import { listen, PortInUseError, startOrReuse, type Started } from './server.js';
 
@@ -98,7 +98,7 @@ async function start(options: ServerOptions): Promise<Started | undefined> {
   }
 }
 
-/** Once the other process exits (e.g. `npx capybara` is stopped), apps reconnect to this app instead. */
+/** Once the other process exits (e.g. `npx capybara-devtools` is stopped), apps reconnect to this app instead. */
 function takeOverWhenFree(options: ServerOptions) {
   if (quitting) return;
   takeoverTimer = setTimeout(async () => {

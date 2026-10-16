@@ -8,8 +8,8 @@ import {
   type NetworkPluginOptions,
   type Plugin,
   type StorageAdapter,
-} from '@capybara/core';
-import { CLIENT_PATH, DEFAULT_PORT } from '@capybara/protocol';
+} from '@capybara-devtools/core';
+import { CLIENT_PATH, DEFAULT_PORT } from '@capybara-devtools/protocol';
 import { windowErrorsPlugin } from './errors.js';
 import { cookieStorage, webStorage } from './storage.js';
 
@@ -63,7 +63,7 @@ export function init(options: InitOptions = {}): CapybaraClient | undefined {
     session: {
       appName: options.appName ?? (document.title || window.location.host || 'Web app'),
       platform: 'web',
-      sdk: { name: '@capybara/web', version: SDK_VERSION },
+      sdk: { name: '@capybara-devtools/web', version: SDK_VERSION },
       url: window.location.href,
       userAgent: navigator.userAgent,
     },
@@ -98,6 +98,6 @@ function formatHost(host: string): string {
   return host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
 }
 
-export { getActiveClient } from '@capybara/core';
-export type { CapybaraClient, NetworkPluginOptions, Plugin, StorageAdapter } from '@capybara/core';
+export { getActiveClient } from '@capybara-devtools/core';
+export type { CapybaraClient, NetworkPluginOptions, Plugin, StorageAdapter } from '@capybara-devtools/core';
 export { cookieStorage, webStorage } from './storage.js';

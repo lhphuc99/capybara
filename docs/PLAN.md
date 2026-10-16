@@ -1,6 +1,6 @@
 # Capybara — Kế hoạch MVP
 
-> Tên chính thức là Capybara, đổi từ Devsight ngày 16/10/2026. Trên npm, scope `@capybara` chưa có package nào; gói `capybara` từng có người đăng và đã bị gỡ ngày 3/10/2026, nên cần kiểm tra lại trước khi publish.
+> Tên chính thức là Capybara, đổi từ Devsight ngày 16/10/2026. Trên npm các gói mang tên `capybara-devtools` (CLI) và `@capybara-devtools/*`, vì scope `@capybara` đã thuộc về một tài khoản npm khác.
 
 ## Mục tiêu
 
@@ -25,16 +25,16 @@ SDK tách phần **thu thập** (plugin ghi event vào ring buffer) khỏi phầ
 | Storage RN: AsyncStorage, MMKV (best-effort) | SecureStore, Keychain |
 | Xem/sửa/xoá/clear storage, tự refresh khi app ghi | |
 | Nhiều app/thiết bị cùng lúc, tự kết nối lại, rớt mạng ngắn không mất log | Export/import phiên |
-| UI web do CLI phục vụ (`npx capybara`); app desktop (macOS, Windows, Linux) bọc cùng server và UI | Next.js server, state (Redux/Zustand/TanStack Query), MCP |
+| UI web do CLI phục vụ (`npx capybara-devtools`); app desktop (macOS, Windows, Linux) bọc cùng server và UI | Next.js server, state (Redux/Zustand/TanStack Query), MCP |
 
 ## Kiến trúc
 
 ```
-App (RN / web)                        Máy dev
-@capybara/react-native | web          capybara (CLI) hoặc app desktop
-  └─ @capybara/core      ── ws ──►      ├─ /client   nhận event từ app
-       plugin console                   ├─ /viewer   đẩy event cho UI, chuyển lệnh UI → app
-       plugin network                   └─ HTTP      phục vụ UI (@capybara/ui)
+App (RN / web)                                 Máy dev
+@capybara-devtools/react-native | web          capybara-devtools (CLI) hoặc app desktop
+  └─ @capybara-devtools/core      ── ws ──►      ├─ /client   nhận event từ app
+       plugin console                            ├─ /viewer   đẩy event cho UI, chuyển lệnh UI → app
+       plugin network                            └─ HTTP      phục vụ UI (@capybara-devtools/ui)
        plugin storage
 ```
 
@@ -44,9 +44,9 @@ App (RN / web)                        Máy dev
 | `packages/core` | Runtime phía app: ring buffer, gửi theo batch, kết nối lại, serialize an toàn, plugin console/network/storage. |
 | `packages/web` | `init()` cho browser: lỗi của window, localStorage/sessionStorage/cookie. |
 | `packages/react-native` | `init()` cho RN: tự tìm IP máy dev từ URL bundle của Metro, `ErrorUtils`, adapter AsyncStorage/MMKV. |
-| `packages/cli` | `npx capybara`: HTTP + WebSocket server, lưu event theo phiên, chuyển lệnh UI → app, tự `adb reverse`. |
+| `packages/cli` | `npx capybara-devtools`: HTTP + WebSocket server, lưu event theo phiên, chuyển lệnh UI → app, tự `adb reverse`. |
 | `packages/ui` | UI React (Vite) với tab Logs / Network / Storage. Bản build được copy vào CLI và app desktop. |
-| `apps/desktop` | App desktop (Electron, private): main process gọi `createServer()` của `capybara` rồi mở cửa sổ tới `http://localhost:<port>`. |
+| `apps/desktop` | App desktop (Electron, private): main process gọi `createServer()` của `capybara-devtools` rồi mở cửa sổ tới `http://localhost:<port>`. |
 | `examples/web`, `examples/nextjs`, `examples/expo` | App mẫu để chạy thử. |
 
 ## Protocol v1
@@ -74,7 +74,7 @@ App (RN / web)                        Máy dev
 - **Port mặc định 7357.**
 - **App desktop là Electron bọc server sẵn có**: cửa sổ load UI qua HTTP từ chính server, không dùng `file://`, nên các kiểm tra origin và `Host` ở trên giữ nguyên. Main process được bundle bằng rolldown (có sẵn qua Vite) thành một file CJS, mọi dependency là devDependencies, nên electron-builder chỉ đóng gói `dist/` mà không kéo `node_modules` của workspace. `backgroundThrottling: false` để cửa sổ bị ẩn vẫn cập nhật đều: đo trên Electron 44, timer 100 ms trong cửa sổ ẩn chạy 30 lần/3 s, bật throttling thì chỉ còn 3 lần.
 - **Đóng gói Windows và Linux**: build được ngay trên Mac, không cần Wine hay Docker. Windows có bộ cài NSIS (cài cho user hiện tại, không cần quyền admin) và `.zip`, bản x64. Linux có AppImage và `.tar.gz`, bản x64 và arm64; chưa có deb/rpm vì gói deb bắt buộc có email người bảo trì. AppImage dùng runtime tĩnh (`toolsets.appimage: "1.0.3"`): runtime cũ cần libfuse2, và bản arm64 không chạy được vì thiếu `libz.so`. Runtime cũ còn luôn tắt sandbox của Chromium; launcher của bản mới thử `unshare -Ur` và chỉ thêm `--no-sandbox` khi máy không cho tạo user namespace (Ubuntu 24.04+ chặn qua AppArmor). Đặt `desktopName` trong package.json kèm `linux.syncDesktopName` để tên file `.desktop`, `StartupWMClass` và WM_CLASS của cửa sổ cùng là `capybara-desktop`. Thiếu nó thì cửa sổ có class `capybara` còn file `.desktop` ghi `Capybara`, nên desktop environment không gắn cửa sổ với app. Binary Linux không chứa icon, nên cửa sổ được gán `dist/icon.png`. Icon Windows/Linux (`build/icon.png`) vẽ từ cùng file SVG nhưng cắt bỏ lề, vì chỉ macOS chừa lề quanh icon.
-- **Cổng của app desktop đang bận**: nếu là một Capybara khác (vd. `npx capybara`), cửa sổ hiện server đó và app thử nhận cổng mỗi 2 giây, nên tắt CLI là app tự thay chỗ. Nếu là chương trình khác thì báo lỗi, có nút thử lại. macOS vẫn cho bind mọi interface khi chương trình khác giữ cùng cổng trên `0.0.0.0`, `127.0.0.1` hoặc `::1`, và localhost vẫn đi tới chương trình đó, nên app thử bind từng địa chỉ này trước. CLI chưa có kiểm tra này.
+- **Cổng của app desktop đang bận**: nếu là một Capybara khác (vd. `npx capybara-devtools`), cửa sổ hiện server đó và app thử nhận cổng mỗi 2 giây, nên tắt CLI là app tự thay chỗ. Nếu là chương trình khác thì báo lỗi, có nút thử lại. macOS vẫn cho bind mọi interface khi chương trình khác giữ cùng cổng trên `0.0.0.0`, `127.0.0.1` hoặc `::1`, và localhost vẫn đi tới chương trình đó, nên app thử bind từng địa chỉ này trước. CLI chưa có kiểm tra này.
 - **Bridge Metro (React Native không cần SDK)**: CLI/desktop nối vào `/inspector/debug` của Metro như một debugger thứ hai (CDP, kênh React Native DevTools dùng). Mỗi JS context là một phiên, gửi vào server qua `/client` như SDK. Hermes chỉ mô tả Date/Map/Set là "Object", nên tham số log được serialize ngay trong app bằng chính `serialize()` của SDK (hàm tự chứa, gửi qua `serialize.toString()`). App có SDK (`__CAPYBARA_CLIENT__`) thì bỏ qua; quyết định đợi tới khi app chạy xong file entry (`RN$AppRegistry` hoặc log `Running "…"`), vì SDK khởi tạo trong đó. Expo CLI chỉ giữ socket debugger khi Origin đúng địa chỉ của nó (`http://127.0.0.1:<port>`); Metro thường nhận mọi origin localhost.
 
 ## Lộ trình
@@ -83,7 +83,7 @@ App (RN / web)                        Máy dev
 
 **M2 — Hoàn thiện cho người dùng đầu tiên**
 
-- Script `dev` chạy watch song song, CI (typecheck + test), publish npm bằng changesets, thêm bản CJS.
+- Script `dev` chạy watch song song, thêm bản CJS. CI (typecheck + test) và publish npm bằng changesets: đã có (xem Trạng thái).
 - Plugin state: Redux, Zustand, TanStack Query.
 - Stack trace qua source map (gọi `/symbolicate` của Metro).
 - Lệnh tuỳ biến từ UI xuống app (clear storage, đổi env, logout…).
@@ -99,9 +99,10 @@ App (RN / web)                        Máy dev
 
 **Đã xong và đã chạy thử**
 
+- Phát hành (16/10/2026): scope `@capybara` trên npm đã thuộc về tài khoản khác, nên các gói đổi tên thành `capybara-devtools` (CLI; lệnh sau khi cài vẫn là `capybara`) và `@capybara-devtools/*`. Có changesets (5 gói chung một version), workflow CI và Release (publish npm qua trusted publishing), lệnh `desktop:release` upload bản cài lên bản nháp GitHub Release. Chưa publish lần nào; các bước ở [RELEASING.md](RELEASING.md). Đã thử: đóng gói 5 gói, cài vào project trống, chạy CLI, server trả UI, import SDK, kiểm tra type.
 - Đổi tên Devsight → Capybara (16/10/2026): package `@capybara/*` và CLI `capybara`, biến môi trường `CAPYBARA_PORT` và `VITE_CAPYBARA_SERVER`, global `__CAPYBARA_*__`, bundle ID `dev.capybara.*`, máy ảo test `Capybara-MMKV-Test` và `Capybara-Android-Test`. App mẫu native đổi bundle ID nên lần chạy fixture tới cần build lại; bản cũ (`dev.devsight.*`) vẫn còn trên simulator.
 - Copy (16/10/2026): tab Logs có **Copy all** (các dòng khớp bộ lọc) và icon copy từng dòng khi rê chuột; object được copy đầy đủ dạng JSON (Date, Map, Set, giá trị bị cắt cũng ghi rõ), lỗi kèm stack. Tab Storage có **Copy** cho giá trị đang chọn, mọi nhánh trong cây JSON (cả ở Logs và Network) có icon copy riêng. Copy xong hiện dấu ✓ trên nút và toast "Copied to clipboard"; nếu không ghi được clipboard thì toast báo lỗi. Đã thử trên app desktop: bấm thật vào các nút rồi đọc lại clipboard, nội dung đúng như mong đợi.
-- MCP cho AI (16/10/2026): lệnh `capybara mcp` là MCP server qua stdio (SDK chính thức `@modelcontextprotocol/sdk` 1.31), đọc server Capybara đang chạy qua đúng kênh viewer của UI, không đổi gì ở app hay SDK. 7 tool chỉ đọc: `list_sessions`, `get_logs`, `get_network`, `get_request`, `diagnose_request`, `get_websocket`, `get_storage`; lọc ngay trên dữ liệu, mặc định 50 dòng mới nhất, có `after`/`before` để lấy tiếp. Mặc định che giá trị trông như thông tin đăng nhập (header, khoá JSON, tham số URL, key storage), `--show-secrets` để tắt. Các hàm đọc giá trị (`preview`, `formatLogMessage`, `valueText`…) chuyển sang `@capybara/protocol` để UI và MCP mô tả giá trị giống nhau. 9 test tích hợp dùng client MCP của SDK với server thật; đã chạy `capybara mcp` qua stdio với app desktop và dữ liệu thật của app mẫu. Thử trên một app web thật của người dùng (bản staging, SDK gắn qua Chrome ẩn, không sửa code): các tool thấy 5 request bị chặn cross-origin, `diagnose_request` chỉ ra API trả 401 không có `Access-Control-Allow-Origin` cho localhost. Sau đó cho Claude Code (chế độ `-p`, chỉ được dùng tool Capybara) tự tìm nguyên nhân: nó gọi `list_sessions` → `get_network` → `get_request` → `diagnose_request` và kết luận đúng, kèm số liệu và cách sửa. `list_sessions` ẩn các phiên cũ đã ngắt không có dữ liệu, vì trang tải lại để lại nhiều phiên rỗng.
+- MCP cho AI (16/10/2026): lệnh `capybara mcp` là MCP server qua stdio (SDK chính thức `@modelcontextprotocol/sdk` 1.31), đọc server Capybara đang chạy qua đúng kênh viewer của UI, không đổi gì ở app hay SDK. 7 tool chỉ đọc: `list_sessions`, `get_logs`, `get_network`, `get_request`, `diagnose_request`, `get_websocket`, `get_storage`; lọc ngay trên dữ liệu, mặc định 50 dòng mới nhất, có `after`/`before` để lấy tiếp. Mặc định che giá trị trông như thông tin đăng nhập (header, khoá JSON, tham số URL, key storage), `--show-secrets` để tắt. Các hàm đọc giá trị (`preview`, `formatLogMessage`, `valueText`…) chuyển sang `@capybara-devtools/protocol` để UI và MCP mô tả giá trị giống nhau. 9 test tích hợp dùng client MCP của SDK với server thật; đã chạy `capybara mcp` qua stdio với app desktop và dữ liệu thật của app mẫu. Thử trên một app web thật của người dùng (bản staging, SDK gắn qua Chrome ẩn, không sửa code): các tool thấy 5 request bị chặn cross-origin, `diagnose_request` chỉ ra API trả 401 không có `Access-Control-Allow-Origin` cho localhost. Sau đó cho Claude Code (chế độ `-p`, chỉ được dùng tool Capybara) tự tìm nguyên nhân: nó gọi `list_sessions` → `get_network` → `get_request` → `diagnose_request` và kết luận đúng, kèm số liệu và cách sửa. `list_sessions` ẩn các phiên cũ đã ngắt không có dữ liệu, vì trang tải lại để lại nhiều phiên rỗng.
 - Appearance (16/10/2026): nút ở góc phải thanh trên cùng, chọn System (mặc định, theo hệ điều hành), Light hoặc Dark; lưu trong localStorage. Bảng màu đặt theo `data-theme` trên `<html>`, một script nhỏ trong `index.html` đặt nó trước lần vẽ đầu nên không nháy màu; ở System thì đổi ngay khi hệ thống đổi. App desktop có preload báo lựa chọn cho tiến trình chính, đặt `nativeTheme.themeSource` (thanh tiêu đề macOS đổi theo) và lưu vào `settings.json` để lần mở sau cửa sổ có đúng màu nền ngay. Đã thử trên trình duyệt (giả lập hệ thống sáng/tối, tải lại trang) và trên cửa sổ desktop thật qua cổng debug tạm thời.
 - Kéo đổi độ rộng (16/10/2026): đường chia giữa danh sách request và khung chi tiết (tab Network), giữa danh sách key và khung giá trị (tab Storage). Kéo chuột, phím mũi tên khi đang chọn đường chia, nhấp đúp để về mặc định; độ rộng lưu theo phần trăm trong localStorage. Mỗi bên có độ rộng tối thiểu, và hàng nút ở đầu khung tự xuống dòng thay vì bị cắt khi khung hẹp. Đã thử trên app desktop: kéo, giới hạn 25–75%, nhớ sau khi tải lại, nhấp đúp; ở cửa sổ 1000px kéo về mức tối thiểu không còn nút nào bị che.
 - Icon: capybara ngâm suối nước nóng, mắt nhắm, quả yuzu trên đầu, vẽ bằng nét thẳng và cung tròn trên nền cam yuzu. File gốc `assets/icon.svg`; giao diện dùng nó làm logo và favicon. App desktop dùng gói Icon Composer `apps/desktop/build/icon.icon`, electron-builder biên dịch bằng `actool` (Xcode 26) ra `Assets.car` cho macOS 26 và `icon.icns` cho bản cũ. Đã lấy icon của `Capybara.app` qua `NSWorkspace` trên macOS 26.6: hiện đúng kiểu Liquid Glass, không bị đóng khung xám như icon kiểu cũ.
@@ -140,7 +141,7 @@ App (RN / web)                        Máy dev
   - AsyncStorage: sửa từ UI, app đọc lại đúng giá trị
 - App desktop (Electron 44, macOS 26, Apple Silicon):
   - `npm run desktop` mở cửa sổ Capybara; app mẫu web hiện log, network, storage giống bản browser, kể cả sửa storage từ UI và tự refresh khi app ghi
-  - `npx capybara` đang chạy thì cửa sổ dùng server đó; tắt CLI thì app tự nhận cổng và tải lại UI
+  - `npx capybara-devtools` đang chạy thì cửa sổ dùng server đó; tắt CLI thì app tự nhận cổng và tải lại UI
   - cổng bị chương trình khác giữ (kể cả chỉ trên `::1`, như Vite) thì báo lỗi, thử lại được
   - cửa sổ ẩn vẫn nhận và hiện event ngay
   - `npm run desktop:package` ra `.dmg` và `.zip` (ad-hoc signed); app đóng gói chạy được, UI phục vụ từ `app.asar`
@@ -198,7 +199,7 @@ Khi thử lý do request lỗi:
 - Gói deb/rpm cho Linux cần email người bảo trì (`author.email` hoặc `linux.maintainer`). Dùng email nào?
 - Ký code: cần Apple Developer ID (để notarize) và chứng chỉ ký cho Windows. Chưa ký thì macOS chặn lần mở đầu, còn Windows hiện cảnh báo SmartScreen.
 - License: MIT, Apache-2.0 hay đóng nguồn?
-- Đăng ký tên trên npm: scope `@capybara` và gói CLI `capybara` (gói cũ cùng tên đã bị gỡ ngày 3/10/2026). Bundle ID của app desktop (`dev.capybara.desktop`) đi theo tên.
+- Đăng ký trên npm: org `capybara-devtools` và gói `capybara-devtools` (cả hai còn trống ngày 16/10/2026), rồi publish lần đầu.
 - Có cần hỗ trợ RN kiến trúc cũ (< 0.76) không?
 - MMKV trên web đang hiện trong Local Storage dưới dạng key `<id>\<key>`. Có gom thành từng store "MMKV · id" riêng không?
 - App dưới RN 0.85 chỉ dùng được SDK. Có thêm tuỳ chọn cho chế độ không SDK nối vào các app này khi người dùng chấp nhận đóng debugger đang mở không?

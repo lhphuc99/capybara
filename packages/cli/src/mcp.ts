@@ -1,5 +1,5 @@
 import { parseArgs } from 'node:util';
-import { DEFAULT_PORT } from '@capybara/protocol';
+import { DEFAULT_PORT } from '@capybara-devtools/protocol';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
@@ -31,7 +31,7 @@ Tools use the newest connected app unless you pass a session id from list_sessio
 
 const HELP = `Usage: capybara mcp [options]
 
-Serves the data of a running Capybara (the app or \`npx capybara\`) to AI assistants over MCP, on stdin and stdout.
+Serves the data of a running Capybara (the app or \`npx capybara-devtools\`) to AI assistants over MCP, on stdin and stdout.
 
 Options:
   -p, --port <port>   Port of the Capybara server (default ${DEFAULT_PORT}, or $CAPYBARA_PORT)
@@ -39,7 +39,7 @@ Options:
       --show-secrets  Don't hide values that look like credentials
   -h, --help          Show this help
 
-Claude Code:  claude mcp add capybara -- npx capybara mcp
+Claude Code:  claude mcp add capybara -- npx capybara-devtools mcp
 `;
 
 export interface McpOptions {

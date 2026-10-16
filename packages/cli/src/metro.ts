@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { CLIENT_GLOBAL, serialize } from '@capybara/core';
+import { CLIENT_GLOBAL, serialize } from '@capybara-devtools/core';
 import {
   CLIENT_PATH,
   METRO_SDK,
@@ -10,7 +10,7 @@ import {
   type SerializedValue,
   type ServerToClient,
   type SessionInfo,
-} from '@capybara/protocol';
+} from '@capybara-devtools/protocol';
 import { WebSocket, type RawData } from 'ws';
 import { readMetroStorage } from './metro-storage.js';
 import { watchMetroMMKV } from './metro-mmkv.js';

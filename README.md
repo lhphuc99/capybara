@@ -39,7 +39,7 @@ npm start -- --no-metro                          # SDK connections only
 
 The desktop app reuses a running CLI server, including its Metro configuration. When that CLI exits, the desktop starts its own server and scans the default ports.
 
-MMKV versions here are those of the [`react-native-mmkv`](https://github.com/mrousavy/react-native-mmkv) package, not of the Tencent MMKV core it bundles (the core is at 2.x). Targets are **3.x and 4.x**; 2.x needs React Native's legacy architecture and is out of scope. Automated checks run against the published JS sources of **3.3.3 and 4.3.2** (and 2.12.2, which shares the 3.x hook), with a simulated native boundary (including Nitro's frozen prototypes). After building, run `npm run test:mmkv-compat -w capybara` to repeat this matrix. It downloads integrity-pinned source archives to a temporary directory, without installing dependencies into your app. Pass a cache directory after `--` to use pre-downloaded archives.
+MMKV versions here are those of the [`react-native-mmkv`](https://github.com/mrousavy/react-native-mmkv) package, not of the Tencent MMKV core it bundles (the core is at 2.x). Targets are **3.x and 4.x**; 2.x needs React Native's legacy architecture and is out of scope. Automated checks run against the published JS sources of **3.3.3 and 4.3.2** (and 2.12.2, which shares the 3.x hook), with a simulated native boundary (including Nitro's frozen prototypes). After building, run `npm run test:mmkv-compat -w capybara-devtools` to repeat this matrix. It downloads integrity-pinned source archives to a temporary directory, without installing dependencies into your app. Pass a cache directory after `--` to use pre-downloaded archives.
 
 Native **react-native-mmkv 4.3.2** and **3.3.3** have been verified end to end on an iOS simulator, and 4.3.2 also on an Android emulator (Expo SDK 57, React Native 0.86, Hermes), each with a separate test app holding synthetic data: [`packages/cli/test/native-fixture`](packages/cli/test/native-fixture/README.md) and [`packages/cli/test/native-fixture-mmkv3`](packages/cli/test/native-fixture-mmkv3/README.md). The same apps run on the web through react-native-web, where `packages/cli/scripts/check-mmkv-web.mjs` checks MMKV's web storage through the web SDK. Metro discovery has not been run on a physical device yet.
 
@@ -48,7 +48,7 @@ Native **react-native-mmkv 4.3.2** and **3.3.3** have been verified end to end o
 Import this before the rest of your app so early logs and requests are captured:
 
 ```ts
-import { init } from '@capybara/web';
+import { init } from '@capybara-devtools/web';
 
 if (import.meta.env.DEV) init({ appName: 'My web app' });
 ```
@@ -57,7 +57,7 @@ In Next.js 15.3 or later, put it in `instrumentation-client.ts` at the project r
 
 ```ts
 // instrumentation-client.ts
-import { init } from '@capybara/web';
+import { init } from '@capybara-devtools/web';
 
 if (process.env.NODE_ENV === 'development') init({ appName: 'My Next.js app' });
 ```
@@ -84,7 +84,7 @@ React Native has no CORS. With the SDK, failed XHR and axios requests (and `fetc
 
 ```ts
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { asyncStorage, init, mmkvStorage } from '@capybara/react-native';
+import { asyncStorage, init, mmkvStorage } from '@capybara-devtools/react-native';
 import { storage } from './storage'; // your react-native-mmkv instance
 
 if (__DEV__) init({ appName: 'My app', storage: [asyncStorage(AsyncStorage), mmkvStorage(storage)] });
@@ -117,26 +117,26 @@ npm run desktop:package:all      # all three
 Packages land in `apps/desktop/release/`, named like `Capybara-0.1.0-win-x64.exe`. A Mac builds all three without Wine or Docker; the macOS package can only be built on a Mac.
 
 - Apps connect exactly as they do to the CLI, on port 7357. Set `CAPYBARA_PORT` to use another port.
-- If `npx capybara` is already running, the window shows that server, and the app takes over the port once the CLI stops. If another program holds the port, the app says so and lets you try again.
+- If `npx capybara-devtools` is already running, the window shows that server, and the app takes over the port once the CLI stops. If another program holds the port, the app says so and lets you try again.
 - On macOS, closing the window keeps the server running in the Dock. Quit with ⌘Q. On Windows and Linux, closing the window quits.
 - No build is signed for distribution. On another Mac the first launch is blocked until you allow it in System Settings → Privacy & Security. On Windows, SmartScreen warns about an unknown publisher: choose More info → Run anyway.
 - Windows: the installer installs for the current user, without admin rights. On first launch Windows Firewall asks about network access; allow it on private networks if phones connect over Wi-Fi. Apps on the same computer, emulators and USB devices connect through localhost and don't need it.
 - Linux: `chmod +x` the AppImage, then run it; it doesn't need libfuse2. Ubuntu 24.04 and later block the user namespaces that Chromium's sandbox needs. There the AppImage starts without the sandbox, while `capybara-desktop` from the tar.gz refuses to start until you pass `--no-sandbox` or make `chrome-sandbox` owned by root with mode 4755.
 - Needs Node 22.12 or later. Electron downloads its binary (about 130 MB) the first time it runs.
-- The macOS package needs Xcode 26 or later. The app icon (`apps/desktop/build/icon.icon`, an Icon Composer file) is compiled with Xcode's `actool`, which also produces the `.icns` that older macOS versions use. Windows and Linux use `apps/desktop/build/icon.png`; after changing the source artwork, [`assets/icon.svg`](assets/icon.svg), regenerate it on a Mac with `npm run icon -w @capybara/desktop`.
+- The macOS package needs Xcode 26 or later. The app icon (`apps/desktop/build/icon.icon`, an Icon Composer file) is compiled with Xcode's `actool`, which also produces the `.icns` that older macOS versions use. Windows and Linux use `apps/desktop/build/icon.png`; after changing the source artwork, [`assets/icon.svg`](assets/icon.svg), regenerate it on a Mac with `npm run icon -w @capybara-devtools/desktop`.
 
 ## AI assistants (MCP)
 
-`capybara mcp` lets an AI assistant read and filter what Capybara records: logs, network requests, WebSocket messages and storage. It is an [MCP](https://modelcontextprotocol.io) server on stdin and stdout that reads the Capybara app or `npx capybara` already running on this computer.
+`capybara mcp` lets an AI assistant read and filter what Capybara records: logs, network requests, WebSocket messages and storage. It is an [MCP](https://modelcontextprotocol.io) server on stdin and stdout that reads the Capybara app or `npx capybara-devtools` already running on this computer.
 
 ```bash
-claude mcp add capybara -- npx capybara mcp    # Claude Code
+claude mcp add capybara -- npx capybara-devtools mcp    # Claude Code
 ```
 
 For Claude Desktop, Cursor and other clients, add it to their MCP settings:
 
 ```json
-{ "mcpServers": { "capybara": { "command": "npx", "args": ["capybara", "mcp"] } } }
+{ "mcpServers": { "capybara": { "command": "npx", "args": ["capybara-devtools", "mcp"] } } }
 ```
 
 Until the package is published, run it from this repo instead: `node <repo>/packages/cli/dist/bin.js mcp`.
@@ -170,11 +170,11 @@ The Expo example's AsyncStorage can be read through Metro without loading the Ca
 
 | Package | |
 |---|---|
-| `capybara` | CLI: local server and UI |
-| `@capybara/web` | Browser SDK |
-| `@capybara/react-native` | React Native SDK |
-| `@capybara/core` | Client runtime and built-in plugins (console, network, storage) |
-| `@capybara/protocol` | Wire protocol types |
+| `capybara-devtools` | CLI: local server and UI (the command is `capybara`) |
+| `@capybara-devtools/web` | Browser SDK |
+| `@capybara-devtools/react-native` | React Native SDK |
+| `@capybara-devtools/core` | Client runtime and built-in plugins (console, network, storage) |
+| `@capybara-devtools/protocol` | Wire protocol types |
 
 ## Development
 
@@ -190,4 +190,6 @@ npm start -- --no-open --allow-origin http://localhost:5174
 npm run dev:ui
 ```
 
-Architecture, protocol and roadmap (Vietnamese): [docs/PLAN.md](docs/PLAN.md).
+For a change that should go into the next release, run `npx changeset`, pick the packages and describe the change for users; commit the file it writes in `.changeset/`. All packages share one version number.
+
+Architecture, protocol and roadmap (Vietnamese): [docs/PLAN.md](docs/PLAN.md). Releasing (Vietnamese): [docs/RELEASING.md](docs/RELEASING.md).

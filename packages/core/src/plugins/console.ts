@@ -1,4 +1,4 @@
-import type { LogLevel } from '@capybara/protocol';
+import type { LogLevel } from '@capybara-devtools/protocol';
 import type { Plugin } from '../client.js';
 
 const LEVELS: LogLevel[] = ['debug', 'log', 'info', 'warn', 'error'];

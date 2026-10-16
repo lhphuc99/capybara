@@ -1,5 +1,5 @@
 {
-  "name": "@capybara/desktop",
+  "name": "@capybara-devtools/desktop",
   "productName": "Capybara",
   "desktopName": "capybara-desktop.desktop",
   "version": "0.1.0",
@@ -15,14 +15,15 @@
     "package:win": "npm run build && electron-builder --win",
     "package:linux": "npm run build && electron-builder --linux",
     "package:all": "npm run build && electron-builder --mac --win --linux",
+    "release": "node -e \"if (!process.env.GH_TOKEN) { console.error('Set GH_TOKEN to a GitHub token that can write to lhphuc99/capybara (docs/RELEASING.md).'); process.exit(1) }\" && npm run build && node ../../scripts/release-notes.mjs > release-notes.md && electron-builder --mac --win --linux --publish always",
     "icon": "node scripts/icon.mjs",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json"
   },
   "devDependencies": {
-    "@capybara/protocol": "0.1.0",
+    "@capybara-devtools/protocol": "0.1.0",
     "@types/ws": "^8.18.2",
-    "capybara": "0.1.0",
+    "capybara-devtools": "0.1.0",
     "electron": "44.7.2",
     "electron-builder": "^26.15.3",
     "rolldown": "^1.2.14",
@@ -36,6 +37,13 @@
     ],
     "directories": {
       "output": "release"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "lhphuc99",
+      "repo": "capybara",
+      "releaseType": "draft",
+      "publishAutoUpdate": false
     },
     "npmRebuild": false,
     "toolsets": {

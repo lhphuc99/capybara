@@ -12,3 +12,6 @@ examples/expo/android/
 
 # Desktop app packages (electron-builder)
 apps/desktop/release/
+
+# Notes for the GitHub release, written by `npm run desktop:release`
+apps/desktop/release-notes.md

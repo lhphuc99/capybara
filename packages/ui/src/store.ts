@@ -10,7 +10,7 @@ import type {
   ServerInfo,
   ServerToViewer,
   SessionMeta,
-} from '@capybara/protocol';
+} from '@capybara-devtools/protocol';
 import { useSyncExternalStore } from 'react';
 import { send, type ConnectionStatus } from './connection';
 

@@ -1,4 +1,4 @@
-import type { BodyPreview, EventPayloads } from '@capybara/protocol';
+import type { BodyPreview, EventPayloads } from '@capybara-devtools/protocol';
 
 export type WebSocketEventKind = 'ws.connect' | 'ws.open' | 'ws.message' | 'ws.error' | 'ws.close';
 
