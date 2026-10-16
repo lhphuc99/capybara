@@ -4,7 +4,7 @@
 
 ### Patch Changes
 
-- Publish again as 0.2.1. npm never made `@capybara-devtools/core` 0.2.0 available, so the 0.2.0 CLI and SDKs, which depend on it, could not be installed.
+- Same contents as 0.2.0, published again because npm took several minutes to make `@capybara-devtools/core` 0.2.0 available, and the 0.2.0 CLI and SDKs depend on it.
 - @capybara-devtools/protocol@0.2.1
 
 ## 0.2.0
