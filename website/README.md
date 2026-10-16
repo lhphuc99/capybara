@@ -1,6 +1,6 @@
 # Capybara website
 
-The landing page at https://capybara-devtools.vercel.app: what Capybara does, how to start, and downloads. A static page built with Vite, outside the npm workspaces, with its own lockfile so Vercel installs only what the page needs.
+The landing page at https://capybara-devtools.chanieshop.com: what Capybara does, how to start, and downloads. A static page built with Vite, outside the npm workspaces, with its own lockfile so Vercel installs only what the page needs.
 
 ```bash
 npm install
@@ -27,4 +27,4 @@ The "why" scene needs port 4000 free for its demo API.
 
 ## Deploying
 
-Vercel project `capybara-devtools`, with its Root Directory set to `website`. Settings are in `vercel.json`: Vercel runs the tests before building and skips commits that don't touch this folder.
+Vercel project `capybara-devtools`, connected to this repository with its Root Directory set to `website`. Pushes to `main` deploy to production and pull requests get a preview. Settings are in `vercel.json`: Vercel runs the tests before building and skips commits that don't touch this folder.
