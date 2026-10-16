@@ -39,6 +39,7 @@ async function fixture(options: { sdk?: boolean; ready?: boolean; multiple?: boo
 
   let visible = true;
   let sdk = options.sdk ?? false;
+  let heldProbes: Array<() => void> | null = null;
   let ready = options.ready ?? true;
   let socket: WebSocket | undefined;
   let connections = 0;
@@ -97,7 +98,10 @@ async function fixture(options: { sdk?: boolean; ready?: boolean; multiple?: boo
         event('Runtime.executionContextCreated', { context: { id: contextId } });
       } else if (method === 'Runtime.evaluate') {
         if (params.expression.includes('__CAPYBARA_CLIENT__')) {
-          reply(ws, id, { result: { value: JSON.stringify({ sdk, ready, name: 'No SDK app' }) } });
+          // Read now, as the app would, even when the answer is held back.
+          const value = JSON.stringify({ sdk, ready, name: 'No SDK app' });
+          if (heldProbes) heldProbes.push(() => reply(ws, id, { result: { value } }));
+          else reply(ws, id, { result: { value } });
         } else {
           const value = runInContext(params.expression, vm);
           if (params.returnByValue === false) {
@@ -166,6 +170,13 @@ async function fixture(options: { sdk?: boolean; ready?: boolean; multiple?: boo
     start: () => { bridge = startMetroBridge({ port, metroPorts: [metroPort], pollInterval: 25, version: 'test' }); },
     stop: () => bridge?.stop(),
     setSdk: (value: boolean) => { sdk = value; },
+    probes: () => commands.filter((c) => c.method === 'Runtime.evaluate' && c.params.expression.includes('__CAPYBARA_CLIENT__')).length,
+    holdProbes: () => { heldProbes = []; },
+    releaseProbes: () => {
+      const held = heldProbes ?? [];
+      heldProbes = null;
+      for (const send of held) send();
+    },
     setVisible: (value: boolean) => { visible = value; },
     disconnect: () => socket?.terminate(),
     reload: () => {
@@ -293,6 +304,22 @@ describe('Metro discovery and CDP event relay', () => {
     f.setSdk(true);
     f.log([{ type: 'string', value: 'Running "App"' }]);
     await until(() => expect(f.commands.some((c) => c.method === 'Runtime.releaseObject')).toBe(true));
+    expect(f.sessions()).toHaveLength(0);
+    expect(f.events()).toHaveLength(0);
+  });
+
+  it('checks again when the app starts while an earlier check is still unanswered', async () => {
+    const f = await fixture({ ready: false });
+    f.holdProbes();
+    f.start();
+    await until(() => expect(f.probes()).toBe(1));
+    f.log([{ type: 'object', objectId: 'user' }]);
+    f.setSdk(true);
+    f.log([{ type: 'string', value: 'Running "App"' }]);
+    // Sent after the log on the same socket, so the bridge sees the app start before this stale answer.
+    f.releaseProbes();
+    await until(() => expect(f.commands.some((c) => c.method === 'Runtime.releaseObject')).toBe(true));
+    expect(f.probes()).toBe(2);
     expect(f.sessions()).toHaveLength(0);
     expect(f.events()).toHaveLength(0);
   });

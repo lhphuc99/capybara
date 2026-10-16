@@ -176,6 +176,8 @@ interface Run {
   /** Events held until it is known whether the app has the SDK. */
   held: CdpEvent[];
   checking: boolean;
+  /** Something changed while a check was unanswered, so its answer may be out of date. */
+  recheck: boolean;
   sawRunning: boolean;
   retry?: ReturnType<typeof setTimeout>;
   session?: Session;
@@ -330,6 +332,7 @@ function watchApp(
       state: 'deciding',
       held: [],
       checking: false,
+      recheck: false,
       sawRunning: false,
       requests: new Map(),
     };
@@ -350,7 +353,11 @@ function watchApp(
   };
 
   const decide = async (current: Run) => {
-    if (current.checking || current.state !== 'deciding') return;
+    if (current.state !== 'deciding') return;
+    if (current.checking) {
+      current.recheck = true;
+      return;
+    }
     current.checking = true;
     const probe = await call<EvaluateResult>('Runtime.evaluate', {
       expression: PROBE_APP, contextId: current.contextId, returnByValue: true,
@@ -364,6 +371,12 @@ function watchApp(
       current.state = 'skipped';
       for (const event of current.held) releaseEvent(event);
       current.held = [];
+      return;
+    }
+    // The app may have started its SDK after answering, e.g. when `Running "App"` arrived meanwhile.
+    if (current.recheck) {
+      current.recheck = false;
+      void decide(current);
       return;
     }
     // An SDK starts in the entry file, which a launching app may not have run yet.
