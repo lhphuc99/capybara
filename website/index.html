@@ -183,7 +183,7 @@
             <article class="feature">
               <h3>Ask your AI assistant</h3>
               <p>
-                <code>capybara mcp</code> lets Claude Code, Cursor and other MCP clients read and filter what Capybara recorded, with
+                Capybara's MCP server lets Claude Code, Cursor and other MCP clients read and filter what it recorded, with
                 credentials hidden.
               </p>
             </article>
@@ -222,11 +222,11 @@
               </div>
               <div class="step-body">
                 <div class="code-block">
-                  <pre><code>npm install @capybara/web</code></pre>
+                  <pre><code>npm install @capybara-devtools/web</code></pre>
                   <button type="button" class="copy-button" data-copy>Copy</button>
                 </div>
                 <div class="code-block">
-                  <pre><code>import { init } from '@capybara/web';
+                  <pre><code>import { init } from '@capybara-devtools/web';
 
 if (import.meta.env.DEV) init({ appName: 'My web app' });</code></pre>
                   <button type="button" class="copy-button" data-copy>Copy</button>
@@ -243,14 +243,14 @@ if (import.meta.env.DEV) init({ appName: 'My web app' });</code></pre>
               </div>
               <div class="step-body">
                 <div class="code-block">
-                  <pre><code>claude mcp add capybara -- npx capybara mcp</code></pre>
+                  <pre><code>claude mcp add capybara -- npx capybara-devtools mcp</code></pre>
                   <button type="button" class="copy-button" data-copy>Copy</button>
                 </div>
               </div>
             </article>
           </div>
           <p class="note centered">
-            Older React Native, or want to edit storage from Capybara? Add <code>@capybara/react-native</code>; the
+            Older React Native, or want to edit storage from Capybara? Add <code>@capybara-devtools/react-native</code>; the
             <a href="https://github.com/lhphuc99/capybara#readme">README</a> shows how.
             <span class="npm-soon-note">Until the packages are on npm, <a href="https://github.com/lhphuc99/capybara#quick-start-from-this-repo">run Capybara from source</a>.</span>
           </p>

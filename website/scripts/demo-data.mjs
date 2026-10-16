@@ -6,7 +6,7 @@ const webApp = {
   id: 'demo-web',
   appName: 'Yuzu Market',
   platform: 'web',
-  sdk: { name: '@capybara/web', version: '0.1.0' },
+  sdk: { name: '@capybara-devtools/web', version: '0.1.0' },
   startedAt: START,
   url: 'http://localhost:5173/',
   userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36',
@@ -233,7 +233,7 @@ export const apps = {
   web: { session: webApp, events: webEvents() },
   native: { session: nativeApp, events: nativeEvents() },
   nativeWithSdk: {
-    session: { ...nativeApp, id: 'demo-native-sdk', sdk: { name: '@capybara/react-native', version: '0.1.0' } },
+    session: { ...nativeApp, id: 'demo-native-sdk', sdk: { name: '@capybara-devtools/react-native', version: '0.1.0' } },
     events: nativeEvents(),
     answer: answerStorage,
   },
