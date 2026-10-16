@@ -1,0 +1,21 @@
+{
+  "tag_name": "v0.1.0",
+  "html_url": "https://github.com/lhphuc99/capybara/releases/tag/v0.1.0",
+  "published_at": "2026-10-16T13:00:00Z",
+  "assets": [
+    { "name": "Capybara-0.1.0-linux-arm64.AppImage", "size": 116143690, "browser_download_url": "https://github.com/lhphuc99/capybara/releases/download/v0.1.0/Capybara-0.1.0-linux-arm64.AppImage" },
+    { "name": "Capybara-0.1.0-linux-arm64.tar.gz", "size": 120165712, "browser_download_url": "https://github.com/lhphuc99/capybara/releases/download/v0.1.0/Capybara-0.1.0-linux-arm64.tar.gz" },
+    { "name": "Capybara-0.1.0-linux-x64.tar.gz", "size": 119102473, "browser_download_url": "https://github.com/lhphuc99/capybara/releases/download/v0.1.0/Capybara-0.1.0-linux-x64.tar.gz" },
+    { "name": "Capybara-0.1.0-linux-x86_64.AppImage", "size": 115831803, "browser_download_url": "https://github.com/lhphuc99/capybara/releases/download/v0.1.0/Capybara-0.1.0-linux-x86_64.AppImage" },
+    { "name": "Capybara-0.1.0-mac-arm64.dmg", "size": 113246208, "browser_download_url": "https://github.com/lhphuc99/capybara/releases/download/v0.1.0/Capybara-0.1.0-mac-arm64.dmg" },
+    { "name": "Capybara-0.1.0-mac-arm64.dmg.blockmap", "size": 120001, "browser_download_url": "https://github.com/lhphuc99/capybara/releases/download/v0.1.0/Capybara-0.1.0-mac-arm64.dmg.blockmap" },
+    { "name": "Capybara-0.1.0-mac-arm64.zip", "size": 109051904, "browser_download_url": "https://github.com/lhphuc99/capybara/releases/download/v0.1.0/Capybara-0.1.0-mac-arm64.zip" },
+    { "name": "Capybara-0.1.0-win-x64.exe", "size": 111300379, "browser_download_url": "https://github.com/lhphuc99/capybara/releases/download/v0.1.0/Capybara-0.1.0-win-x64.exe" },
+    { "name": "Capybara-0.1.0-win-x64.exe.blockmap", "size": 118232, "browser_download_url": "https://github.com/lhphuc99/capybara/releases/download/v0.1.0/Capybara-0.1.0-win-x64.exe.blockmap" },
+    { "name": "Capybara-0.1.0-win-x64.zip", "size": 152919484, "browser_download_url": "https://github.com/lhphuc99/capybara/releases/download/v0.1.0/Capybara-0.1.0-win-x64.zip" },
+    { "name": "Capybara-0.0.9-win-x64.exe", "size": 110000000, "browser_download_url": "https://github.com/lhphuc99/capybara/releases/download/v0.1.0/Capybara-0.0.9-win-x64.exe" },
+    { "name": "builder-debug.yml", "size": 1648, "browser_download_url": "https://github.com/lhphuc99/capybara/releases/download/v0.1.0/builder-debug.yml" },
+    { "name": "latest-mac.yml", "size": 512, "browser_download_url": "https://github.com/lhphuc99/capybara/releases/download/v0.1.0/latest-mac.yml" },
+    { "name": "SHA256SUMS.txt", "size": 760, "browser_download_url": "https://github.com/lhphuc99/capybara/releases/download/v0.1.0/SHA256SUMS.txt" }
+  ]
+}
