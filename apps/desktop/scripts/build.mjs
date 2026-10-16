@@ -30,4 +30,11 @@ await build({
   output: { file: `${dist}main.cjs`, format: 'cjs' },
 });
 
+await build({
+  input: path('../src/preload.ts'),
+  platform: 'node',
+  external: ['electron'],
+  output: { file: `${dist}preload.cjs`, format: 'cjs' },
+});
+
 cpSync(ui, `${dist}ui`, { recursive: true });

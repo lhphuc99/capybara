@@ -1,5 +1,6 @@
+/* index.html and appearance.ts set data-theme from the Appearance setting, "system" included. */
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
   --bg: #ffffff;
   --bg-subtle: #f6f8fa;
   --bg-hover: #eef1f4;
@@ -32,35 +33,34 @@
   --radius: 6px;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0e1116;
-    --bg-subtle: #151a21;
-    --bg-hover: #1b222b;
-    --bg-selected: #172a46;
-    --bg-input: #0e1116;
-    --border: #252c36;
-    --border-strong: #343d4a;
-    --text: #e6edf3;
-    --text-muted: #9aa3ad;
-    --text-faint: #6b7480;
-    --accent: #4f8fff;
-    --ok: #3fb950;
-    --warn: #e3b341;
-    --warn-bg: #272111;
-    --warn-border: #3b3117;
-    --error: #ff7b72;
-    --error-bg: #2b1517;
-    --error-border: #45201f;
-    --info: #58a6ff;
-    --debug: #bc8cff;
-    --syntax-key: #d2a8ff;
-    --syntax-string: #a5d6ff;
-    --syntax-number: #79c0ff;
-    --syntax-literal: #ff7b72;
-    --syntax-muted: #8b949e;
-    --shadow: 0 10px 30px rgb(0 0 0 / 0.5);
-  }
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #0e1116;
+  --bg-subtle: #151a21;
+  --bg-hover: #1b222b;
+  --bg-selected: #172a46;
+  --bg-input: #0e1116;
+  --border: #252c36;
+  --border-strong: #343d4a;
+  --text: #e6edf3;
+  --text-muted: #9aa3ad;
+  --text-faint: #6b7480;
+  --accent: #4f8fff;
+  --ok: #3fb950;
+  --warn: #e3b341;
+  --warn-bg: #272111;
+  --warn-border: #3b3117;
+  --error: #ff7b72;
+  --error-bg: #2b1517;
+  --error-border: #45201f;
+  --info: #58a6ff;
+  --debug: #bc8cff;
+  --syntax-key: #d2a8ff;
+  --syntax-string: #a5d6ff;
+  --syntax-number: #79c0ff;
+  --syntax-literal: #ff7b72;
+  --syntax-muted: #8b949e;
+  --shadow: 0 10px 30px rgb(0 0 0 / 0.5);
 }
 
 * {
@@ -286,6 +286,56 @@ code {
   border-radius: 8px;
   background: var(--bg);
   box-shadow: var(--shadow);
+}
+
+.appearance {
+  position: relative;
+  flex: none;
+}
+
+.appearance-menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 6px);
+  right: 0;
+  display: grid;
+  min-width: 170px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+}
+
+.appearance-title {
+  padding: 6px 10px 4px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.appearance-option {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) 14px;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+
+.appearance-option:hover {
+  background: var(--bg-hover);
+}
+
+.appearance-option[aria-checked='true'] {
+  color: var(--accent);
+  font-weight: 550;
 }
 
 .picker-item {

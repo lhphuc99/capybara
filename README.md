@@ -98,6 +98,8 @@ To share what you see, **Copy all** in the Logs tab copies the entries that matc
 
 Drag the line between the request list and its details (or between the keys and the value in the Storage tab) to resize them; double-click it to reset. With the line focused, the arrow keys move it too. Widths are remembered.
 
+The **Appearance** button at the top right switches between System (the default, following your OS), Light and Dark. In the desktop app the window's title bar follows it too.
+
 The SDK finds your machine from the Metro bundle URL, so simulators and phones on the same Wi-Fi connect without configuration. For Android devices over USB the CLI and the desktop app run `adb reverse` for you. Pass `host` to `init()` to override.
 
 ## Desktop app

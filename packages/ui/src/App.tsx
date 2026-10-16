@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { AppearanceMenu } from './components/AppearanceMenu';
 import { EmptyState } from './components/EmptyState';
 import { SessionPicker } from './components/SessionPicker';
 import { Toaster } from './components/Toaster';
@@ -65,6 +66,7 @@ export function App() {
           </nav>
         )}
         <ConnectionBadge status={status} session={session} />
+        <AppearanceMenu />
       </header>
       <main className="main">
         {!session ? (

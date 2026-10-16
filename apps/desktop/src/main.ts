@@ -1,12 +1,14 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { DEFAULT_PORT } from '@capybara/protocol';
 import { reverseAndroidPorts, startMetroBridge, type MetroBridge, type ServerOptions } from 'capybara';
-import { app, BrowserWindow, dialog, Menu, nativeTheme, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, shell } from 'electron';
 import { listen, PortInUseError, startOrReuse, type Started } from './server.js';
 
 const TAKEOVER_INTERVAL_MS = 2_000;
+const APPEARANCES = ['system', 'light', 'dark'] as const;
+type Appearance = (typeof APPEARANCES)[number];
 
 let url = '';
 let mainWindow: BrowserWindow | null = null;
@@ -34,6 +36,15 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 async function main() {
+  // The UI owns the Appearance setting; keeping a copy here gives the window the right colors before it loads.
+  nativeTheme.themeSource = readAppearance();
+  nativeTheme.on('updated', () => mainWindow?.setBackgroundColor(windowBackground()));
+  ipcMain.on('appearance', (event, value: unknown) => {
+    if (event.sender !== mainWindow?.webContents || !isAppearance(value) || value === nativeTheme.themeSource) return;
+    nativeTheme.themeSource = value;
+    saveAppearance(value);
+  });
+
   // Electron's default menu has a Help menu linking to electronjs.org.
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([
@@ -138,9 +149,9 @@ function createWindow(): BrowserWindow {
     minWidth: 640,
     minHeight: 400,
     title: 'Capybara',
-    // The UI's --bg, so the window doesn't flash white before the page paints.
-    backgroundColor: nativeTheme.shouldUseDarkColors ? '#0e1116' : '#ffffff',
+    backgroundColor: windowBackground(),
     webPreferences: {
+      preload: join(app.getAppPath(), 'dist', 'preload.cjs'),
       // A hidden or covered window would otherwise get throttled timers and show incoming events in bursts.
       backgroundThrottling: false,
     },
@@ -166,6 +177,34 @@ function createWindow(): BrowserWindow {
 
 function load(window: BrowserWindow) {
   if (!window.isDestroyed()) window.loadURL(url).catch(() => {});
+}
+
+/** The UI's --bg, so the window doesn't flash the other color before the page paints. */
+function windowBackground(): string {
+  return nativeTheme.shouldUseDarkColors ? '#0e1116' : '#ffffff';
+}
+
+function isAppearance(value: unknown): value is Appearance {
+  return APPEARANCES.includes(value as Appearance);
+}
+
+const settingsFile = () => join(app.getPath('userData'), 'settings.json');
+
+function readAppearance(): Appearance {
+  try {
+    const { appearance } = JSON.parse(readFileSync(settingsFile(), 'utf8')) as { appearance?: unknown };
+    return isAppearance(appearance) ? appearance : 'system';
+  } catch {
+    return 'system';
+  }
+}
+
+function saveAppearance(appearance: Appearance) {
+  try {
+    writeFileSync(settingsFile(), `${JSON.stringify({ appearance })}\n`);
+  } catch {
+    // The setting still applies for this run.
+  }
 }
 
 function openExternal(target: string) {

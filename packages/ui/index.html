@@ -8,6 +8,17 @@
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='100 100 824 824'%3E%3Crect x='100' y='100' width='824' height='824' rx='185' fill='%23F4A13A'/%3E%3Cg fill='none' stroke='%233A2417' stroke-width='40' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M196 646C236 540 380 454 524 434L752 466Q796 472 796 516V646'/%3E%3Cpath d='M470 446A30 32 0 0 1 528 432'/%3E%3Cpath d='M150 646H874M272 724H520M612 724H752'/%3E%3Cpath d='M566 500Q600 526 634 500' stroke-width='32'/%3E%3C/g%3E%3Ccircle cx='776' cy='498' r='11' fill='%233A2417'/%3E%3Ccircle cx='660' cy='390' r='46' fill='%23FFD45E' stroke='%233A2417' stroke-width='26'/%3E%3Cpath d='M662 344C670 314 700 304 728 314C720 342 690 352 662 344Z' fill='%235E8C31'/%3E%3C/svg%3E"
     />
     <title>Capybara</title>
+    <script>
+      // Runs before the first paint, so a dark page doesn't flash light; appearance.ts keeps it up to date.
+      (function () {
+        var saved = null;
+        try {
+          saved = localStorage.getItem('capybara:appearance');
+        } catch (e) {}
+        var dark = saved === 'dark' || (saved !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
