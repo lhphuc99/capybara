@@ -1,7 +1,8 @@
 import type { BodyPreview, NetworkDiagnosis } from '@capybara/protocol';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { JsonTree } from '../components/JsonTree';
+import { ResizeHandle, usePaneWidth } from '../components/ResizeHandle';
 import { diagnose } from '../connection';
 import { useFollow } from '../follow';
 import { showToast } from '../toast';
@@ -39,6 +40,8 @@ export function NetworkPanel({ session }: { session: SessionState }) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const layoutRef = useRef<HTMLDivElement>(null);
+  const pane = usePaneWidth('capybara:pane:network', 46);
   const bodyRef = useRef<HTMLDivElement>(null);
   const { network } = session;
 
@@ -77,6 +80,19 @@ export function NetworkPanel({ session }: { session: SessionState }) {
     return () => document.removeEventListener('keydown', onKey);
   }, [selected]);
 
+  const resize = (
+    <ResizeHandle
+      container={layoutRef}
+      width={pane.width}
+      min={25}
+      max={75}
+      onChange={pane.setWidth}
+      onCommit={pane.save}
+      onReset={pane.reset}
+      label="Resize the details pane"
+    />
+  );
+
   return (
     <section className="panel">
       <div className="toolbar">
@@ -108,7 +124,11 @@ export function NetworkPanel({ session }: { session: SessionState }) {
         </button>
       </div>
 
-      <div className={`network${selected ? ' with-detail' : ''}`}>
+      <div
+        ref={layoutRef}
+        className={`network${selected ? ' with-detail' : ''}`}
+        style={{ '--pane-width': `${pane.width}%` } as CSSProperties}
+      >
         <div className="net-table">
           <div className="net-head">
             <span>Status</span>
@@ -144,9 +164,11 @@ export function NetworkPanel({ session }: { session: SessionState }) {
           )}
         </div>
         {selected?.socket ? (
-          <SocketDetail entry={selected as SocketEntry} onClose={() => setSelectedId(null)} />
+          <SocketDetail entry={selected as SocketEntry} onClose={() => setSelectedId(null)} resize={resize} />
         ) : (
-          selected && <RequestDetail key={selected.id} entry={selected} session={session} onClose={() => setSelectedId(null)} />
+          selected && (
+            <RequestDetail key={selected.id} entry={selected} session={session} onClose={() => setSelectedId(null)} resize={resize} />
+          )
         )}
       </div>
     </section>
@@ -186,10 +208,11 @@ function NetworkRow({
   );
 }
 
-function SocketDetail({ entry, onClose }: { entry: SocketEntry; onClose: () => void }) {
+function SocketDetail({ entry, onClose, resize }: { entry: SocketEntry; onClose: () => void; resize: ReactNode }) {
   const [tab, setTab] = useState<'messages' | 'general'>('messages');
   return (
     <aside className="detail">
+      {resize}
       <div className="detail-head">
         <div className="subtabs" role="tablist">
           {(['messages', 'general'] as const).map((id) => (
@@ -198,10 +221,11 @@ function SocketDetail({ entry, onClose }: { entry: SocketEntry; onClose: () => v
             </button>
           ))}
         </div>
-        <span className="spacer" />
-        <button type="button" className="btn small icon" onClick={onClose} aria-label="Close details">
-          ✕
-        </button>
+        <div className="pane-actions">
+          <button type="button" className="btn small icon" onClick={onClose} aria-label="Close details">
+            ✕
+          </button>
+        </div>
       </div>
       {tab === 'messages' ? (
         <SocketMessages entry={entry} />
@@ -395,7 +419,17 @@ function SocketGeneral({ entry }: { entry: SocketEntry }) {
   );
 }
 
-function RequestDetail({ entry, session, onClose }: { entry: NetworkEntry; session: SessionState; onClose: () => void }) {
+function RequestDetail({
+  entry,
+  session,
+  onClose,
+  resize,
+}: {
+  entry: NetworkEntry;
+  session: SessionState;
+  onClose: () => void;
+  resize: ReactNode;
+}) {
   const [tab, setTab] = useState<DetailTab>('response');
   const [copied, setCopied] = useState<string | null>(null);
 
@@ -410,6 +444,7 @@ function RequestDetail({ entry, session, onClose }: { entry: NetworkEntry; sessi
 
   return (
     <aside className="detail">
+      {resize}
       <div className="detail-head">
         <div className="subtabs" role="tablist">
           {(['headers', 'request', 'response'] as const).map((id) => (
@@ -418,13 +453,14 @@ function RequestDetail({ entry, session, onClose }: { entry: NetworkEntry; sessi
             </button>
           ))}
         </div>
-        <span className="spacer" />
-        <button type="button" className="btn small" onClick={() => copy('curl', toCurl(entry))}>
-          {copied === 'curl' ? 'Copied' : 'Copy cURL'}
-        </button>
-        <button type="button" className="btn small icon" onClick={onClose} aria-label="Close details">
-          ✕
-        </button>
+        <div className="pane-actions">
+          <button type="button" className="btn small" onClick={() => copy('curl', toCurl(entry))}>
+            {copied === 'curl' ? 'Copied' : 'Copy cURL'}
+          </button>
+          <button type="button" className="btn small icon" onClick={onClose} aria-label="Close details">
+            ✕
+          </button>
+        </div>
       </div>
       <div className="detail-body">
         {tab === 'headers' && <HeadersTab entry={entry} />}

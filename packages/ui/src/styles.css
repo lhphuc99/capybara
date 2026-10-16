@@ -740,7 +740,7 @@ code {
 }
 
 .network.with-detail {
-  grid-template-columns: minmax(0, 1fr) minmax(380px, 46%);
+  grid-template-columns: minmax(340px, 1fr) minmax(340px, var(--pane-width, 46%));
 }
 
 .net-table {
@@ -829,6 +829,7 @@ code {
 }
 
 .detail {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -838,6 +839,7 @@ code {
 
 .detail-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
   padding: 6px 8px;
@@ -981,7 +983,7 @@ code {
 .storage {
   display: grid;
   flex: 1;
-  grid-template-columns: 190px minmax(0, 1fr) minmax(320px, 40%);
+  grid-template-columns: 190px minmax(240px, 1fr) minmax(320px, var(--pane-width, 40%));
   min-height: 0;
 }
 
@@ -1083,6 +1085,7 @@ code {
 }
 
 .editor-pane {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -1101,9 +1104,19 @@ code {
 
 .editor-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   min-width: 0;
+}
+
+/* Buttons at the end of a pane header; in a narrow pane they move to a line of their own, still on the right. */
+.pane-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
 }
 
 .editor-key {
@@ -1189,6 +1202,10 @@ code {
   }
 
   .network.with-detail .net-table {
+    display: none;
+  }
+
+  .resize-handle {
     display: none;
   }
 
@@ -1397,4 +1414,40 @@ code {
   .toast {
     animation: none;
   }
+}
+
+/* Sits over the left border of a side pane; the wide hit area keeps it easy to grab. */
+.resize-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -4px;
+  z-index: 5;
+  width: 8px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+}
+
+.resize-handle:hover::after,
+.resize-handle:focus-visible::after,
+.resize-handle.dragging::after {
+  background: var(--accent);
+}
+
+.resize-handle:focus-visible {
+  outline: none;
+}
+
+body.resizing {
+  cursor: col-resize;
+  user-select: none;
 }

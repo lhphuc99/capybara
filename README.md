@@ -96,6 +96,8 @@ In the UI, WebSocket connections are **WS** rows in the Network tab. Select one 
 
 To share what you see, **Copy all** in the Logs tab copies the entries that match the current filters as text, and the copy icon that appears when you hover over an entry copies just that one. Objects are copied in full as JSON and errors with their stack. In the Storage tab, **Copy** copies the selected value, and every object or value in a JSON tree has its own copy icon.
 
+Drag the line between the request list and its details (or between the keys and the value in the Storage tab) to resize them; double-click it to reset. With the line focused, the arrow keys move it too. Widths are remembered.
+
 The SDK finds your machine from the Metro bundle URL, so simulators and phones on the same Wi-Fi connect without configuration. For Android devices over USB the CLI and the desktop app run `adb reverse` for you. Pass `host` to `init()` to override.
 
 ## Desktop app

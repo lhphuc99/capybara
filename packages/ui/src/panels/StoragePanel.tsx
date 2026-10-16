@@ -1,7 +1,8 @@
 import { METRO_SDK, type StorageAdapterInfo, type StorageEntries, type StorageEntry } from '@capybara/protocol';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { CopyButton } from '../components/CopyButton';
 import { JsonTree } from '../components/JsonTree';
+import { ResizeHandle, usePaneWidth } from '../components/ResizeHandle';
 import { storageCommand } from '../connection';
 import { formatBytes, makeMatcher, parseJson } from '../format';
 import type { SessionState } from '../store';
@@ -24,6 +25,8 @@ function StorageBrowser({ session }: { session: SessionState }) {
   const [adding, setAdding] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
   const [scanToken, setScanToken] = useState(0);
+  const layoutRef = useRef<HTMLDivElement>(null);
+  const pane = usePaneWidth('capybara:pane:storage', 40);
   const adapter = adapters?.find((a) => a.id === adapterId);
   const version = adapterId ? (session.storageVersions[adapterId] ?? 0) : 0;
 
@@ -190,7 +193,7 @@ init({ storage: [asyncStorage(AsyncStorage), mmkvStorage(storage)] });`}</pre>
       </div>
       {error && <div className="callout error inline">{error}</div>}
 
-      <div className="storage">
+      <div ref={layoutRef} className="storage" style={{ '--pane-width': `${pane.width}%` } as CSSProperties}>
         <nav className="adapters">
           {adapters?.map((a) => (
             <button
@@ -241,6 +244,16 @@ init({ storage: [asyncStorage(AsyncStorage), mmkvStorage(storage)] });`}</pre>
         </div>
 
         <div className="editor-pane">
+          <ResizeHandle
+            container={layoutRef}
+            width={pane.width}
+            min={25}
+            max={65}
+            onChange={pane.setWidth}
+            onCommit={pane.save}
+            onReset={pane.reset}
+            label="Resize the value pane"
+          />
           {adding && adapter ? (
             <NewEntry
               onCancel={() => setAdding(false)}
@@ -350,39 +363,40 @@ function ValueEditor({
           {entry.key}
         </strong>
         <span className="note">{formatBytes(full.size)}</span>
-        <span className="spacer" />
-        {!editing && full.value !== null && (
-          <CopyButton
-            className="btn small"
-            label={`Copy the value of ${entry.key}`}
-            // The tree view copies indented JSON; Raw copies the value exactly as stored.
-            text={() => (parsed.ok && !raw ? JSON.stringify(parsed.value, null, 2) : value)}
-          >
-            Copy
-          </CopyButton>
-        )}
-        {!editing && parsed.ok && (
-          <button type="button" className="btn small" onClick={() => setRaw(!raw)}>
-            {raw ? 'Tree' : 'Raw'}
-          </button>
-        )}
-        {!adapter.readOnly && !editing && (
-          <button
-            type="button"
-            className="btn small"
-            onClick={() => {
-              setDraft(parsed.ok ? JSON.stringify(parsed.value, null, 2) : value);
-              setEditing(true);
-            }}
-          >
-            Edit
-          </button>
-        )}
-        {!adapter.readOnly && (
-          <button type="button" className="btn small danger" onClick={remove} disabled={busy}>
-            Delete
-          </button>
-        )}
+        <div className="pane-actions">
+          {!editing && full.value !== null && (
+            <CopyButton
+              className="btn small"
+              label={`Copy the value of ${entry.key}`}
+              // The tree view copies indented JSON; Raw copies the value exactly as stored.
+              text={() => (parsed.ok && !raw ? JSON.stringify(parsed.value, null, 2) : value)}
+            >
+              Copy
+            </CopyButton>
+          )}
+          {!editing && parsed.ok && (
+            <button type="button" className="btn small" onClick={() => setRaw(!raw)}>
+              {raw ? 'Tree' : 'Raw'}
+            </button>
+          )}
+          {!adapter.readOnly && !editing && (
+            <button
+              type="button"
+              className="btn small"
+              onClick={() => {
+                setDraft(parsed.ok ? JSON.stringify(parsed.value, null, 2) : value);
+                setEditing(true);
+              }}
+            >
+              Edit
+            </button>
+          )}
+          {!adapter.readOnly && (
+            <button type="button" className="btn small danger" onClick={remove} disabled={busy}>
+              Delete
+            </button>
+          )}
+        </div>
       </div>
       {error && <p className="callout error">{error}</p>}
       {editing ? (
