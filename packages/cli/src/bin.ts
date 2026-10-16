@@ -9,6 +9,7 @@ import { DEFAULT_METRO_PORTS, startMetroBridge, type MetroBridge } from './metro
 import { createServer, lanAddresses } from './server.js';
 
 const HELP = `Usage: capybara [options]
+       capybara mcp [options]   Serve this data to AI assistants (see capybara mcp --help)
 
 Options:
   -p, --port <port>         Port for the UI and app connections (default ${DEFAULT_PORT}, or $CAPYBARA_PORT)
@@ -23,6 +24,17 @@ Options:
 
 const version = (JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string })
   .version;
+
+if (process.argv[2] === 'mcp') {
+  const { runMcp } = await import('./mcp.js');
+  try {
+    await runMcp(process.argv.slice(3), version);
+    process.exit(0);
+  } catch (error) {
+    console.error((error as Error).message);
+    process.exit(1);
+  }
+}
 
 let values: ReturnType<typeof parseCli>;
 try {

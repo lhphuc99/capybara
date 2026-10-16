@@ -29,7 +29,9 @@
   "dependencies": {
     "@capybara/core": "0.1.0",
     "@capybara/protocol": "0.1.0",
-    "ws": "^8.22.0"
+    "@modelcontextprotocol/sdk": "^1.31.0",
+    "ws": "^8.22.0",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/ws": "^8.18.2"

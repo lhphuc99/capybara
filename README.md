@@ -118,6 +118,37 @@ npm run desktop:package    # macOS .dmg and .zip in apps/desktop/release/
 - Needs Node 22.12 or later. Electron downloads its binary (about 130 MB) the first time it runs.
 - Packaging needs Xcode 26 or later. The app icon (`apps/desktop/build/icon.icon`, an Icon Composer file) is compiled with Xcode's `actool`, which also produces the `.icns` that older macOS versions use. The source artwork is [`assets/icon.svg`](assets/icon.svg).
 
+## AI assistants (MCP)
+
+`capybara mcp` lets an AI assistant read and filter what Capybara records: logs, network requests, WebSocket messages and storage. It is an [MCP](https://modelcontextprotocol.io) server on stdin and stdout that reads the Capybara app or `npx capybara` already running on this computer.
+
+```bash
+claude mcp add capybara -- npx capybara mcp    # Claude Code
+```
+
+For Claude Desktop, Cursor and other clients, add it to their MCP settings:
+
+```json
+{ "mcpServers": { "capybara": { "command": "npx", "args": ["capybara", "mcp"] } } }
+```
+
+Until the package is published, run it from this repo instead: `node <repo>/packages/cli/dist/bin.js mcp`.
+
+| Tool | What it reads |
+| --- | --- |
+| `list_sessions` | Connected apps and their session ids |
+| `get_logs` | Logs, filtered by level, text or `/regex/` and source (uncaught errors, unhandled rejections); one entry in full by `seq` |
+| `get_network` | Requests and WebSockets, one per line, filtered by status (`404`, `5xx`, `failed`), method, URL, type and duration |
+| `get_request` | One request with its headers and bodies |
+| `diagnose_request` | Why a request from a web page failed, the same check as **Find out why** |
+| `get_websocket` | The messages of one WebSocket |
+| `get_storage` | The app's stores, their keys, or one value |
+
+- The tools only read. `diagnose_request` sends the request's preflight and, for GET and HEAD, the request itself again from this computer, without the app's credentials.
+- What the tools return goes to the AI model. Values that look like credentials are replaced with `[hidden]`: Authorization and cookie headers, JSON keys and query parameters such as `token` or `password`, and storage keys such as `authToken`. Pass `--show-secrets` to turn that off.
+- Lists return the newest 50 entries by default; pass `after` with the last `seq` to get only newer ones. Without a session id, the tools read the newest connected app.
+- Pass `--port` when Capybara runs on another port.
+
 ## Examples
 
 ```bash
