@@ -1,4 +1,4 @@
-// Runs after `changeset version`, which only bumps the published packages.
+// Runs after `changeset version`, for the files it doesn't update itself.
 import { execSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 
@@ -12,12 +12,6 @@ for (const dir of ['packages/web', 'packages/react-native']) {
   if (!pattern.test(source)) throw new Error(`SDK_VERSION not found in ${file}`);
   writeFileSync(file, source.replace(pattern, `export const SDK_VERSION = '${versionOf(dir)}';`));
 }
-
-// The desktop app is private, so changesets leaves its version alone; it names the release and the installers.
-const desktop = 'apps/desktop/package.json';
-const pkg = JSON.parse(readFileSync(desktop, 'utf8'));
-pkg.version = versionOf('packages/cli');
-writeFileSync(desktop, JSON.stringify(pkg, null, 2) + '\n');
 
 // Otherwise package-lock.json keeps the old workspace versions and `npm ci` refuses to install.
 execSync('npm install --package-lock-only --ignore-scripts --no-audit --no-fund', { stdio: 'inherit' });

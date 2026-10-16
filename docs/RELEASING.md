@@ -11,7 +11,7 @@ yarn, pnpm và bun đều tải từ registry npm, nên publish một lần lên
 
 Tên trên npm là `capybara-devtools`, vì scope `@capybara` đã thuộc về một tài khoản npm khác. Tên sản phẩm, lệnh `capybara` (sau khi cài global), biến môi trường `CAPYBARA_*`, global `__CAPYBARA_*__` và bundle ID `dev.capybara.*` vẫn giữ là Capybara.
 
-Năm gói npm và app desktop dùng chung một số version (nhóm `fixed` trong `.changeset/config.json`). App desktop là package private, nên `scripts/sync-versions.mjs` chép version của CLI sang nó, đồng thời cập nhật `SDK_VERSION` trong hai SDK và `package-lock.json`.
+Năm gói npm, UI và app desktop dùng chung một số version (nhóm `fixed` trong `.changeset/config.json`). `privatePackages.version` cho changesets nâng version và viết `CHANGELOG.md` cho cả hai package private; thiếu changelog thì bước mở PR version của changesets/action dừng lỗi. Các app mẫu nằm trong `ignore` và lấy SDK của workspace qua `"*"`. Sau `changeset version`, `scripts/sync-versions.mjs` cập nhật `SDK_VERSION` trong hai SDK và `package-lock.json`.
 
 ## Trạng thái
 
@@ -20,7 +20,7 @@ Năm gói npm và app desktop dùng chung một số version (nhóm `fixed` tron
 
 ## Mỗi lần phát hành
 
-1. Với mỗi thay đổi cần phát hành: chạy `npx changeset`, chọn gói và mức tăng (patch, minor, major), viết mô tả cho người dùng, rồi commit file trong `.changeset/`. Vì version dùng chung, chỉ cần chọn gói thật sự đổi; các gói còn lại tự lên cùng version.
+1. Với mỗi thay đổi cần phát hành: chạy `npx changeset`, chọn gói và mức tăng (patch, minor, major), viết mô tả cho người dùng, rồi commit file trong `.changeset/`. Vì version dùng chung, chỉ cần chọn gói thật sự đổi; các gói còn lại tự lên cùng version. Thay đổi chỉ ở app desktop thì chọn `@capybara-devtools/desktop`.
 2. Push lên `main`: workflow Release mở (hoặc cập nhật) PR "chore(release): version packages" với version mới và `CHANGELOG.md` của từng gói. CI không chạy trên PR này vì nó do `GITHUB_TOKEN` tạo; PR chỉ đổi version và changelog.
 3. Merge PR đó trên GitHub.
 4. Publish từ máy:

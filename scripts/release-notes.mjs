@@ -4,24 +4,38 @@ import { existsSync, readFileSync } from 'node:fs';
 const root = new URL('../', import.meta.url);
 const read = (path) => readFileSync(new URL(path, root), 'utf8');
 
-const packages = ['cli', 'web', 'react-native', 'core', 'protocol'];
+const packages = ['apps/desktop', 'packages/cli', 'packages/web', 'packages/react-native', 'packages/core', 'packages/protocol'];
 // What changesets writes for packages that the fixed group bumped without changes of their own.
 const dependencyOnly = /^\s*- (Updated dependencies|@capybara-devtools\/[\w-]+@|capybara-devtools@)|^No changes in this release\.$/;
+// A changeset that names several packages shows up in each of their changelogs; list it once.
+const seen = new Set();
 
 const parts = [];
 for (const dir of packages) {
-  const { name, version } = JSON.parse(read(`packages/${dir}/package.json`));
-  const file = `packages/${dir}/CHANGELOG.md`;
+  const { name, version } = JSON.parse(read(`${dir}/package.json`));
+  const file = `${dir}/CHANGELOG.md`;
   if (!existsSync(new URL(file, root))) continue;
   const section = read(file)
     .split(/^## /m)
     .find((part) => part.startsWith(`${version}\n`));
   if (!section) continue;
 
-  const lines = section.split('\n').slice(1).filter((line) => !dependencyOnly.test(line));
-  const kept = lines.filter((line, i) => {
-    if (!line.startsWith('### ')) return true;
-    const next = lines.slice(i + 1).find((l) => l.trim() !== '');
+  // One entry per line, with the indented lines that continue a bullet.
+  const entries = [];
+  for (const line of section.split('\n').slice(1)) {
+    if (/^\s+\S/.test(line) && entries.at(-1)?.startsWith('- ')) entries[entries.length - 1] += `\n${line}`;
+    else entries.push(line);
+  }
+  const fresh = entries.filter((entry) => {
+    if (dependencyOnly.test(entry)) return false;
+    if (!entry.startsWith('- ')) return true;
+    if (seen.has(entry)) return false;
+    seen.add(entry);
+    return true;
+  });
+  const kept = fresh.filter((entry, i) => {
+    if (!entry.startsWith('### ')) return true;
+    const next = fresh.slice(i + 1).find((e) => e.trim() !== '');
     return next !== undefined && !next.startsWith('### ');
   });
   const body = kept.join('\n').trim();

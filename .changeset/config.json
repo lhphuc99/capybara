@@ -2,11 +2,22 @@
   "$schema": "https://unpkg.com/@changesets/config@4.0.1/schema.json",
   "baseBranch": "main",
   "access": "public",
-  "ignore": [],
-  "fixed": [["capybara-devtools", "@capybara-devtools/*"]],
+  "ignore": [
+    "example-*"
+  ],
+  "fixed": [
+    [
+      "capybara-devtools",
+      "@capybara-devtools/*"
+    ]
+  ],
   "linked": [],
   "format": "auto",
   "updateInternalDependencies": "patch",
   "commit": false,
-  "changelog": "@changesets/cli/changelog"
+  "changelog": "@changesets/cli/changelog",
+  "privatePackages": {
+    "version": true,
+    "tag": false
+  }
 }
