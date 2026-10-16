@@ -58,9 +58,11 @@ jobs:
           pr-title: 'chore(release): version packages'
 
   # Once that pull request is merged: build, test and pack what isn't on npm yet.
+  # npm rejects the OIDC tokens of repos created after 2026-07-15 (npm/cli#9969), so until the repo
+  # variable NPM_TRUSTED_PUBLISHING is set to true, releases are published with `npm run release`.
   pack:
     needs: select-mode
-    if: needs.select-mode.outputs.mode == 'publish'
+    if: needs.select-mode.outputs.mode == 'publish' && vars.NPM_TRUSTED_PUBLISHING == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
