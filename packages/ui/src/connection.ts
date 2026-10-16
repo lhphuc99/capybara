@@ -2,6 +2,7 @@ import {
   DEFAULT_PORT,
   VIEWER_PATH,
   type CommandResult,
+  type NetworkDiagnosis,
   type ServerToViewer,
   type StorageCommands,
   type ViewerToServer,
@@ -70,7 +71,7 @@ export function send(message: ViewerToServer): void {
   if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
 }
 
-export function command<T>(sessionId: string, plugin: string, method: string, params?: unknown): Promise<T> {
+function request<T>(message: (id: string) => ViewerToServer, timeout = 15_000): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     if (socket?.readyState !== WebSocket.OPEN) {
       reject(new Error('Not connected to the Devsight server'));
@@ -80,10 +81,19 @@ export function command<T>(sessionId: string, plugin: string, method: string, pa
     const timer = window.setTimeout(() => {
       pending.delete(id);
       reject(new Error('The server did not answer in time'));
-    }, 15_000);
+    }, timeout);
     pending.set(id, { resolve: resolve as (value: unknown) => void, reject, timer });
-    send({ t: 'command', id, sessionId, plugin, method, params });
+    send(message(id));
   });
+}
+
+export function command<T>(sessionId: string, plugin: string, method: string, params?: unknown): Promise<T> {
+  return request((id) => ({ t: 'command', id, sessionId, plugin, method, params }));
+}
+
+/** The server may wait 8 s for each request it repeats, and follows redirects. */
+export function diagnose(sessionId: string, requestId: string): Promise<NetworkDiagnosis> {
+  return request((id) => ({ t: 'diagnose', id, sessionId, requestId }), 60_000);
 }
 
 export function storageCommand<M extends keyof StorageCommands>(

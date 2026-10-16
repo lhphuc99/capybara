@@ -1,4 +1,4 @@
-import type { BodyPreview } from '@devsight/protocol';
+import type { BodyPreview, NetworkErrorPayload } from '@devsight/protocol';
 import type { Plugin, PluginContext } from '../client.js';
 import { errorMessage, now, randomId, utf8Length } from '../utils.js';
 import { hookWebSockets } from './websocket.js';
@@ -26,6 +26,15 @@ interface Settings {
   maxBody: number;
   isIgnored(url: string): boolean;
   redact(headers: Record<string, string>): Record<string, string>;
+  failures: FailureExplainer;
+}
+
+type Explanation = Pick<NetworkErrorPayload, 'cause' | 'credentials'> & { message?: string };
+
+interface FailureExplainer {
+  /** Runs `report` once the cause can be told, which in a browser may be a moment after the failure. */
+  explain(url: string, credentials: boolean, report: (explanation: Explanation) => void): void;
+  stop(): void;
 }
 
 export function networkPlugin(options: NetworkPluginOptions = {}): Plugin {
@@ -33,7 +42,7 @@ export function networkPlugin(options: NetworkPluginOptions = {}): Plugin {
     name: 'network',
     setup(ctx) {
       const settings = resolveSettings(options);
-      const teardowns: Array<() => void> = [];
+      const teardowns: Array<() => void> = [() => settings.failures.stop()];
       if (options.fetch !== false) teardowns.push(patchFetch(ctx, settings));
       if (options.xhr !== false) teardowns.push(patchXhr(ctx, settings));
       if (options.websocket !== false) {
@@ -73,7 +82,77 @@ function resolveSettings(options: NetworkPluginOptions): Settings {
       }
       return out;
     },
+    failures: failureExplainer(),
   };
+}
+
+/**
+ * Browsers never tell a page why a request failed. What a page can know: whether it is offline,
+ * whether the URL is mixed content, and CSP blocks, which arrive as `securitypolicyviolation`
+ * events. Anything else cross-origin is reported as such for the Devsight server to diagnose.
+ */
+function failureExplainer(): FailureExplainer {
+  const g = globalThis as {
+    location?: { href?: string; origin?: string; protocol?: string };
+    navigator?: { onLine?: boolean; product?: string; userAgent?: string };
+    document?: Pick<Document, 'addEventListener' | 'removeEventListener'>;
+  };
+  const page = g.location;
+  if (!page?.href || !page.origin || page.origin === 'null' || g.navigator?.product === 'ReactNative') {
+    return { explain: (_url, _credentials, report) => report({}), stop() {} };
+  }
+  const blocked: Array<{ origin: string; directive: string; at: number }> = [];
+  const onViolation = (event: Event) => {
+    const violation = event as SecurityPolicyViolationEvent;
+    const directive = violation.effectiveDirective || violation.violatedDirective || '';
+    if (!/^(connect-src|default-src)/.test(directive)) return;
+    try {
+      blocked.push({ origin: new URL(violation.blockedURI, page.href).origin, directive, at: now() });
+      if (blocked.length > 20) blocked.shift();
+    } catch {
+      // `inline` or `eval` violations carry no URL
+    }
+  };
+  g.document?.addEventListener('securitypolicyviolation', onViolation);
+  // Chromium lets https pages call local-network devices over http and gates them with its Local
+  // Network Access permission instead; other browsers block them as mixed content.
+  const chromium = /Chrom(e|ium)\//.test(g.navigator?.userAgent ?? '');
+  const classify = (url: string, credentials: boolean): Explanation => {
+    let target: URL;
+    try {
+      target = new URL(url, page.href);
+    } catch {
+      return {};
+    }
+    if (g.navigator?.onLine === false) return { cause: 'offline', message: 'The browser is offline' };
+    const csp = blocked.find((entry) => entry.origin === target.origin && now() - entry.at < 10_000);
+    if (csp) return { cause: 'csp', message: `Blocked by the page's Content-Security-Policy (${csp.directive})` };
+    const exempt = isTrustworthyHost(target.hostname) || (chromium && isLocalNetworkHost(target.hostname));
+    if (page.protocol === 'https:' && target.protocol === 'http:' && !exempt) {
+      return { cause: 'mixed-content', message: `Blocked as mixed content: an https page cannot call ${target.origin}` };
+    }
+    if (target.origin !== page.origin) return { cause: 'cross-origin', credentials: credentials || undefined };
+    return {};
+  };
+  return {
+    // The violation event can arrive after the request has already failed.
+    explain: (url, credentials, report) => void setTimeout(() => report(classify(url, credentials)), 30),
+    stop: () => g.document?.removeEventListener('securitypolicyviolation', onViolation),
+  };
+}
+
+/** Browsers let https pages call these over plain http. */
+function isTrustworthyHost(hostname: string): boolean {
+  return hostname === 'localhost' || hostname.endsWith('.localhost') || hostname === '127.0.0.1' || hostname === '[::1]';
+}
+
+/** Private IP literals and .local names; a hostname that resolves to a private IP does not count. */
+function isLocalNetworkHost(hostname: string): boolean {
+  if (hostname.endsWith('.local')) return true;
+  const ipv4 = /^(\d+)\.(\d+)\.\d+\.\d+$/.exec(hostname);
+  if (!ipv4) return /^\[(f[cd]|fe[89ab])/i.test(hostname);
+  const [a, b] = [Number(ipv4[1]), Number(ipv4[2])];
+  return a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254) || (a === 100 && b >= 64 && b <= 127);
 }
 
 // ---------------------------------------------------------------------------
@@ -134,12 +213,12 @@ function patchFetch(ctx: PluginContext, settings: Settings): () => void {
         }
       },
       (error: unknown) => {
-        ctx.emit('network.error', {
-          id,
-          message: errorMessage(error),
-          duration: now() - start,
-          aborted: (error as { name?: string } | null)?.name === 'AbortError',
-        });
+        const duration = now() - start;
+        const aborted = (error as { name?: string } | null)?.name === 'AbortError';
+        const fail = (explanation: Explanation) =>
+          ctx.emit('network.error', { id, duration, aborted, ...explanation, message: explanation.message ?? errorMessage(error) });
+        if (aborted) fail({});
+        else settings.failures.explain(request.url, request.credentials, fail);
       },
     );
     return promise;
@@ -163,7 +242,8 @@ function describeFetch(input: RequestInfo | URL, init: RequestInit | undefined, 
   } else if (request?.body) {
     body = { kind: 'stream', summary: 'Request body (not captured)' };
   }
-  return { url: absoluteUrl(url), method, headers, body };
+  const credentials = (init?.credentials ?? request?.credentials) === 'include';
+  return { url: absoluteUrl(url), method, headers, body, credentials };
 }
 
 async function readFetchBody(response: Response, maxBody: number): Promise<BodyPreview | undefined> {
@@ -225,6 +305,17 @@ function patchXhr(ctx: PluginContext, settings: Settings): () => void {
   const originalSend = proto.send;
   const originalSetRequestHeader = proto.setRequestHeader;
   const requests = new WeakMap<XMLHttpRequest, XhrInfo>();
+  // React Native hands the native reason for a failure (e.g. "Unable to resolve host …") to this
+  // internal method. It reaches responseText only for text responses, and whatwg-fetch asks for blobs.
+  const nativeErrors = new WeakMap<XMLHttpRequest, string>();
+  const internals = proto as unknown as Record<string, unknown>;
+  const originalComplete = internals.__didCompleteResponse;
+  if (typeof originalComplete === 'function') {
+    internals.__didCompleteResponse = function (this: XMLHttpRequest, _requestId: unknown, error: unknown) {
+      if (typeof error === 'string' && error) nativeErrors.set(this, error);
+      return (originalComplete as (...args: unknown[]) => unknown).apply(this, arguments as unknown as unknown[]);
+    };
+  }
 
   const track = (xhr: XMLHttpRequest, info: XhrInfo, body: unknown) => {
     const id = randomId();
@@ -246,14 +337,19 @@ function patchXhr(ctx: PluginContext, settings: Settings): () => void {
       const duration = now() - start;
       try {
         if (failure || xhr.status === 0) {
-          ctx.emit('network.error', {
-            id,
-            duration,
-            message:
-              failure === 'timeout' ? 'Request timed out' : failure === 'abort' ? 'Request aborted' : 'Network request failed',
-            aborted: failure === 'abort',
-            timeout: failure === 'timeout',
-          });
+          const base = { id, duration, aborted: failure === 'abort', timeout: failure === 'timeout' };
+          if (failure === 'timeout' || failure === 'abort') {
+            ctx.emit('network.error', { ...base, message: failure === 'timeout' ? 'Request timed out' : 'Request aborted' });
+            return;
+          }
+          const native = nativeErrors.get(xhr);
+          if (native) {
+            ctx.emit('network.error', { ...base, message: native });
+            return;
+          }
+          settings.failures.explain(absoluteUrl(info.url), xhr.withCredentials === true, (explanation) =>
+            ctx.emit('network.error', { ...base, ...explanation, message: explanation.message ?? 'Network request failed' }),
+          );
           return;
         }
         const headers = parseRawHeaders(xhr.getAllResponseHeaders());
@@ -280,6 +376,7 @@ function patchXhr(ctx: PluginContext, settings: Settings): () => void {
 
   proto.open = function open(this: XMLHttpRequest, method: string, url: string | URL) {
     requests.set(this, { method: String(method).toUpperCase(), url: String(url), headers: {} });
+    nativeErrors.delete(this);
     // `arguments` keeps the caller's exact arity; some engines treat an explicit `undefined` async flag as false.
     return (originalOpen as (...args: unknown[]) => void).apply(this, arguments as unknown as unknown[]);
   } as XMLHttpRequest['open'];
@@ -306,6 +403,7 @@ function patchXhr(ctx: PluginContext, settings: Settings): () => void {
     proto.open = originalOpen;
     proto.send = originalSend;
     proto.setRequestHeader = originalSetRequestHeader;
+    if (typeof originalComplete === 'function') internals.__didCompleteResponse = originalComplete;
   };
 }
 

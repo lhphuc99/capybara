@@ -120,12 +120,22 @@ export interface NetworkResponsePayload {
   duration: number;
 }
 
+/**
+ * Why a request failed, as far as the app can tell. Browsers never tell a page why a request
+ * failed, so `cross-origin` only says the cause is unknown there: usually CORS, otherwise the
+ * server being unreachable. The Devsight server can find out with a `diagnose` request.
+ */
+export type NetworkFailureCause = 'offline' | 'mixed-content' | 'csp' | 'cross-origin';
+
 export interface NetworkErrorPayload {
   id: string;
   message: string;
   duration: number;
   aborted?: boolean;
   timeout?: boolean;
+  cause?: NetworkFailureCause;
+  /** Cookies were sent cross-origin, which CORS allows only with Access-Control-Allow-Credentials. */
+  credentials?: boolean;
 }
 
 /** A WebSocket the app created. Later `ws.*` events refer to it by `id`. */
@@ -265,9 +275,27 @@ export interface ServerInfo {
   addresses: string[];
 }
 
+/** One step of a diagnosis: a browser rule that passed or failed, or something the server saw on the way. */
+export interface DiagnosisCheck {
+  label: string;
+  outcome: 'pass' | 'fail' | 'info';
+  detail: string;
+}
+
+/** The result of a `diagnose` request: the server repeats the request's CORS steps from the dev machine. */
+export interface NetworkDiagnosis {
+  verdict: 'cors' | 'unreachable' | 'ok' | 'unknown';
+  summary: string;
+  checks: DiagnosisCheck[];
+  /** Requests the server sent, e.g. "OPTIONS https://api.example.com/me". */
+  sent: string[];
+}
+
 export type ViewerToServer =
   | { t: 'history'; sessionId: string }
   | { t: 'command'; id: string; sessionId: string; plugin: string; method: string; params?: unknown }
+  /** Answered with a CommandResult whose `result` is a NetworkDiagnosis. */
+  | { t: 'diagnose'; id: string; sessionId: string; requestId: string }
   | { t: 'clear'; sessionId: string }
   | { t: 'remove'; sessionId: string };
 

@@ -66,6 +66,17 @@ On older versions, call it at the top of a client component rendered from the ro
 - Cookie writes refresh the Storage tab automatically where the Cookie Store API exists (such as Chrome); elsewhere use Refresh.
 - `react-native-mmkv` on the web keeps values as text in localStorage under `<id>\<key>`, so they appear in **Local Storage** with their exact values. Edits made there are read by MMKV, but listeners from `addOnValueChangedListener` (and hooks built on them) are not notified. Instances that fall back to memory because localStorage is blocked are not visible.
 
+### Why a request failed
+
+Browsers never tell a page why a request failed: `fetch` rejects with "Failed to fetch", and the reason (CORS, a refused connection, a blocked port) appears only in the browser's own console. Devsight explains failures in two steps:
+
+- The web SDK tells apart offline, mixed content (an https page calling `http://`) and Content-Security-Policy blocks, and marks other cross-origin failures. Chrome lets https pages call LAN IPs and `.local` hosts over http, so in Chrome those are not reported as mixed content.
+- For the rest, **Find out why** in the request's Response tab asks the Devsight server to repeat the request's CORS steps from your computer: the preflight, then GET and HEAD requests with the page's `Origin`, following redirects. The server reads the headers the browser hid and applies the browser's rules, so it can name the cause: a missing or wrong `Access-Control-Allow-Origin`, duplicated values, `*` with cookies, a missing `Access-Control-Allow-Credentials`, a preflight that fails or leaves out a method or header, `Origin: null` after a redirect between two other sites, or a host that cannot be reached (DNS, refused connection, TLS, a port browsers block).
+
+Devsight never sends the app's `Authorization` header or cookies. It does not send other methods again, since they could change data, and asks the server with `OPTIONS` instead. A server that answers signed-in users differently can therefore behave differently in the browser. The checks run from your computer, so for a page on a phone that calls `localhost`, Devsight reaches a different machine than the phone did.
+
+React Native has no CORS. With the SDK, failed XHR and axios requests (and `fetch` in bare React Native, which runs on XHR) show the error text from the native networking layer instead of "Network request failed".
+
 ### Optional React Native SDK (storage editing)
 
 ```ts

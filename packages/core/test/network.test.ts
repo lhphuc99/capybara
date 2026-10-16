@@ -161,3 +161,91 @@ describe('networkPlugin: XMLHttpRequest', () => {
     expect(FakeXHR.prototype.setRequestHeader).toBe(setRequestHeader);
   });
 });
+
+describe('networkPlugin: why a request failed', () => {
+  function page(href: string, onLine = true, userAgent = 'Mozilla/5.0 Firefox/140.0') {
+    const document = new EventTarget();
+    const url = new URL(href);
+    vi.stubGlobal('location', { href, origin: url.origin, protocol: url.protocol });
+    vi.stubGlobal('navigator', { onLine, userAgent });
+    vi.stubGlobal('document', document);
+    return document;
+  }
+  const failingFetch = () => {
+    globalThis.fetch = vi.fn(async () => {
+      throw new TypeError('Failed to fetch');
+    });
+  };
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('marks cross-origin failures, with whether cookies were sent, for the server to diagnose', async () => {
+    page('http://localhost:6868/');
+    failingFetch();
+    const { of, teardown } = harness({ xhr: false });
+    await expect(fetch('https://api.example.test/auth/me', { credentials: 'include' })).rejects.toThrow();
+    await fetch('/same-origin').catch(() => {});
+    await vi.waitFor(() => expect(of('network.error')).toHaveLength(2));
+    expect(of('network.error')[0]).toMatchObject({ message: 'Failed to fetch', cause: 'cross-origin', credentials: true });
+    expect(of('network.error')[1].cause).toBeUndefined();
+    teardown();
+  });
+
+  it('tells offline, mixed content and CSP blocks apart', async () => {
+    const document = page('https://app.example.test/');
+    failingFetch();
+    const { of, teardown } = harness({ xhr: false });
+    await fetch('http://api.example.test/data').catch(() => {});
+    await fetch('http://localhost:8787/data').catch(() => {});
+    await fetch('https://tracker.example.test/beacon').catch(() => {});
+    // Browsers may report the violation after the request has already failed.
+    document.dispatchEvent(Object.assign(new Event('securitypolicyviolation'), {
+      blockedURI: 'https://tracker.example.test/beacon', effectiveDirective: 'connect-src',
+    }));
+    await vi.waitFor(() => expect(of('network.error')).toHaveLength(3));
+    const [mixed, local, csp] = of('network.error');
+    expect(mixed).toMatchObject({ cause: 'mixed-content', message: 'Blocked as mixed content: an https page cannot call http://api.example.test' });
+    expect(local.cause).toBe('cross-origin');
+    expect(csp).toMatchObject({ cause: 'csp', message: "Blocked by the page's Content-Security-Policy (connect-src)" });
+    teardown();
+
+    // Chrome allows these and leaves them to its Local Network Access checks.
+    for (const userAgent of ['Mozilla/5.0 Firefox/140.0', 'Mozilla/5.0 AppleWebKit/537.36 Chrome/155.0.0.0 Safari/537.36']) {
+      page('https://app.example.test/', true, userAgent);
+      const lan = harness({ xhr: false });
+      await fetch('http://192.168.1.20:3000/data').catch(() => {});
+      await fetch('http://printer.local/status').catch(() => {});
+      await fetch('http://192.168.1.20.nip.io/data').catch(() => {});
+      await vi.waitFor(() => expect(lan.of('network.error')).toHaveLength(3));
+      expect(lan.of('network.error').map((error) => error.cause)).toEqual(
+        userAgent.includes('Chrome') ? ['cross-origin', 'cross-origin', 'mixed-content'] : ['mixed-content', 'mixed-content', 'mixed-content'],
+      );
+      lan.teardown();
+    }
+
+    page('https://app.example.test/', false);
+    const offline = harness({ xhr: false });
+    await fetch('https://api.example.test/data').catch(() => {});
+    await vi.waitFor(() => expect(offline.of('network.error')[0]).toMatchObject({ cause: 'offline', message: 'The browser is offline' }));
+    offline.teardown();
+  });
+
+  it("keeps React Native's native reason for a failed XHR", () => {
+    // React Native hands the native error text only to this internal method.
+    class NativeXHR extends FakeXHR {
+      __didCompleteResponse(_requestId: number, _error: string) {
+        this.dispatchEvent(new Event('error'));
+        this.dispatchEvent(new Event('loadend'));
+      }
+    }
+    (globalThis as Record<string, unknown>).XMLHttpRequest = NativeXHR;
+    const original = NativeXHR.prototype.__didCompleteResponse;
+    const { of, teardown } = harness({ fetch: false });
+    const xhr = new NativeXHR();
+    xhr.open('GET', 'https://dev-api.example.test/me');
+    xhr.send();
+    xhr.__didCompleteResponse(1, 'Unable to resolve host "dev-api.example.test": No address associated with hostname');
+    expect(of('network.error')[0].message).toBe('Unable to resolve host "dev-api.example.test": No address associated with hostname');
+    teardown();
+    expect(NativeXHR.prototype.__didCompleteResponse).toBe(original);
+  });
+});

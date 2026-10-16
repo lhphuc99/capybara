@@ -1216,3 +1216,97 @@ code {
     padding-left: 12px;
   }
 }
+
+.failure-message {
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.diagnose-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 12px;
+}
+
+.diagnose-error {
+  color: var(--error);
+}
+
+.diagnosis {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--text-faint);
+  border-radius: var(--radius);
+  background: var(--bg-subtle);
+}
+
+.diagnosis.verdict-cors,
+.diagnosis.verdict-unreachable {
+  border-left-color: var(--error);
+}
+
+.diagnosis.verdict-ok {
+  border-left-color: var(--ok);
+}
+
+.diagnosis-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.diagnosis > p {
+  margin: 4px 0 10px;
+}
+
+.checks {
+  display: grid;
+  gap: 5px;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+
+.check {
+  display: grid;
+  grid-template-columns: 14px 1fr;
+  column-gap: 6px;
+  font-size: 12px;
+}
+
+.check-mark {
+  font-weight: 700;
+  text-align: center;
+}
+
+.check.pass .check-mark {
+  color: var(--ok);
+}
+
+.check.fail .check-mark {
+  color: var(--error);
+}
+
+.check.info .check-mark {
+  color: var(--text-faint);
+}
+
+.check-label {
+  font-weight: 600;
+}
+
+.check-detail {
+  grid-column: 2;
+  color: var(--text-muted);
+}
+
+.sent {
+  margin: 0;
+  padding: 0;
+  color: var(--text-muted);
+  font: 12px/18px var(--font-mono);
+  list-style: none;
+  overflow-wrap: anywhere;
+}

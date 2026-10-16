@@ -20,7 +20,7 @@ SDK tách phần **thu thập** (plugin ghi event vào ring buffer) khỏi phầ
 | Có trong MVP | Để sau |
 |---|---|
 | Log `console.debug/log/info/warn/error`; lỗi chưa bắt (`window.onerror`, `unhandledrejection`, `ErrorUtils` của RN) | `console.table/group/time`, stack trace qua source map |
-| Network `fetch` + `XMLHttpRequest` (axios dùng XHR): header, body, status, thời gian, copy cURL; WebSocket: kết nối, message hai chiều, mã đóng, giải mã frame socket.io | Request native (ảnh, SDK native), `expo/fetch` khi không SDK và không có dev client, mock/replay request |
+| Network `fetch` + `XMLHttpRequest` (axios dùng XHR): header, body, status, thời gian, copy cURL, lý do request lỗi (CORS, mạng, mixed content, CSP); WebSocket: kết nối, message hai chiều, mã đóng, giải mã frame socket.io | Request native (ảnh, SDK native), `expo/fetch` khi không SDK và không có dev client, mock/replay request |
 | Storage web: localStorage, sessionStorage, cookie | IndexedDB |
 | Storage RN: AsyncStorage, MMKV (best-effort) | SecureStore, Keychain |
 | Xem/sửa/xoá/clear storage, tự refresh khi app ghi | |
@@ -69,6 +69,7 @@ App (RN / web)                        Máy dev
 - **Event được `JSON.stringify` một lần lúc ghi**: buffer biết dung lượng thật, gửi lại không phải serialize lại.
 - **Giới hạn bộ nhớ**: buffer phía app tối đa 2000 event / 8 MB; body request/response cắt ở 128 KB; mỗi message WebSocket cắt ở 16 KB; server giữ 5000 event mỗi phiên, 20 phiên; UI giữ 2000 message gần nhất mỗi socket.
 - **WebSocket**: một hàm hook tự chứa trong core (`hookWebSockets`) dùng chung cho SDK và bridge (bridge tiêm qua `toString()`). Trên web chỉ bọc constructor `WebSocket` vì trình duyệt phát event từ native. Trên React Native bọc thêm `dispatchEvent` và `send` trên prototype, nên bắt cả socket tạo trước khi hook gắn và socket tạo qua constructor mà thư viện lưu từ lúc import (engine.io của socket.io làm vậy). Transport của SDK giữ constructor gốc từ trước khi plugin chạy và đánh dấu socket của nó, nếu không hook sẽ tự ghi chính kết nối tới Devsight thành vòng lặp. Bridge gửi event về qua `Runtime.addBinding`, hook có lease 15 giây như hook MMKV. Mặc định bỏ qua socket của công cụ dev: HMR của Metro (RN mở với URL `http://`), `/message`, React DevTools (8097), Reactotron (9090), Vite (theo subprotocol), Next.js HMR.
+- **Lý do request lỗi**: trình duyệt không cho trang biết vì sao request lỗi, chỉ ghi vào console của nó. SDK web tự phân loại những gì trang biết được: offline, mixed content, CSP (qua event `securitypolicyviolation`; event này có thể đến sau khi request đã lỗi nên SDK chờ 30 ms) và cross-origin. Còn lại, nút "Find out why" nhờ server Devsight chạy lại các bước CORS từ máy dev (preflight, rồi GET/HEAD kèm `Origin` của trang, đi theo redirect và gửi `Origin: null` như trình duyệt), đọc header mà trình duyệt giấu rồi áp luật của trình duyệt. Server dùng `node:http` chứ không dùng `fetch`: thấy được header bị lặp, tự kiểm tra danh sách port trình duyệt chặn, và gặp chứng chỉ do CA nội bộ ký (mkcert) thì vẫn kiểm tra tiếp mà không xác minh, kèm ghi chú. Không bao giờ gửi lại `Authorization`, cookie hay header đã che; chỉ gửi lại GET/HEAD, method khác thì hỏi bằng `OPTIONS`. Luật khác nhau theo trình duyệt nên dùng user agent: Chrome vẫn cho `*` trong `Access-Control-Allow-Headers` bao cả `Authorization` (chỉ cảnh báo deprecation) và miễn mixed content cho IP nội bộ và tên `.local` (Local Network Access). Trên React Native, chuỗi lỗi native chỉ được truyền vào `XMLHttpRequest.__didCompleteResponse`, nên SDK bọc method đó.
 - **Bảo mật**: server bind `0.0.0.0` để máy thật trong LAN kết nối được. UI chỉ kết nối được từ cùng origin, và header `Host` phải là `localhost` hoặc IP. Như vậy trang web lạ mở trong browser của dev không đọc được dữ liệu qua WebSocket, kể cả bằng DNS rebinding. Chế độ dev không che header (có tuỳ chọn `redactHeaders`); chế độ QA sau này sẽ che mặc định.
 - **Port mặc định 7357.**
 - **App desktop là Electron bọc server sẵn có**: cửa sổ load UI qua HTTP từ chính server, không dùng `file://`, nên các kiểm tra origin và `Host` ở trên giữ nguyên. Main process được bundle bằng rolldown (có sẵn qua Vite) thành một file CJS, mọi dependency là devDependencies, nên electron-builder chỉ đóng gói `dist/` mà không kéo `node_modules` của workspace. `backgroundThrottling: false` để cửa sổ bị ẩn vẫn cập nhật đều: đo trên Electron 44, timer 100 ms trong cửa sổ ẩn chạy 30 lần/3 s, bật throttling thì chỉ còn 3 lần.
@@ -97,7 +98,7 @@ App (RN / web)                        Máy dev
 
 **Đã xong và đã chạy thử**
 
-- Monorepo gồm 6 package, app desktop và 3 app mẫu (web, Next.js, Expo). `npm run build`, `npm run typecheck` và `npm test` (101 test) đều pass.
+- Monorepo gồm 6 package, app desktop và 3 app mẫu (web, Next.js, Expo). `npm run build`, `npm run typecheck` và `npm test` (113 test) đều pass.
 - Metro/CDP bridge chạy trong CLI và desktop: có 11 test tích hợp với Metro giả lập cho log object, request/response/body, lỗi mạng, reload, reconnect, bỏ qua app có SDK, target không hỗ trợ nhiều debugger và bắt/gỡ MMKV private. App Expo mẫu mặc định không nạp SDK. Đã chạy thử với app này trên Expo Go (iPhone 17 simulator), qua cả CLI lẫn app desktop: log có object, Date, Map/Set, Error, unhandled rejection; network `fetch` + XHR có status, header và body (cả 404); app có SDK thì bị bỏ qua đúng. Chưa thử trên máy thật.
 - Storage không SDK: đã thử trên app Expo/Hermes đang chạy trong iPhone 17 simulator, đọc được danh sách store, 2 key và giá trị được chọn. Reader hỗ trợ Metro lazy-loading của AsyncStorage và export getter ESM. Runtime hook MMKV có lease 15 giây, tự khôi phục method khi disconnect/lease hết hạn, hỗ trợ nhiều debugger cùng lúc và giữ tối đa 100 instance. V4 shadow method trên factory object vì Nitro khóa prototype; không thể bắt lại mọi instance cũ. Đọc dữ liệu qua instance gốc, không tạo store mới hay ghi key, không giữ encryption config. `test:mmkv-compat` kiểm tra source package 2.12.2/3.3.3/4.3.2 với native giả lập.
 - react-native-mmkv 4.3.2 native (Nitro 0.35.9, Expo SDK 57, RN 0.86.3, Hermes) trên simulator riêng `Devsight-MMKV-Test` (iPhone 17, iOS 26.5), với app mẫu riêng `dev.devsight.mmkvtest` chỉ có dữ liệu giả, không dùng app có sẵn của người dùng ([`packages/cli/test/native-fixture`](../packages/cli/test/native-fixture/README.md), runner `packages/cli/scripts/check-mmkv-native.mjs`). Đi qua đường thật CDP → bridge → server → lệnh Storage của viewer, 11 bước đều pass: store export, AsyncStorage, instance private tạo sau khi gắn hook (string, Unicode, JSON, số, boolean khớp với lệnh đọc có kiểu của native), key có emoji, store mã hoá, refresh thấy giá trị app vừa ghi, từ chối ghi, gỡ hook khi ngắt kết nối và app vẫn đọc/ghi bình thường. Giới hạn đã biết vẫn đúng: instance private v4 tạo trước khi gắn hook không tìm được.
@@ -113,6 +114,10 @@ App (RN / web)                        Máy dev
   - Có SDK, cùng fixture: bắt socket qua constructor đã patch và constructor native, không ghi kết nối của SDK, 0 event khi app rảnh (không có vòng lặp).
   - Cùng app RN 0.82 thật đó, có SDK gắn tạm, chạy trên máy ảo (Pixel 7 lúc đó đang tắt màn hình): socket `wss://…/ws?token=` của app hiện đủ kết nối → lỗi → đóng 1006 "Expected HTTP 101 response but was '401 Unauthorized'"; đã hoàn tác, gỡ app khỏi máy ảo.
   - Expo web: socket `/hot` và `/message` của Metro không lọt vào.
+- Lý do request lỗi (16/10/2026):
+  - Ma trận 18 trường hợp trên Chrome 155 headless, so với thông báo Chrome ghi trong console (trang không đọc được): thiếu `Access-Control-Allow-Origin`, cho origin khác, hai giá trị, `*` khi có cookie, thiếu `Access-Control-Allow-Credentials`, preflight 404, method hoặc header `Authorization` không được cho phép, redirect sang origin thứ ba (`Origin: null`), POST đơn giản, XHR `withCredentials`, port đóng, port bị chặn (6666), DNS, offline, CSP `connect-src`, mixed content tới host công khai, và http tới IP LAN từ trang https (Chrome cho qua, lỗi thật là connection refused). Devsight nêu đúng lý do ở cả 18 trường hợp.
+  - Một app web thật của người dùng (React + Vite, chạy local, gọi API staging không cho phép origin localhost): Chrome báo "No 'Access-Control-Allow-Origin' header is present", Devsight báo "The response (401 Unauthorized) has no Access-Control-Allow-Origin header … The server has to allow http://localhost:6868", kèm chi tiết server có trả `Access-Control-Allow-Credentials: true`. Đã chụp màn hình UI.
+  - React Native: chữ ký `__didCompleteResponse(requestId, error, timeOutError)` giống nhau ở RN 0.81.5, 0.82.0 và 0.86.3, và RN phát event lỗi ngay bên trong method đó nên SDK ghi lỗi trước khi gọi bản gốc. Có unit test, chưa chạy trên thiết bị.
 - Web (Chrome, app mẫu Vite):
   - log, kể cả lỗi uncaught và unhandled rejection
   - network `fetch` + XHR: header, body, request lỗi
@@ -167,6 +172,12 @@ Khi thử web và Next.js:
 
 - Dev overlay của Next.js gửi `/__nextjs_original-stack-frames` mỗi khi có `console.error`, lẫn vào tab Network. SDK web giờ bỏ qua `/__nextjs_*`, như SDK React Native bỏ qua `/symbolicate`.
 - Ghi cookie trước đây không phát event nên tab Storage không tự refresh. Giờ dùng Cookie Store API ở trình duyệt có hỗ trợ (đã kiểm trên Chrome).
+
+Khi thử lý do request lỗi:
+
+- Preflight trả 404: Chrome báo thiếu `Access-Control-Allow-Origin`, Devsight báo preflight không được trả 2xx (lỗi gốc là server không xử lý `OPTIONS`). Cả hai lỗi đều có trong danh sách kiểm tra.
+- Chrome 155 vẫn cho `Access-Control-Allow-Headers: *` bao cả `Authorization`, chỉ phát DeprecationIssue; Firefox và Safari làm đúng chuẩn.
+- Từ trang https, Chrome 155 chỉ cảnh báo (vẫn gửi) request http tới IP literal nội bộ (10/8, 172.16/12, 192.168/16, 169.254/16, 100.64/10, fc00::/7, fe80::/10) và tên `.local`; host công khai, IP công khai và 198.18/15 thì chặn. Tên miền trỏ về IP nội bộ (như `*.nip.io`) vẫn bị chặn.
 
 ## Câu hỏi còn mở
 

@@ -4,6 +4,7 @@ import type {
   DevsightEvent,
   LogLevel,
   LogSource,
+  NetworkErrorPayload,
   NetworkInitiator,
   SerializedValue,
   ServerInfo,
@@ -39,6 +40,8 @@ export interface NetworkEntry {
   /** For WebSockets, how long the connection lasted. */
   duration?: number;
   error?: string;
+  /** What the app could tell about why the request failed. */
+  failure?: Pick<NetworkErrorPayload, 'cause' | 'credentials' | 'aborted' | 'timeout'>;
   socket?: SocketInfo;
 }
 
@@ -317,7 +320,13 @@ function applyEvents(session: SessionState, events: DevsightEvent[]): SessionSta
         const index = findRequest(network, p.id);
         if (index < 0) break;
         const list = editableNetwork();
-        list[index] = { ...list[index]!, state: 'failed', error: p.message, duration: p.duration };
+        list[index] = {
+          ...list[index]!,
+          state: 'failed',
+          error: p.message,
+          duration: p.duration,
+          failure: { cause: p.cause, credentials: p.credentials, aborted: p.aborted, timeout: p.timeout },
+        };
         break;
       }
       case 'ws.connect': {

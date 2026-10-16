@@ -1,5 +1,6 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -159,6 +160,44 @@ describe('commands', () => {
     await connectApp();
     ui.send({ t: 'command', id: 'v2', sessionId: 'app-1', plugin: 'storage', method: 'list' });
     expect(await ui.next((m) => m.id === 'v2')).toMatchObject({ ok: false, error: 'The app did not answer in time' });
+  });
+});
+
+describe('diagnosing failed requests', () => {
+  it('checks a web request from this machine, and refuses sessions without a page', async () => {
+    const api = http.createServer((_req, res) => res.writeHead(401).end());
+    await new Promise<void>((resolve) => api.listen(0, '127.0.0.1', resolve));
+    const url = `http://127.0.0.1:${(api.address() as AddressInfo).port}/me`;
+    const failed = (seq: number) => [
+      { seq, ts: seq, kind: 'network.request', payload: { id: 'r1', initiator: 'fetch', method: 'GET', url, headers: {} } },
+      { seq: seq + 1, ts: seq, kind: 'network.error', payload: { id: 'r1', message: 'Failed to fetch', duration: 3, cause: 'cross-origin', credentials: true } },
+    ];
+    try {
+      await start();
+      const ui = viewer();
+      await ui.opened;
+      const page = connect('/client');
+      await page.opened;
+      page.send({ t: 'hello', protocol: 1, session: { ...session('web-1'), platform: 'web', url: 'http://localhost:6868/home' } });
+      await page.next((m) => m.t === 'welcome');
+      page.send({ t: 'events', events: failed(1) });
+      await ui.next((m) => m.t === 'events' && m.sessionId === 'web-1');
+
+      ui.send({ t: 'diagnose', id: 'd1', sessionId: 'web-1', requestId: 'r1' });
+      const reply = await ui.next((m) => m.id === 'd1');
+      expect(reply).toMatchObject({ ok: true, result: { verdict: 'cors', sent: [`GET ${url} (without cookies)`] } });
+      expect(reply.result.summary).toContain('has no Access-Control-Allow-Origin header');
+      ui.send({ t: 'diagnose', id: 'd2', sessionId: 'web-1', requestId: 'gone' });
+      expect(await ui.next((m) => m.id === 'd2')).toMatchObject({ ok: false, error: 'This request is no longer in the session' });
+
+      const { app } = await connectApp('rn-1');
+      app.send({ t: 'events', events: failed(1) });
+      await ui.next((m) => m.t === 'events' && m.sessionId === 'rn-1');
+      ui.send({ t: 'diagnose', id: 'd3', sessionId: 'rn-1', requestId: 'r1' });
+      expect((await ui.next((m) => m.id === 'd3')).error).toContain('CORS applies only in browsers');
+    } finally {
+      await new Promise((resolve) => api.close(resolve));
+    }
   });
 });
 

@@ -7,6 +7,7 @@ import {
   type ClientToServer,
   type CommandResult,
   type DevsightEvent,
+  type EventOf,
   type ServerInfo,
   type ServerToClient,
   type ServerToViewer,
@@ -15,6 +16,7 @@ import {
   type ViewerToServer,
 } from '@devsight/protocol';
 import { WebSocket, WebSocketServer, type RawData } from 'ws';
+import { diagnoseRequest } from './diagnose.js';
 import { isAllowedHost, isAllowedViewerOrigin } from './security.js';
 import { serveStatic } from './static.js';
 
@@ -256,6 +258,29 @@ export function createServer(options: ServerOptions): DevsightServer {
     send(session.socket, { t: 'command', id, plugin: message.plugin, method: message.method, params: message.params });
   };
 
+  const diagnose = async (viewer: WebSocket, message: Extract<ViewerToServer, { t: 'diagnose' }>) => {
+    const fail = (error: string) => send(viewer, { t: 'result', id: message.id, ok: false, error });
+    const session = sessions.get(message.sessionId);
+    const find = <K extends 'network.request' | 'network.error'>(kind: K) =>
+      session?.events.find((event): event is EventOf<K> => event.kind === kind && event.payload.id === message.requestId);
+    const request = find('network.request');
+    if (!session || !request) return fail('This request is no longer in the session');
+    if (!session.info.url) return fail('Only requests from web pages can be checked; CORS applies only in browsers');
+    try {
+      const result = await diagnoseRequest({
+        url: new URL(request.payload.url, session.info.url).href,
+        method: request.payload.method,
+        headers: request.payload.headers,
+        origin: new URL(session.info.url).origin,
+        credentials: find('network.error')?.payload.credentials === true,
+        userAgent: session.info.userAgent,
+      });
+      send(viewer, { t: 'result', id: message.id, ok: true, result });
+    } catch (error) {
+      fail(error instanceof Error ? error.message : String(error));
+    }
+  };
+
   const acceptViewer = (ws: WebSocket) => {
     watch(ws);
     viewers.add(ws);
@@ -272,6 +297,9 @@ export function createServer(options: ServerOptions): DevsightServer {
         }
         case 'command':
           forward(ws, message);
+          break;
+        case 'diagnose':
+          void diagnose(ws, message);
           break;
         case 'clear': {
           const session = sessions.get(message.sessionId);
