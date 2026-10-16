@@ -32,7 +32,7 @@ Năm gói npm, UI và app desktop dùng chung một số version (nhóm `fixed` 
    ```
 
    Khi npm mở trang xác nhận 2FA, tick "skip 2FA for 5 minutes" để các gói sau không phải xác nhận lại. Lỗi giữa chừng thì chạy lại `npm run release`: changesets bỏ qua các version đã có trên npm.
-5. Kiểm tra bằng `npm view capybara-devtools version`. Trang npm và registry đi qua CDN có thể hiện dữ liệu cũ vài phút.
+5. Kiểm tra từng gói bằng `npm view <gói>@<version> version`. Kể cả khi `npm run release` báo thành công, npm có thể cần tới khoảng 5 phút mới cho cài một version. Trong lúc đó, publish lại sẽ bị `409 Cannot publish over previously staged version`. Lần 0.2.0, `@capybara-devtools/core` hiện ra sau 5 phút. Vì vậy hãy đợi khoảng 10 phút rồi mới coi là lỗi và nâng version. Trang npm và registry đi qua CDN còn có thể hiện dữ liệu cũ thêm vài phút.
 6. Build và upload app desktop (mục dưới).
 
 ## Khi npm sửa lỗi OIDC
