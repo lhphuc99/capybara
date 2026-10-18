@@ -40,6 +40,8 @@ export interface MetroBridgeOptions {
   version?: string;
   /** Milliseconds between looks for apps. Default 2000. */
   pollInterval?: number;
+  /** Told once per Metro target that cannot be read, with what to do instead. */
+  onHint?: (message: string) => void;
 }
 
 export interface MetroBridge {
@@ -47,6 +49,8 @@ export interface MetroBridge {
 }
 
 const CALL_TIMEOUT_MS = 3_000;
+/** JSON-RPC "method not found". */
+const METHOD_NOT_FOUND = -32601;
 /** Expo's dev server accepts a debugger socket and drops it right away when the Origin isn't its own address. */
 const ORIGIN_CHECK_MS = 300;
 const RETRY_AFTER_FAILURE_MS = 30_000;
@@ -110,7 +114,13 @@ interface CdpEvent {
 
 interface CdpReply {
   result?: unknown;
-  error?: { message: string };
+  error?: { message: string; code?: number };
+}
+
+class CdpError extends Error {
+  constructor(message: string, readonly code: number | undefined) {
+    super(message);
+  }
 }
 
 interface EvaluateResult {
@@ -188,7 +198,8 @@ interface Run {
 
 /**
  * Reads logs and network of React Native apps through Metro's debugger endpoint, the one React
- * Native DevTools uses, so apps show up without the SDK. Apps that have the SDK are left alone.
+ * Native DevTools uses, so apps show up without the SDK. Apps that have the SDK are left alone, and
+ * so are apps whose JS engine cannot be debugged, such as Expo Go on Android.
  */
 export function startMetroBridge(options: MetroBridgeOptions): MetroBridge {
   const metroPorts = options.metroPorts ?? DEFAULT_METRO_PORTS;
@@ -196,6 +207,7 @@ export function startMetroBridge(options: MetroBridgeOptions): MetroBridge {
   const capybaraUrl = `ws://127.0.0.1:${options.port}${CLIENT_PATH}`;
   const version = options.version ?? '0.0.0';
   const apps = new Map<string, { close(): void }>();
+  const hinted = new Set<string>();
   let stopped = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -206,7 +218,13 @@ export function startMetroBridge(options: MetroBridgeOptions): MetroBridge {
           typeof target.id !== 'string' || typeof target.webSocketDebuggerUrl !== 'string') continue;
       const key = `${metroPort} ${target.id}`;
       if (stopped || apps.has(key)) continue;
-      apps.set(key, watchApp(target, metroPort, capybaraUrl, version, () => apps.delete(key)));
+      // Once per target, not per connection: the target is reconnected whenever its socket drops.
+      const hint = (message: string) => {
+        if (hinted.has(key)) return;
+        hinted.add(key);
+        options.onHint?.(message);
+      };
+      apps.set(key, watchApp(target, metroPort, capybaraUrl, version, () => apps.delete(key), hint));
     }
   };
 
@@ -244,6 +262,7 @@ function watchApp(
   capybaraUrl: string,
   version: string,
   onEnd: () => void,
+  onUnreadable: (hint: string) => void,
 ): { close(): void } {
   let socket: WebSocket | undefined;
   let nextId = 0;
@@ -269,7 +288,7 @@ function watchApp(
       }, CALL_TIMEOUT_MS);
       calls.set(id, (reply) => {
         clearTimeout(timer);
-        if (reply.error) reject(new Error(reply.error.message));
+        if (reply.error) reject(new CdpError(reply.error.message, reply.error.code));
         else resolve(reply.result as T);
       });
       socket.send(JSON.stringify({ id, method, params }));
@@ -324,6 +343,19 @@ function watchApp(
     };
   };
 
+  const unreadableHint = () => {
+    const device = metadata.deviceName || target.deviceName;
+    const expoGo = /^host\.exp\.exponent$/i.test(target.appId ?? '');
+    const platform = metadata.platform === 'android' ? 'Android' : metadata.platform === 'ios' ? 'iOS' : undefined;
+    const name = expoGo
+      ? `Expo Go${platform ? ` on ${platform}` : ''}`
+      : metadata.appDisplayName || target.appId || target.title || 'A React Native app';
+    return (
+      `${name}${device ? ` (${device})` : ''} can't be read through Metro: its JavaScript engine does not support debugging. ` +
+      `Capybara shows it only when the app runs the SDK (@capybara-devtools/react-native)${expoGo ? ', or as a development build' : ''}.`
+    );
+  };
+
   const startRun = (contextId: number) => {
     void endRun();
     const current: Run = {
@@ -363,14 +395,17 @@ function watchApp(
       expression: PROBE_APP, contextId: current.contextId, returnByValue: true,
     }).then(
       (reply) => parseProbe(reply.result?.value),
-      () => undefined,
+      // React Native's answer when the engine cannot be debugged over CDP, as in Expo Go on Android. Such an app
+      // sends no logs and cannot be checked for the SDK, so a session would be empty or a duplicate of the SDK's.
+      (error: unknown) => (error instanceof CdpError && error.code === METHOD_NOT_FOUND ? 'unreadable' : undefined),
     );
     current.checking = false;
     if (run !== current || current.state !== 'deciding') return;
-    if (probe?.sdk) {
+    if (probe === 'unreadable' || probe?.sdk) {
       current.state = 'skipped';
       for (const event of current.held) releaseEvent(event);
       current.held = [];
+      if (probe === 'unreadable') onUnreadable(unreadableHint());
       return;
     }
     // The app may have started its SDK after answering, e.g. when `Running "App"` arrived meanwhile.

@@ -98,7 +98,9 @@ try {
   const { port: actual } = await server.start();
   printBanner(actual);
   reverseAndroidPorts(actual);
-  if (metroPorts.length > 0) metroBridge = startMetroBridge({ port: actual, metroPorts, version });
+  if (metroPorts.length > 0) {
+    metroBridge = startMetroBridge({ port: actual, metroPorts, version, onHint: (hint) => console.log(`  ${hint}\n`) });
+  }
   if (values.open) openBrowser(`http://localhost:${actual}`);
 } catch (error) {
   if ((error as NodeJS.ErrnoException).code === 'EADDRINUSE') {
