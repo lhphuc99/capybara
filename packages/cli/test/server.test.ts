@@ -57,12 +57,44 @@ const session = (id = 'app-1') => ({
 
 const log = (seq: number) => ({ seq, ts: seq, kind: 'log', payload: { level: 'log', source: 'console', args: [`#${seq}`] } });
 
+const stateStore = (seq: number, id = 'redux:1', info: Record<string, unknown> = {}) => ({
+  seq,
+  ts: seq,
+  kind: 'state.store',
+  payload: { store: { id, library: 'redux', label: 'Store', via: 'shim', actions: true, ...info } },
+});
+
+const stateChange = (seq: number) => ({
+  seq,
+  ts: seq,
+  kind: 'state.change',
+  payload: { store: 'redux:1', rev: seq, cause: 'action', action: { type: 'tick' }, ops: [] },
+});
+
+const stateEntries = (seq: number) => ({ seq, ts: seq, kind: 'state.entries', payload: { store: 'swr:1', upserts: [], removed: [] } });
+
 async function connectApp(id = 'app-1') {
   const app = connect('/client');
   await app.opened;
   app.send({ t: 'hello', protocol: 1, session: session(id) });
   const welcome = await app.next((m) => m.t === 'welcome');
   return { app, welcome };
+}
+
+/** The server stores events before passing them on, so once the viewer has them, history has them too. */
+async function deliver(app: ReturnType<typeof connect>, ui: ReturnType<typeof connect>, events: { seq: number }[]) {
+  app.send({ t: 'events', events });
+  const last = events.at(-1)!.seq;
+  await ui.next((m) => m.t === 'events' && m.events.at(-1).seq === last);
+}
+
+async function load(sessionId = 'app-1') {
+  const late = viewer();
+  await late.opened;
+  const { sessions } = await late.next((m) => m.t === 'init');
+  late.send({ t: 'history', sessionId });
+  const { events } = await late.next((m) => m.t === 'history');
+  return { meta: sessions.find((s: any) => s.info.id === sessionId), events };
 }
 
 describe('event relay', () => {
@@ -134,6 +166,95 @@ describe('event relay', () => {
   });
 });
 
+describe('state events', () => {
+  it('keeps them apart, so busy stores never push logs out', async () => {
+    await start();
+    const ui = viewer();
+    await ui.opened;
+    const { app } = await connectApp();
+    // 5000 logs and 3000 changes, interleaved, after the store registered.
+    const sent = [stateStore(1), ...Array.from({ length: 8_000 }, (_, i) => (i % 8 < 5 ? log(i + 2) : stateChange(i + 2)))];
+    await deliver(app, ui, sent);
+
+    const { meta, events } = await load();
+    const changes = sent.filter((e) => e.kind === 'state.change');
+    const kept = [...sent.filter((e) => e.kind !== 'state.change'), ...changes.slice(-2_000)].map((e) => e.seq);
+    expect(events.filter((e: any) => e.kind === 'log')).toHaveLength(5_000);
+    expect(events[0]).toEqual(stateStore(1));
+    expect(events.map((e: any) => e.seq)).toEqual(kept.sort((a, b) => a - b));
+    expect(meta.eventCount).toBe(7_001);
+  });
+
+  it('keeps only the latest registration of each store', async () => {
+    await start();
+    const ui = viewer();
+    await ui.opened;
+    const { app } = await connectApp();
+    await deliver(app, ui, [stateStore(1, 'redux:1'), stateStore(2, 'redux:2'), stateStore(3, 'redux:1', { disposed: true })]);
+    expect((await load()).events).toEqual([stateStore(2, 'redux:2'), stateStore(3, 'redux:1', { disposed: true })]);
+  });
+
+  it('keeps 200 stores, forgetting the longest disposed first', async () => {
+    await start();
+    const ui = viewer();
+    await ui.opened;
+    const { app } = await connectApp();
+    const ids = async () => (await load()).events.map((e: any) => e.payload.store.id);
+    const live = Array.from({ length: 200 }, (_, i) => stateStore(i + 1, `redux:${i}`));
+    // Disposed in the opposite order to how they registered.
+    const disposed = [stateStore(201, 'redux:5', { disposed: true }), stateStore(202, 'redux:0', { disposed: true })];
+
+    await deliver(app, ui, [...live, ...disposed, stateStore(203, 'redux:200')]);
+    let kept = await ids();
+    expect(kept).toHaveLength(200);
+    expect(kept).toContain('redux:0');
+    expect(kept).not.toContain('redux:5');
+
+    // Then the other disposed store, then the live one updated longest ago.
+    await deliver(app, ui, [stateStore(204, 'redux:201'), stateStore(205, 'redux:202')]);
+    kept = await ids();
+    expect(kept).toHaveLength(200);
+    expect(kept).not.toContain('redux:0');
+    expect(kept[0]).toBe('redux:2');
+  });
+
+  it('keeps as many as maxStateEvents says, apart from other events', async () => {
+    await start({ maxStateEvents: 2 });
+    const ui = viewer();
+    await ui.opened;
+    const { app } = await connectApp();
+    await deliver(app, ui, [stateChange(1), stateEntries(2), log(3), stateChange(4)]);
+    expect((await load()).events.map((e: any) => e.seq)).toEqual([2, 3, 4]);
+  });
+
+  it('clears the timeline but keeps the registered stores', async () => {
+    await start();
+    const ui = viewer();
+    await ui.opened;
+    const { app } = await connectApp();
+    await deliver(app, ui, [stateStore(1), stateChange(2), stateEntries(3), log(4)]);
+
+    ui.send({ t: 'clear', sessionId: 'app-1' });
+    await ui.next((m) => m.t === 'cleared');
+    expect((await load()).events).toEqual([stateStore(1)]);
+
+    await deliver(app, ui, [stateChange(5), stateStore(6, 'redux:1', { disposed: true })]);
+    expect((await load()).events).toEqual([stateChange(5), stateStore(6, 'redux:1', { disposed: true })]);
+  });
+
+  it('clears only the state timeline when the State tab asks', async () => {
+    await start();
+    const ui = viewer();
+    await ui.opened;
+    const { app } = await connectApp();
+    await deliver(app, ui, [stateStore(1), stateChange(2), log(3), stateEntries(4)]);
+
+    ui.send({ t: 'clear', sessionId: 'app-1', scope: 'state' });
+    expect(await ui.next((m) => m.t === 'cleared')).toEqual({ t: 'cleared', sessionId: 'app-1', scope: 'state' });
+    expect((await load()).events).toEqual([stateStore(1), log(3)]);
+  });
+});
+
 describe('commands', () => {
   it('routes a command to the app and the result back to the asking viewer', async () => {
     await start();
@@ -195,6 +316,28 @@ describe('diagnosing failed requests', () => {
       await ui.next((m) => m.t === 'events' && m.sessionId === 'rn-1');
       ui.send({ t: 'diagnose', id: 'd3', sessionId: 'rn-1', requestId: 'r1' });
       expect((await ui.next((m) => m.id === 'd3')).error).toContain('CORS applies only in browsers');
+    } finally {
+      await new Promise((resolve) => api.close(resolve));
+    }
+  });
+
+  it('still finds a request after thousands of state events', async () => {
+    const api = http.createServer((_req, res) => res.writeHead(401).end());
+    await new Promise<void>((resolve) => api.listen(0, '127.0.0.1', resolve));
+    const url = `http://127.0.0.1:${(api.address() as AddressInfo).port}/me`;
+    try {
+      await start();
+      const ui = viewer();
+      await ui.opened;
+      const page = connect('/client');
+      await page.opened;
+      page.send({ t: 'hello', protocol: 1, session: { ...session('web-1'), platform: 'web', url: 'http://localhost:6868/home' } });
+      await page.next((m) => m.t === 'welcome');
+      const request = { seq: 1, ts: 1, kind: 'network.request', payload: { id: 'r1', initiator: 'fetch', method: 'GET', url, headers: {} } };
+      await deliver(page, ui, [request, ...Array.from({ length: 5_000 }, (_, i) => stateChange(i + 2))]);
+
+      ui.send({ t: 'diagnose', id: 'd1', sessionId: 'web-1', requestId: 'r1' });
+      expect(await ui.next((m) => m.id === 'd1')).toMatchObject({ ok: true, result: { verdict: 'cors' } });
     } finally {
       await new Promise((resolve) => api.close(resolve));
     }

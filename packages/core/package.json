@@ -41,5 +41,14 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "devDependencies": {
+    "@reduxjs/toolkit": "^2.13.0",
+    "@tanstack/query-core": "^5.104.4",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "redux": "^5.0.1",
+    "swr": "^2.5.1",
+    "zustand": "^5.0.15"
   }
 }

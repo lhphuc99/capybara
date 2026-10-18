@@ -36,8 +36,13 @@ export interface ServerOptions {
   allowedOrigins?: string[];
   /** Disconnected sessions beyond this are dropped, oldest first. Default 20. */
   maxSessions?: number;
-  /** Default 5000. */
+  /** Default 5000. `state.*` events are kept apart; see `maxStateEvents`. */
   maxEventsPerSession?: number;
+  /**
+   * `state.change` and `state.entries` events kept per session, apart from the others so busy stores cannot
+   * push logs and requests out. The latest `state.store` of each store is kept regardless. Default 2000.
+   */
+  maxStateEvents?: number;
   /** Milliseconds to wait for an app to answer a command. Default 10s. */
   commandTimeout?: number;
   version?: string;
@@ -56,6 +61,13 @@ export interface CapybaraServer {
 interface Session {
   info: SessionInfo;
   events: CapybaraEvent[];
+  /** Kept apart from `events`, where busy stores would push out the logs and requests `diagnose` looks up. */
+  state: {
+    /** `state.change` and `state.entries`. */
+    events: CapybaraEvent[];
+    /** The latest `state.store` of each store, by store id, oldest first. */
+    stores: Map<string, EventOf<'state.store'>>;
+  };
   lastSeq: number;
   socket: WebSocket | null;
   lastSeen: number;
@@ -71,10 +83,12 @@ interface PendingCommand {
 /** Apps killed without a close frame (force-quit, lost Wi-Fi) are only noticed by missing pongs. */
 const HEARTBEAT_MS = 15_000;
 const LATEST_REFRESH_MS = 12 * 60 * 60 * 1_000;
+const MAX_PINNED_STORES = 200;
 
 export function createServer(options: ServerOptions): CapybaraServer {
   const maxSessions = options.maxSessions ?? 20;
   const maxEvents = options.maxEventsPerSession ?? 5_000;
+  const maxStateEvents = options.maxStateEvents ?? 2_000;
   const commandTimeout = options.commandTimeout ?? 10_000;
   const allowedOrigins = options.allowedOrigins ?? [];
   const sessions = new Map<string, Session>();
@@ -143,8 +157,12 @@ export function createServer(options: ServerOptions): CapybaraServer {
     info: s.info,
     connected: s.socket !== null,
     lastSeen: s.lastSeen,
-    eventCount: s.events.length,
+    eventCount: s.events.length + s.state.events.length + s.state.stores.size,
   });
+
+  // The UI skips events at or below the last seq it applied, so the three lists must merge in seq order.
+  const history = (s: Session): CapybaraEvent[] =>
+    [...s.events, ...s.state.stores.values(), ...s.state.events].sort((a, b) => a.seq - b.seq);
 
   const serverInfo = (): ServerInfo => ({ version: options.version ?? '0.0.0', port, addresses: lanAddresses(), latest });
 
@@ -184,13 +202,43 @@ export function createServer(options: ServerOptions): CapybaraServer {
       session.socket = ws;
       session.info = info;
     } else {
-      session = { info, events: [], lastSeq: 0, socket: ws, lastSeen: Date.now() };
+      session = {
+        info,
+        events: [],
+        state: { events: [], stores: new Map() },
+        lastSeq: 0,
+        socket: ws,
+        lastSeen: Date.now(),
+      };
       sessions.set(info.id, session);
     }
     session.lastSeen = Date.now();
     broadcast({ t: 'session', session: meta(session) });
     prune();
     return session;
+  };
+
+  const pin = (stores: Session['state']['stores'], event: EventOf<'state.store'>) => {
+    const { id } = event.payload.store;
+    // Re-inserting moves the store to the end, so the map stays oldest first.
+    stores.delete(id);
+    stores.set(id, event);
+    if (stores.size <= MAX_PINNED_STORES) return;
+    const pinned = [...stores.values()];
+    // Disposed stores are gone from the app, so they make way before live ones.
+    const stale = pinned.find((kept) => kept.payload.store.disposed) ?? pinned[0]!;
+    stores.delete(stale.payload.store.id);
+  };
+
+  const keep = (session: Session, event: CapybaraEvent) => {
+    if (!event.kind.startsWith('state.')) {
+      session.events.push(event);
+    } else if (event.kind === 'state.store' && typeof event.payload?.store?.id === 'string') {
+      pin(session.state.stores, event);
+    } else {
+      // Also takes registrations without a store id: payloads arrive unchecked, and those cannot be pinned.
+      session.state.events.push(event);
+    }
   };
 
   const ingest = (session: Session, events: unknown) => {
@@ -204,8 +252,10 @@ export function createServer(options: ServerOptions): CapybaraServer {
       }
     }
     if (fresh.length === 0) return;
-    for (const event of fresh) session.events.push(event);
+    for (const event of fresh) keep(session, event);
     if (session.events.length > maxEvents) session.events.splice(0, session.events.length - maxEvents);
+    const timeline = session.state.events;
+    if (timeline.length > maxStateEvents) timeline.splice(0, timeline.length - maxStateEvents);
     session.lastSeen = Date.now();
     broadcast({ t: 'events', sessionId: session.info.id, events: fresh });
   };
@@ -310,7 +360,7 @@ export function createServer(options: ServerOptions): CapybaraServer {
       switch (message.t) {
         case 'history': {
           const session = sessions.get(message.sessionId);
-          send(ws, { t: 'history', sessionId: message.sessionId, events: session?.events ?? [] });
+          send(ws, { t: 'history', sessionId: message.sessionId, events: session ? history(session) : [] });
           break;
         }
         case 'command':
@@ -322,9 +372,12 @@ export function createServer(options: ServerOptions): CapybaraServer {
         case 'clear': {
           const session = sessions.get(message.sessionId);
           if (!session) break;
+          const scope = message.scope === 'state' ? 'state' : undefined;
           // lastSeq stays, so events the app replays later are still recognised as already seen.
-          session.events = [];
-          broadcast({ t: 'cleared', sessionId: message.sessionId });
+          if (!scope) session.events = [];
+          // Registered stores stay: the app still has them, and their current state can still be read.
+          session.state.events = [];
+          broadcast(scope ? { t: 'cleared', sessionId: message.sessionId, scope } : { t: 'cleared', sessionId: message.sessionId });
           break;
         }
         case 'remove': {

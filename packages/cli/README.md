@@ -1,6 +1,6 @@
 # capybara-devtools
 
-Debug React Native and web apps from one place: logs, network (including WebSockets) and storage, streamed live to a local UI.
+Debug React Native and web apps from one place: logs, network (including WebSockets), storage and state (Redux, Zustand, TanStack Query, SWR, React Context), streamed live to a local UI.
 
 ```bash
 npx capybara-devtools
@@ -8,11 +8,13 @@ npx capybara-devtools
 
 The UI opens at http://localhost:7357.
 
-- **React Native / Expo 0.85 or later:** start Metro and open your development app. Capybara finds it through Metro, with no SDK or code changes.
+- **React Native / Expo 0.85 or later:** start Metro and open your development app. Capybara finds it through Metro, with no SDK or code changes. Expo Go on Android is the exception: its JavaScript engine cannot be debugged, so use the SDK or a development build there.
 - **Web (React, Vite, Next.js):** add [`@capybara-devtools/web`](https://www.npmjs.com/package/@capybara-devtools/web) to your app.
-- **React Native below 0.85, or to edit storage:** add [`@capybara-devtools/react-native`](https://www.npmjs.com/package/@capybara-devtools/react-native).
-- **AI assistants:** `capybara mcp` is an MCP server that reads the same logs, requests and storage, for example `claude mcp add capybara -- npx capybara-devtools mcp`.
+- **React Native below 0.85, Expo Go on Android, to edit storage, or to see state:** add [`@capybara-devtools/react-native`](https://www.npmjs.com/package/@capybara-devtools/react-native).
+- **AI assistants:** `capybara mcp` is an MCP server that reads the same logs, requests, storage and state, for example `claude mcp add capybara -- npx capybara-devtools mcp`. Its state tools are `get_state` (the stores and their current state), `get_state_actions` (what changed and which action changed it) and `get_queries` (TanStack Query and SWR entries).
 
-Run `npx capybara-devtools --help` for the options. Requires Node 20.19 or later.
+Update the SDK in your app along with the CLI: the State tab needs both.
+
+Run `npx capybara-devtools --help` for the options. With `--port`, pass the same `port` to `init()` in apps that use the SDK. Requires Node 20.19 or later.
 
 Documentation: [github.com/lhphuc99/capybara](https://github.com/lhphuc99/capybara#readme)

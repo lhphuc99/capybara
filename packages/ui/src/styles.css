@@ -644,6 +644,10 @@ code {
   background: var(--bg-hover);
 }
 
+.tree-row.changed {
+  background: color-mix(in srgb, var(--warn) 18%, transparent);
+}
+
 .caret,
 .caret-space {
   flex: none;
@@ -892,7 +896,8 @@ code {
 }
 
 .tone-error .net-status,
-.tone-error .net-path {
+.tone-error .net-path,
+.tone-error .entry-key {
   color: var(--error);
 }
 
@@ -1059,13 +1064,15 @@ code {
   min-height: 0;
 }
 
-.adapters {
+.adapters,
+.state-nav {
   overflow: auto;
   padding: 8px;
   border-right: 1px solid var(--border);
 }
 
-.adapter {
+.adapter,
+.state-store {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1077,11 +1084,13 @@ code {
   text-align: left;
 }
 
-.adapter:hover {
+.adapter:hover,
+.state-store:hover {
   background: var(--bg-hover);
 }
 
-.adapter[aria-selected='true'] {
+.adapter[aria-selected='true'],
+.state-store[aria-selected='true'] {
   background: var(--bg-selected);
   color: var(--accent);
   font-weight: 550;
@@ -1156,7 +1165,8 @@ code {
   color: var(--text-muted);
 }
 
-.editor-pane {
+.editor-pane,
+.state-detail {
   position: relative;
   display: flex;
   flex-direction: column;
@@ -1226,6 +1236,423 @@ code {
   gap: 8px;
 }
 
+/* ----------------------------------------------------------------- state */
+
+/*
+ * Like .storage, but the pane never takes the room the list needs (the entry table's fixed columns alone
+ * take 280px), so a wide pane cannot squeeze the keys away or scroll the page sideways. Fits at 860px.
+ */
+.state-layout {
+  display: grid;
+  flex: 1;
+  grid-template-columns: 190px minmax(350px, 1fr) minmax(320px, min(var(--pane-width, 44%), calc(100% - 540px)));
+  min-height: 0;
+}
+
+.state-group {
+  margin: 14px 10px 4px;
+  color: var(--text-faint);
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.state-group:first-child {
+  margin-top: 4px;
+}
+
+.state-store {
+  gap: 8px;
+}
+
+.state-store-name {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.state-store-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.state-store.disposed .state-store-label {
+  color: var(--text-faint);
+}
+
+.state-store-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.state-store-sub {
+  overflow: hidden;
+  color: var(--text-faint);
+  font-size: 11px;
+  font-weight: 450;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.state-store[aria-selected='true'] .state-store-sub {
+  color: inherit;
+  opacity: 0.7;
+}
+
+.state-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 12px 4px 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.state-toggle input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.state-toggle .n {
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.state-dot,
+.state-alert {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+
+.state-dot.redux {
+  background: var(--debug);
+}
+
+.state-dot.zustand {
+  background: var(--warn);
+}
+
+.state-dot.tanstack-query {
+  background: var(--info);
+}
+
+.state-dot.swr {
+  background: var(--text-muted);
+}
+
+.state-dot.context {
+  background: var(--ok);
+}
+
+.state-alert {
+  width: 6px;
+  height: 6px;
+  background: var(--error);
+}
+
+.state-count {
+  color: var(--text-faint);
+  font-size: 11px;
+  font-weight: 450;
+  font-variant-numeric: tabular-nums;
+}
+
+.state-store[aria-selected='true'] .state-count {
+  color: var(--accent);
+}
+
+.state-timeline .entry-head,
+.state-timeline .entry-row {
+  grid-template-columns: 92px minmax(0, 1fr) 76px;
+}
+
+.state-cache .entry-head,
+.state-cache .entry-row {
+  grid-template-columns: minmax(0, 1fr) 128px 34px 64px;
+}
+
+.state-timeline .entry-head > span,
+.state-cache .entry-head > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.state-faint,
+.state-action.system {
+  color: var(--text-faint);
+}
+
+.state-tag {
+  margin-left: 6px;
+  padding: 0 5px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font: 10.5px var(--font-sans);
+}
+
+.state-marker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-bottom: 1px solid var(--border);
+  background: repeating-linear-gradient(-45deg, transparent 0 6px, var(--bg-subtle) 6px 12px);
+  color: var(--text-muted);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.state-section {
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.state-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 7px;
+  border-radius: 999px;
+  font: 500 11px var(--font-sans);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.state-pill + .state-pill {
+  margin-left: 4px;
+}
+
+.state-pill.ok {
+  background: color-mix(in srgb, var(--ok) 13%, transparent);
+  color: var(--ok);
+}
+
+.state-pill.info {
+  background: color-mix(in srgb, var(--info) 14%, transparent);
+  color: var(--info);
+}
+
+.state-pill.warn {
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+
+.state-pill.error {
+  background: var(--error-bg);
+  color: var(--error);
+}
+
+.state-pill.muted {
+  background: var(--bg-hover);
+  color: var(--text-muted);
+}
+
+.state-detail-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px 14px 0;
+}
+
+.state-ops {
+  gap: 6px;
+  padding-top: 8px;
+}
+
+.state-title {
+  min-width: 0;
+  overflow: hidden;
+  font: 600 13px var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.state-tabs {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.state-meta {
+  margin: 0 0 8px;
+}
+
+.state-kv {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 5px 12px;
+  margin: 18px 0 0;
+  font-size: 12px;
+}
+
+.state-kv:first-child {
+  margin-top: 0;
+}
+
+.state-kv dt {
+  color: var(--text-muted);
+}
+
+.state-kv dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.state-empty {
+  max-width: 860px;
+}
+
+.state-snippets {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px;
+  margin-top: 18px;
+  text-align: left;
+}
+
+.state-snippets h4 {
+  margin: 0 0 6px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.state-snippets .code {
+  min-height: 150px;
+}
+
+.code-keyword {
+  color: var(--syntax-key);
+}
+
+.code-string {
+  color: var(--syntax-string);
+}
+
+.code-comment {
+  color: var(--syntax-muted);
+}
+
+/* One record's changes */
+
+.diff {
+  font: 12px/19px var(--font-mono);
+}
+
+.diff > * + *,
+.diff-group > * + * {
+  margin-top: 4px;
+}
+
+.diff-op {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 6px;
+  padding: 5px 8px;
+  border-radius: 5px;
+  overflow-wrap: anywhere;
+}
+
+.diff-op.add {
+  background: color-mix(in srgb, var(--ok) 10%, transparent);
+}
+
+.diff-op.set {
+  background: var(--bg-subtle);
+}
+
+.diff-op.del {
+  background: color-mix(in srgb, var(--error) 10%, transparent);
+}
+
+.diff-sym {
+  font-weight: 700;
+  text-align: center;
+}
+
+.diff-op.add > .diff-sym,
+.diff-new {
+  color: var(--ok);
+}
+
+.diff-op.set > .diff-sym,
+.diff-set {
+  color: var(--warn);
+}
+
+.diff-op.del > .diff-sym,
+.diff-old-count {
+  color: var(--error);
+}
+
+.diff-path {
+  color: var(--syntax-key);
+}
+
+.diff-old {
+  margin-left: 18px;
+  color: var(--error);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--error) 55%, transparent);
+}
+
+.diff-arrow {
+  margin: 0 6px;
+  color: var(--text-faint);
+}
+
+.diff-group .diff-op {
+  margin-left: 18px;
+}
+
+.diff-branch {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 5px 8px 5px 4px;
+  border: 0;
+  border-radius: 5px;
+  background: var(--bg-subtle);
+  text-align: left;
+}
+
+.diff-branch:hover {
+  background: var(--bg-hover);
+}
+
+.diff-counts {
+  margin-left: auto;
+  padding-left: 12px;
+  color: var(--text-muted);
+  font: 11.5px var(--font-sans);
+  white-space: nowrap;
+}
+
+.diff-cut {
+  margin: 10px 0 0;
+}
+
 /* ------------------------------------------------------------ onboarding */
 
 .onboarding {
@@ -1281,26 +1708,40 @@ code {
     display: none;
   }
 
-  .storage {
+  .storage,
+  .state-layout {
     grid-template-columns: minmax(0, 1fr);
     grid-auto-rows: auto minmax(200px, 1fr) minmax(240px, 1fr);
     overflow: auto;
   }
 
-  .adapters {
+  .adapters,
+  .state-nav {
     display: flex;
     flex-wrap: wrap;
     border-right: 0;
     border-bottom: 1px solid var(--border);
   }
 
-  .adapter {
+  .adapter,
+  .state-store {
     width: auto;
   }
 
-  .editor-pane {
+  .state-group,
+  .state-group:first-child {
+    align-self: center;
+    margin: 0 4px 0 10px;
+  }
+
+  .editor-pane,
+  .state-detail {
     border-top: 1px solid var(--border);
     border-left: 0;
+  }
+
+  .state-snippets {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .log-details {

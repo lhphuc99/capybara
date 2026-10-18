@@ -15,3 +15,6 @@ apps/desktop/release/
 
 # Notes for the GitHub release, written by `npm run desktop:release`
 apps/desktop/release-notes.md
+
+# Working plans for features, kept locally
+plans/

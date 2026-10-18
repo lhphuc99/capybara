@@ -1,8 +1,20 @@
 import { useState } from 'react';
+import { mutate } from 'swr';
+import { useAuth } from './state/auth';
+import { LiveState } from './state/LiveState';
+import { addItem, clearCart, fetchUsers, store } from './state/redux';
+import { userKey } from './state/swr';
+import { login, queryClient, userQuery, usersQuery } from './state/tanstack';
+import { useCounterStore, useUiStore } from './state/zustand';
 
 interface Action {
   label: string;
   run: () => unknown;
+}
+
+interface Group {
+  title: string;
+  actions: Action[];
 }
 
 class Cart {
@@ -15,7 +27,7 @@ class Cart {
 
 let socket: WebSocket | undefined;
 
-const groups: Array<{ title: string; actions: Action[] }> = [
+const groups: Group[] = [
   {
     title: 'Logs',
     actions: [
@@ -188,10 +200,75 @@ const groups: Array<{ title: string; actions: Action[] }> = [
       { label: 'Remove user from localStorage', run: () => localStorage.removeItem('user') },
     ],
   },
+  {
+    title: 'State',
+    actions: [
+      {
+        label: 'Add tea to the cart (Redux)',
+        run: () => {
+          store.dispatch(addItem({ sku: 'tea-01', price: 4.5 }));
+          return `cart total ${store.getState().cart.total}`;
+        },
+      },
+      { label: 'Clear the cart (Redux)', run: () => void store.dispatch(clearCart()) },
+      {
+        label: 'Load users with a thunk (Redux)',
+        run: () =>
+          store
+            .dispatch(fetchUsers())
+            .unwrap()
+            .then((list) => `${list.length} users`),
+      },
+      {
+        label: 'Toggle the theme (zustand devtools)',
+        run: () => {
+          useUiStore.getState().toggleTheme();
+          return `theme ${useUiStore.getState().theme}`;
+        },
+      },
+      {
+        label: 'Count up (zustand + watchZustand)',
+        run: () => {
+          useCounterStore.getState().increment();
+          return `count ${useCounterStore.getState().count}`;
+        },
+      },
+      {
+        label: 'Refetch users (TanStack Query)',
+        run: () => queryClient.refetchQueries({ queryKey: usersQuery.queryKey, exact: true }).then(() => 'refetched'),
+      },
+      { label: 'Fetch a missing user (404)', run: () => queryClient.fetchQuery(userQuery(99)) },
+      {
+        label: 'Log in (TanStack mutation)',
+        run: () => login.mutate('ada@example.com').then((data) => `token ${data.token.slice(0, 12)}…`),
+      },
+      { label: 'Revalidate user 1 (SWR)', run: () => mutate(userKey(1)).then(() => 'revalidated') },
+    ],
+  },
 ];
 
 export function App() {
   const [status, setStatus] = useState('Click a button and watch it show up in Capybara.');
+  const auth = useAuth();
+  const contextGroup: Group = {
+    title: 'React Context',
+    actions: [
+      {
+        label: 'Sign in (AuthContext)',
+        run: () => {
+          auth.signIn();
+          return 'signed in as Ada Lovelace';
+        },
+      },
+      {
+        label: 'Sign out (AuthContext)',
+        run: () => {
+          auth.signOut();
+          return 'signed out';
+        },
+      },
+    ],
+  };
 
   const run = async (action: Action) => {
     try {
@@ -214,7 +291,7 @@ export function App() {
           next to this tab.
         </p>
       </header>
-      {groups.map((group) => (
+      {[...groups, contextGroup].map((group) => (
         <section key={group.title}>
           <h2>{group.title}</h2>
           <div className="grid">
@@ -226,6 +303,7 @@ export function App() {
           </div>
         </section>
       ))}
+      <LiveState />
       <p className="status" role="status">
         {status}
       </p>

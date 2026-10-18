@@ -128,6 +128,12 @@ describe('init', () => {
     vi.unstubAllGlobals();
   });
 
+  it('runs the state plugin unless turned off', () => {
+    expect(init({ port: 1 })?.session.plugins).toContain('state');
+    getActiveClient()?.stop();
+    expect(init({ port: 1, state: false })?.session.plugins).not.toContain('state');
+  });
+
   it('does nothing when disabled', () => {
     expect(init({ enabled: false })).toBeUndefined();
     expect(getActiveClient()).toBeUndefined();
