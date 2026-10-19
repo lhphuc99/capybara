@@ -30,7 +30,7 @@ registerRootComponent(App);
 
 Called in `index.ts` itself, `init()` would run too late: a file's imports all run before its own code, so your other modules, and the stores they create, would load first.
 
-Then run `npx capybara-devtools` (or open the desktop app) on the computer running Metro. The SDK finds it from the bundle URL, so simulators and phones on the same Wi-Fi connect without configuration. If Capybara runs on another port (`--port`, or `CAPYBARA_PORT`), pass the same `port` to `init()`. `enabled: false` makes `init()` do nothing, to turn it off at run time.
+Then run `npx capybara-devtools` (or open the desktop app) on the computer running Metro. The SDK finds it from the bundle URL, so simulators and phones on the same Wi-Fi connect without configuration. If Capybara runs on another port (`--port`, or `CAPYBARA_PORT`), pass the same `port` to `init()`. `enabled: false` makes `init()` do nothing, to turn it off at run time. In a release build (`__DEV__` false) `init()` does nothing, even without the `if`, unless you pass `allowProduction: true`, for example in an internal test build. Keep the `if` anyway, so the SDK is never set up for your users.
 
 ## State
 

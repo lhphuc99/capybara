@@ -30,6 +30,11 @@ export interface InitOptions {
   port?: number;
   /** Pass false to skip setup, e.g. `enabled: __DEV__`. */
   enabled?: boolean;
+  /**
+   * Run in a release build too (`__DEV__` false), e.g. an internal test build. Off by default, so an `init()`
+   * left without a `__DEV__` check never runs for the app's users.
+   */
+  allowProduction?: boolean;
   /** Capture console output and uncaught errors. Default true. */
   logs?: boolean;
   network?: boolean | NetworkPluginOptions;
@@ -42,6 +47,8 @@ export interface InitOptions {
 
 export function init(options: InitOptions = {}): CapybaraClient | undefined {
   if (options.enabled === false) return undefined;
+  // Release builds set __DEV__ to false.
+  if (!__DEV__ && !options.allowProduction) return undefined;
   // Fast Refresh can re-run the entry file; patching again would record everything twice.
   const existing = getActiveClient();
   if (existing) return existing;

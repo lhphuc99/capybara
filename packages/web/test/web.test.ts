@@ -96,6 +96,17 @@ describe('cookieStorage', () => {
 });
 
 describe('init', () => {
+  it('stays off in a production build unless allowed', () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    try {
+      expect(init({ port: 1 })).toBeUndefined();
+      expect(getActiveClient()).toBeUndefined();
+      expect(init({ port: 1, allowProduction: true })).toBe(getActiveClient());
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('creates one client per page and describes the session', () => {
     document.title = 'Shop';
     const client = init({ port: 1 });

@@ -31,6 +31,11 @@ export interface InitOptions {
   port?: number;
   /** Pass false to skip setup, e.g. `enabled: import.meta.env.DEV`. */
   enabled?: boolean;
+  /**
+   * Run in a production build too, e.g. a staging build for testers. Off by default, so an `init()` left without
+   * a dev check never runs for the app's users.
+   */
+  allowProduction?: boolean;
   /** Capture console output and uncaught errors. Default true. */
   logs?: boolean;
   network?: boolean | NetworkPluginOptions;
@@ -41,9 +46,22 @@ export interface InitOptions {
   plugins?: Plugin[];
 }
 
+// Only typed here: the SDK has no Node types, and bundlers replace the expression before it runs.
+declare const process: { env: { NODE_ENV?: string } };
+
+/** Bundlers write the build mode into `process.env.NODE_ENV`; unbundled, there is no `process` and reading it throws. */
+function isProductionBuild(): boolean {
+  try {
+    return process.env.NODE_ENV === 'production';
+  } catch {
+    return false;
+  }
+}
+
 export function init(options: InitOptions = {}): CapybaraClient | undefined {
   // The window check makes this a no-op during server rendering, so the same entry works in Next.js.
   if (options.enabled === false || typeof window === 'undefined') return undefined;
+  if (isProductionBuild() && !options.allowProduction) return undefined;
   // Hot reload re-runs the entry file; patching again would record everything twice.
   const existing = getActiveClient();
   if (existing) return existing;
