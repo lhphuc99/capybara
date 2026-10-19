@@ -229,6 +229,109 @@ function answerStorage(method, params) {
   }
 }
 
+const stateStores = [
+  { id: 'redux:1', library: 'redux', label: 'shop', via: 'shim', actions: true },
+  { id: 'zustand:1', library: 'zustand', label: 'ui', via: 'shim', actions: true },
+  {
+    id: 'tanstack-query:1',
+    library: 'tanstack-query',
+    label: 'QueryClient',
+    via: 'client',
+    actions: false,
+    ops: ['refetch', 'invalidate', 'reset', 'cancel', 'remove'],
+  },
+  { id: 'swr:1', library: 'swr', label: 'default', via: 'cache', actions: false, ops: ['revalidate', 'clear', 'reset'] },
+  { id: 'context:1', library: 'context', label: 'AuthProvider', via: 'fiber', actions: false },
+];
+
+const shopState = {
+  user: { status: 'signedIn', profile: { id: 'u_1042', name: 'Ada', plan: 'pro' } },
+  products: { filter: 'tea', sort: 'price' },
+  cart: {
+    items: [
+      { id: 'tea-yuzu-01', qty: 1, price: 12.5 },
+      { id: 'snack-mochi-03', qty: 2, price: 7.25 },
+    ],
+    total: 27,
+    updatedAt: '2026-10-16T09:41:14.280Z',
+  },
+  checkout: { step: 'cart' },
+};
+
+const set = (path, prev, value) => ({ op: 'set', path, prev, value });
+const add = (path, value) => ({ op: 'add', path, value });
+
+// [ms after the previous change, change]
+const shopChanges = [
+  [9_000, { cause: 'init', action: { type: '@@INIT' }, ops: [] }],
+  [520, { action: { type: 'user/login/pending' }, ops: [set(['user', 'status'], 'idle', 'pending')] }],
+  [
+    570,
+    {
+      action: { type: 'user/login/fulfilled', payload: { payload: { id: 'u_1042', name: 'Ada' } } },
+      ops: [set(['user', 'status'], 'pending', 'signedIn'), add(['user', 'profile'], { id: 'u_1042', name: 'Ada', plan: 'pro' })],
+    },
+  ],
+  [640, { action: { type: 'products/setFilter', payload: { payload: 'tea' } }, ops: [set(['products', 'filter'], 'all', 'tea')] }],
+  [
+    510,
+    {
+      action: { type: 'cart/addItem', payload: { payload: { id: 'tea-yuzu-01', qty: 1 } } },
+      ops: [add(['cart', 'items', 0], { id: 'tea-yuzu-01', qty: 1, price: 12.5 }), set(['cart', 'total'], 0, 12.5)],
+    },
+  ],
+  [2_520, { action: { type: 'products/setSort', payload: { payload: 'price' } }, ops: [set(['products', 'sort'], 'popular', 'price')] }],
+  [
+    520,
+    {
+      action: { type: 'cart/addItem', payload: { payload: { id: 'snack-mochi-03', qty: 2 } } },
+      ops: [
+        add(['cart', 'items', 1], { id: 'snack-mochi-03', qty: 2, price: 7.25 }),
+        set(['cart', 'total'], 12.5, 27),
+        set(['cart', 'updatedAt'], '2026-10-16T09:41:11.240Z', '2026-10-16T09:41:14.280Z'),
+      ],
+    },
+  ],
+  [590, { action: { type: 'checkout/start' }, ops: [set(['checkout', 'step'], 'idle', 'cart')] }],
+];
+
+const query = (key, extra) => ({ key, label: key, kind: 'query', status: 'success', fetching: false, active: true, ...extra });
+const queries = [
+  query('["products","tea"]', { stale: false, observers: 2, updatedAt: START + 12_010, preview: '{items, page, total}' }),
+  query('["user",1042]', { stale: true, observers: 1, updatedAt: START + 10_312, preview: '{id, name, plan}' }),
+  query('["user",1]', { status: 'error', observers: 1, updatedAt: START + 15_774, error: 'Request failed with status code 404' }),
+];
+
+function stateEvents() {
+  const { events, add: emit } = timeline();
+  emit(0, 'log', { level: 'info', source: 'console', args: ['Yuzu Market 2.3.0 · development build'] });
+  for (const store of stateStores) emit(0, 'state.store', { store });
+  shopChanges.forEach(([afterMs, change], index) => emit(afterMs, 'state.change', { store: 'redux:1', rev: index + 1, cause: 'action', ...change }));
+  emit(800, 'state.entries', { store: 'tanstack-query:1', upserts: queries, removed: [], reset: true });
+  return events;
+}
+
+/** Answers the UI's state commands the way an app with the SDK does. */
+function answerState(method, params) {
+  switch (method) {
+    case 'stores':
+      return stateStores;
+    case 'get': {
+      let value = params.store === 'redux:1' ? shopState : {};
+      for (const key of params.path ?? []) value = value?.[key];
+      return { rev: shopChanges.length, pending: false, value: value ?? null, truncated: false };
+    }
+    case 'entries':
+      return params.store === 'tanstack-query:1' ? { entries: queries, total: queries.length } : { entries: [], total: 0 };
+    case 'entry': {
+      const summary = queries.find((entry) => entry.key === params.key);
+      return summary ? { summary, data: null, truncated: false } : null;
+    }
+    default:
+      throw new Error('The demo app is read-only');
+  }
+}
+
 export const apps = {
   web: { session: webApp, events: webEvents() },
   native: { session: nativeApp, events: nativeEvents() },
@@ -236,5 +339,15 @@ export const apps = {
     session: { ...nativeApp, id: 'demo-native-sdk', sdk: { name: '@capybara-devtools/react-native', version: '0.1.0' } },
     events: nativeEvents(),
     answer: answerStorage,
+  },
+  webWithState: {
+    session: {
+      ...webApp,
+      id: 'demo-web-state',
+      sdk: { name: '@capybara-devtools/web', version: '0.3.0' },
+      plugins: ['console', 'errors', 'network', 'websocket', 'storage', 'state'],
+    },
+    events: stateEvents(),
+    answer: (method, params, plugin) => (plugin === 'state' ? answerState(method, params) : null),
   },
 };
