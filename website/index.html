@@ -210,8 +210,8 @@
             <article class="feature">
               <h3>Ask your AI assistant</h3>
               <p>
-                Capybara's MCP server lets Claude Code, Cursor and other MCP clients read and filter logs, requests, storage and
-                state, with credentials hidden.
+                Capybara's MCP server lets Claude Code, Cursor and other MCP clients add Capybara to your app, then read and filter
+                its logs, requests, storage and state, with credentials hidden.
               </p>
             </article>
           </div>
@@ -255,7 +255,8 @@
                 </div>
                 <p>
                   Install the SDK and call <code>init()</code> in a file your app imports first, so it runs before your stores load.
-                  In Next.js, put it in <code>instrumentation-client.ts</code>.
+                  In Next.js, put it in <code>instrumentation-client.ts</code>. Or let your <a href="#ai-assistants">AI assistant</a>
+                  do it.
                 </p>
               </div>
               <div class="step-body">
@@ -272,19 +273,34 @@ if (import.meta.env.DEV) init({ appName: 'My web app' });</code></pre>
                 </div>
               </div>
             </article>
-            <article class="step">
+            <article class="step" id="ai-assistants">
               <div class="step-text">
                 <div class="step-head">
                   <h3>AI assistants</h3>
                   <span class="tag npm-soon">Coming to npm</span>
                 </div>
-                <p>Let Claude Code, Cursor or any MCP client read what Capybara recorded.</p>
+                <p>Your assistant can add Capybara to your app, then read what it records while you debug.</p>
               </div>
               <div class="step-body">
-                <div class="code-block">
-                  <pre><code>claude mcp add capybara -- npx capybara-devtools mcp</code></pre>
-                  <button type="button" class="copy-button" data-copy>Copy</button>
-                </div>
+                <ol>
+                  <li>
+                    Add Capybara's MCP server. In Claude Code:
+                    <div class="code-block">
+                      <pre><code>claude mcp add capybara -- npx capybara-devtools mcp</code></pre>
+                      <button type="button" class="copy-button" data-copy>Copy</button>
+                    </div>
+                    Cursor and other clients run <code>npx capybara-devtools mcp</code> from their MCP settings.
+                  </li>
+                  <li>
+                    Ask it to set Capybara up. It installs the SDK, calls <code>init()</code> where your app loads it first and
+                    connects your state libraries:
+                    <div class="code-block">
+                      <pre><code>Set up Capybara in this project</code></pre>
+                      <button type="button" class="copy-button" data-copy>Copy</button>
+                    </div>
+                  </li>
+                  <li>Then ask it about your app: its logs, failed requests, storage and state.</li>
+                </ol>
               </div>
             </article>
           </div>
