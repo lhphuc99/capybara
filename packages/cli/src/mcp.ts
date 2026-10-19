@@ -46,8 +46,9 @@ import {
   type StateHistory,
   type StoreEntry,
 } from './mcp-data.js';
+import { resolveProjectDir, setupGuide } from './setup-guide.js';
 
-const INSTRUCTIONS = `Capybara records what a React Native or web app in development is doing: console logs, network requests (fetch, XHR, WebSocket), storage (localStorage, sessionStorage, cookies, AsyncStorage, MMKV) and state (Redux, Zustand, TanStack Query, SWR, React Context). These tools read the Capybara server running on this computer.
+const INSTRUCTIONS = `Capybara records what a React Native or web app in development is doing: console logs, network requests (fetch, XHR, WebSocket), storage (localStorage, sessionStorage, cookies, AsyncStorage, MMKV) and state (Redux, Zustand, TanStack Query, SWR, React Context). These tools read the Capybara server running on this computer. To add Capybara to an app, call get_setup_guide, which works before Capybara runs, and make the changes it lists.
 
 Tools use the newest connected app unless you pass a session id from list_sessions. Ids from get_network work with get_request, get_websocket and diagnose_request. get_state lists the state stores; pass a store's id or label to get_state for its current state, to get_state_actions for what changed and which action changed it, or to get_queries for TanStack Query and SWR entries. Lists show the newest entries; pass "after" with the last seq you saw to get only newer ones, or "before" to page back. Values that look like credentials (Authorization, cookies, tokens, passwords) are hidden.`;
 
@@ -554,6 +555,43 @@ export function createMcpServer(connection: ViewerConnection, options: McpOption
         const { store, result } = await findEntry(meta, caches, args.key, path);
         return `${sessionHeader(meta)} · ${storeTitle(store.info)}\n${entryDetail(result, path, redact, args.maxChars ?? STATE_CHARS)}`;
       }),
+  );
+
+  server.registerTool(
+    'get_setup_guide',
+    {
+      title: 'How to add Capybara to an app',
+      description:
+        "Says how to add Capybara to a web or React Native app (Vite, Next.js, Expo, React Native and others): the install command, the file that calls init(), where to import it, and what the app's state libraries need, worked out from its package.json. Call it when asked to set up, install or add Capybara, then make the changes it lists. It changes no file and works before Capybara runs.",
+      inputSchema: {
+        projectDir: z
+          .string()
+          .optional()
+          .describe("Absolute path of the app's folder, the one with its package.json. Defaults to the folder this server was started in."),
+      },
+      annotations: reads,
+    },
+    (args) => run(async () => setupGuide(resolveProjectDir(args.projectDir ?? '.'), { version: options.version, via: 'mcp' })),
+  );
+
+  server.registerPrompt(
+    'setup',
+    {
+      title: 'Set up Capybara',
+      description: 'Adds Capybara to the app in this project, following get_setup_guide.',
+      argsSchema: { folder: z.string().optional().describe("The app's folder, when it is not the project's root.") },
+    },
+    ({ folder }) => ({
+      messages: [
+        {
+          role: 'user',
+          content: {
+            type: 'text',
+            text: `Set up Capybara in ${folder ? `the app in ${folder}` : 'this project'}: call get_setup_guide with ${folder ? `projectDir ${folder}` : "the app's folder"}, make the changes it lists, then check with list_sessions that the app connects.`,
+          },
+        },
+      ],
+    }),
   );
 
   return server;

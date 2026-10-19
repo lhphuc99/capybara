@@ -23,6 +23,8 @@ npm start          # UI at http://localhost:7357
 npm run desktop    # or the same in a desktop app, see below
 ```
 
+An AI assistant can add the SDK to your app for you: see [Set up Capybara with an AI assistant](#set-up-capybara-with-an-ai-assistant).
+
 When a newer version is on npm, `npx capybara-devtools` says so when it starts, and the UI shows a notice when a connected app uses an older SDK, with the command that updates it. The server asks the npm registry (the one npm is set up with) when it starts and twice a day; `--no-update-check` or `CAPYBARA_NO_UPDATE_CHECK=1` turns that off.
 
 ### React Native / Expo — no SDK needed
@@ -257,8 +259,19 @@ For Claude Desktop, Cursor and other clients, add it to their MCP settings:
 { "mcpServers": { "capybara": { "command": "npx", "args": ["capybara-devtools", "mcp"] } } }
 ```
 
+### Set up Capybara with an AI assistant
+
+With the MCP server added, ask the assistant to "set up Capybara in this project" (in Claude Code, `/mcp__capybara__setup` does the same). It calls `get_setup_guide`, which reads the app's package.json and lockfile and says what to change in that app: the SDK to install with its package manager, the file that calls `init()` and where to import it (`instrumentation-client.ts` in Next.js 15.3 and later, an entry file of its own with Expo Router), and the line each state library needs. The guide changes no file: the assistant makes the changes, and once the app runs, checks with `list_sessions` that it connects. At a monorepo's root the guide lists the apps to choose from.
+
+An assistant without the MCP server gets the same guide from a command, followed by how to add the server:
+
+```bash
+npx capybara-devtools setup-guide            # the app in this folder, or pass its folder
+```
+
 | Tool | What it reads |
 | --- | --- |
+| `get_setup_guide` | How to add Capybara to an app, worked out from its package.json. Works before Capybara runs |
 | `list_sessions` | Connected apps and their session ids |
 | `get_logs` | Logs, filtered by level, text or `/regex/` and source (uncaught errors, unhandled rejections); one entry in full by `seq` |
 | `get_network` | Requests and WebSockets, one per line, filtered by status (`404`, `5xx`, `failed`), method, URL, type and duration |

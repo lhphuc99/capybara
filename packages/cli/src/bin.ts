@@ -10,7 +10,8 @@ import { createServer, lanAddresses } from './server.js';
 import { fetchLatestVersions } from './updates.js';
 
 const HELP = `Usage: capybara [options]
-       capybara mcp [options]   Serve this data to AI assistants (see capybara mcp --help)
+       capybara mcp [options]          Serve this data to AI assistants (see capybara mcp --help)
+       capybara setup-guide [folder]   Print how to add Capybara to an app, for AI assistants
 
 Options:
   -p, --port <port>         Port for the UI and app connections (default ${DEFAULT_PORT}, or $CAPYBARA_PORT)
@@ -31,6 +32,17 @@ if (process.argv[2] === 'mcp') {
   const { runMcp } = await import('./mcp.js');
   try {
     await runMcp(process.argv.slice(3), version);
+    process.exit(0);
+  } catch (error) {
+    console.error((error as Error).message);
+    process.exit(1);
+  }
+}
+
+if (process.argv[2] === 'setup-guide') {
+  const { runSetupGuide } = await import('./setup-guide.js');
+  try {
+    await runSetupGuide(process.argv.slice(3), version);
     process.exit(0);
   } catch (error) {
     console.error((error as Error).message);

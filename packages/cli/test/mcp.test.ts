@@ -1,5 +1,8 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -273,6 +276,7 @@ describe('capybara mcp', () => {
       'get_network',
       'get_queries',
       'get_request',
+      'get_setup_guide',
       'get_state',
       'get_state_actions',
       'get_storage',
@@ -281,6 +285,7 @@ describe('capybara mcp', () => {
     ]);
     expect(tools.every((tool) => tool.annotations?.readOnlyHint)).toBe(true);
     expect(client.getInstructions()).toContain('get_state_actions');
+    expect(client.getInstructions()).toContain('get_setup_guide');
     const sessions = await call('list_sessions');
     expect(sessions.text).toContain('Capybara test on port');
     expect(sessions.text).toContain('- web-1: Shop (web, localhost:6868) · connected');
@@ -553,5 +558,29 @@ describe('capybara mcp', () => {
     const result = await call('get_logs');
     expect(result.isError).toBe(true);
     expect(result.text).toContain(`Capybara is not running on 127.0.0.1:${free}`);
+  });
+
+  it('says how to add Capybara to an app, without Capybara running', async () => {
+    const closed = http.createServer();
+    await new Promise<void>((resolve) => closed.listen(0, '127.0.0.1', resolve));
+    const free = (closed.address() as AddressInfo).port;
+    await new Promise((resolve) => closed.close(resolve));
+    const dir = mkdtempSync(join(tmpdir(), 'capybara-mcp-'));
+    closers.push(() => rmSync(dir, { recursive: true, force: true }));
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'shop', dependencies: { vite: '*' } }));
+    const { client, call } = await connect({ port: free });
+
+    const result = await call('get_setup_guide', { projectDir: dir });
+    expect(result.isError).toBe(false);
+    expect(result.text).toContain('# Add Capybara to shop');
+    expect(result.text).toContain('Call list_sessions');
+
+    const { prompts } = await client.listPrompts();
+    expect(prompts.map((prompt) => prompt.name)).toEqual(['setup']);
+    const prompt = await client.getPrompt({ name: 'setup', arguments: { folder: 'apps/web' } });
+    expect(prompt.messages[0]!.content).toEqual({
+      type: 'text',
+      text: 'Set up Capybara in the app in apps/web: call get_setup_guide with projectDir apps/web, make the changes it lists, then check with list_sessions that the app connects.',
+    });
   });
 });
