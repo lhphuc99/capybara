@@ -23,6 +23,8 @@ npm start          # UI at http://localhost:7357
 npm run desktop    # or the same in a desktop app, see below
 ```
 
+An AI assistant can add the SDK to your app for you: see [Set up Capybara with an AI assistant](#set-up-capybara-with-an-ai-assistant).
+
 When a newer version is on npm, `npx capybara-devtools` says so when it starts, and the UI shows a notice when a connected app uses an older SDK, with the command that updates it. The server asks the npm registry (the one npm is set up with) when it starts and twice a day; `--no-update-check` or `CAPYBARA_NO_UPDATE_CHECK=1` turns that off.
 
 ### React Native / Expo — no SDK needed
@@ -168,7 +170,7 @@ Limits:
 - Changes are found by comparing references, so a change made in place, to the same object, is not recorded. The current state is read from the app, so it shows such a change.
 - Where the Redux DevTools extension is missing, always the case on React Native, `init()` turns zustand's `devtools()` on, and each `set` without an action name makes zustand build a stack trace to guess one. That costs time on Hermes for stores that change often, and the guess often fails, so such actions show as `anonymous`: Hermes stack traces do not name the caller, and on the web Vite's dependency pre-bundling breaks the guess (seen in Chrome). Name the actions on every platform (`set(fn, false, 'cart/add')`), set `anonymousActionType` in the `devtools()` options, or pass `state: { redux: false }`.
 - Other libraries that report through the Redux DevTools extension's `connect()`, such as Valtio's and Jotai's devtools, show under Zustand.
-- React Context: without the React DevTools extension or Fast Refresh, `init()` has to run before `react-dom` loads. At most 40 of the app's contexts and 20 of libraries' are shown. Providers of one context under one name are one store: with up to 20, its state holds each provider's value under its React key; past that, the value that changed last. Library contexts are recognized by name, and on the web also by coming from `node_modules`. React Native has no file paths, so there contexts of UI kits such as Tamagui or gluestack show as the app's own; `context: false` turns Context off.
+- React Context: without the React DevTools extension or Fast Refresh, `init()` has to run before `react-dom` loads. At most 40 of the app's contexts and 20 of libraries' are shown. Providers of one context under one name are one store: with up to 20, its state holds each provider's value under its React key; past that, the value that changed last. Library contexts are recognized by name, and on the web also by coming from `node_modules`. React Native has no file paths: there Capybara knows the contexts of React Native, React Navigation and Expo Router (checked with Expo Router 58's Stack, Tabs and NativeTabs), while those of UI kits such as Tamagui or gluestack show as the app's own; `context: false` turns Context off.
 - SWR keys served only from `fallback` are not in the cache, so they show up once SWR fetches them.
 - React Native apps found through Metro without the SDK show no state.
 
@@ -257,8 +259,19 @@ For Claude Desktop, Cursor and other clients, add it to their MCP settings:
 { "mcpServers": { "capybara": { "command": "npx", "args": ["capybara-devtools", "mcp"] } } }
 ```
 
+### Set up Capybara with an AI assistant
+
+With the MCP server added, ask the assistant to "set up Capybara in this project" (in Claude Code, `/mcp__capybara__setup` does the same). It calls `get_setup_guide`, which reads the app's package.json and lockfile and says what to change in that app: the SDK to install with its package manager, the file that calls `init()` and where to import it (`instrumentation-client.ts` in Next.js 15.3 and later, an entry file of its own with Expo Router), and the line each state library needs. The guide changes no file: the assistant makes the changes, and once the app runs, checks with `list_sessions` that it connects. At a monorepo's root the guide lists the apps to choose from.
+
+An assistant without the MCP server gets the same guide from a command, followed by how to add the server:
+
+```bash
+npx capybara-devtools setup-guide            # the app in this folder, or pass its folder
+```
+
 | Tool | What it reads |
 | --- | --- |
+| `get_setup_guide` | How to add Capybara to an app, worked out from its package.json. Works before Capybara runs |
 | `list_sessions` | Connected apps and their session ids |
 | `get_logs` | Logs, filtered by level, text or `/regex/` and source (uncaught errors, unhandled rejections); one entry in full by `seq` |
 | `get_network` | Requests and WebSockets, one per line, filtered by status (`404`, `5xx`, `failed`), method, URL, type and duration |

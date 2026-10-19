@@ -721,9 +721,15 @@ const LIBRARY_CONTEXTS = new Map(Object.entries({
   LinkingContext: 'React Navigation',
   LocaleDirContext: 'React Navigation',
   UnhandledLinkingContext: 'React Navigation',
+  HeaderBackContext: 'React Navigation',
+  HeaderHeightContext: 'React Navigation',
+  HeaderShownContext: 'React Navigation',
   NavigatorContext: 'Expo Router',
   RouteNode: 'Expo Router',
 }));
+
+/** Where React Navigation keeps the contexts it names, so that two copies of it share them. */
+const REACT_NAVIGATION_CONTEXTS = '__react_navigation__elements_contexts';
 
 /** Library components that render providers, by the names their code gives them. Names an app might use are left out. */
 const LIBRARY_COMPONENTS = new Map(Object.entries({
@@ -748,6 +754,8 @@ const LIBRARY_COMPONENTS = new Map(Object.entries({
   DrawerViewBase: 'React Navigation',
   NativeStackView: 'React Navigation',
   MaterialTopTabView: 'React Navigation',
+  NavigationContent: 'React Navigation',
+  PanGestureHandler: 'React Navigation',
   ExpoRoot: 'Expo Router',
   ContextNavigator: 'Expo Router',
   InnerRoot: 'Expo Router',
@@ -759,6 +767,32 @@ const LIBRARY_COMPONENTS = new Map(Object.entries({
   ExperimentalStackNavigator: 'Expo Router',
   ZoomTransitionSourceContextProvider: 'Expo Router',
   ZoomTransitionTargetContextProvider: 'Expo Router',
+  // Expo Router 58, which carries its own copy of React Navigation.
+  RoutingQueueProvider: 'Expo Router',
+  RemovalEventEmitterRegistryProvider: 'Expo Router',
+  RoutesWithRemovalPreventedProvider: 'Expo Router',
+  PreventRemovalProvider: 'Expo Router',
+  GuardContextProvider: 'Expo Router',
+  NavigationActivityProvider: 'Expo Router',
+  StandardRouterNavigator: 'Expo Router',
+  NativeTabsNavigatorWrapper: 'Expo Router',
+  NativeTabsContent: 'Expo Router',
+  NativeStackNavigatorContent: 'Expo Router',
+  ExperimentalStackNavigatorContent: 'Expo Router',
+  HeaderToolbarHostBase: 'Expo Router',
+  StackToolbarHeader: 'Expo Router',
+  StackToolbarBottom: 'Expo Router',
+  NativeToolbarMenu: 'Expo Router',
+  LinkWithPreview: 'Expo Router',
+  HrefPreview: 'Expo Router',
+  PreviewForRootHrefState: 'Expo Router',
+  InnerRouter: 'Expo Router',
+  FocusedHead: 'Expo Router',
+  HeadShim: 'Expo Router',
+  WebSafeAreaProvider: 'Expo Router',
+  ServerRoot: 'Expo Router',
+  ServerRouter: 'Expo Router',
+  ServerDocument: 'Expo Router',
   SafeAreaProvider: 'react-native-safe-area-context',
   ScreenStack: 'react-native-screens',
   ScreenStackItem: 'react-native-screens',
@@ -773,6 +807,50 @@ const LIBRARY_COMPONENTS = new Map(Object.entries({
   AppContainer: 'React Native',
 }));
 
+/** Expo Router names each route's component after the route, e.g. `Route(index)`. */
+const EXPO_ROUTE = /^Route\(.*\)$/;
+
+/**
+ * Library components whose names an app might use too, recognized by the component that rendered them: Expo
+ * Router's `Content` comes from ContextNavigator, its `Route` from a route's own component.
+ */
+const LIBRARY_COMPONENTS_BY_OWNER = new Map<string, (owner: string) => boolean>([
+  ['Content', (owner) => owner === 'ContextNavigator'],
+  ['Route', (owner) => EXPO_ROUTE.test(owner)],
+]);
+
+const NAVIGATION_COLORS = ['primary', 'background', 'card', 'text', 'border', 'notification'];
+
+/** A React Navigation theme, which its ThemeContext holds; an app's ThemeContext usually holds something else. */
+function isNavigationTheme(value: Record<string, unknown>): boolean {
+  const colors = value.colors as Record<string, unknown> | null | undefined;
+  return typeof value.dark === 'boolean' && colors != null && NAVIGATION_COLORS.every((key) => typeof colors[key] === 'string');
+}
+
+/**
+ * Expo Router's layouts (Stack, Tabs, Drawer…) carry `Screen` and `Protected` as statics, and some are anonymous
+ * arrow functions, so the name of the app's layout that renders them would be taken for theirs.
+ */
+function ownedByExpoRouterLayout(fiber: Fiber): boolean {
+  const owner = fiber._debugOwner as Fiber | null | undefined;
+  if (owner == null || !('tag' in owner)) return false;
+  for (let type = owner.elementType ?? owner.type, depth = 0; type != null && depth < 3; depth++) {
+    if (typeof type.Screen === 'function' && typeof type.Protected === 'function') return true;
+    if (typeof type !== 'object') return false;
+    type = type.render ?? type.type;
+  }
+  return false;
+}
+
+/** The name of the component that rendered the owner: one step past `ownerName(fiber, true)`. */
+function ownerOfOwnerName(fiber: Fiber): string | undefined {
+  for (let owner = fiber._debugOwner as Fiber | null | undefined, hops = 0; owner != null && 'tag' in owner && hops < 20; hops++) {
+    if (componentName(owner) !== undefined) return ownerName(owner, true);
+    owner = owner._debugOwner as Fiber | null | undefined;
+  }
+  return undefined;
+}
+
 /**
  * The library a context comes from, or undefined for the app's own. Runs once per store. Only the owner counts, not
  * a component above: an app's provider passed to `root.render()` inside a library's has no owner.
@@ -781,6 +859,11 @@ function vendorOf(fiber: Fiber, context: object, value: unknown): string | undef
   try {
     const redux = (globalThis as Record<symbol, unknown>)[Symbol.for('react-redux-context')];
     if (redux instanceof Map) for (const known of redux.values()) if (known === context) return 'react-redux';
+    const navigation = (globalThis as Record<string, unknown>)[REACT_NAVIGATION_CONTEXTS];
+    if (navigation instanceof Map) for (const known of navigation.values()) if (known === context) return 'React Navigation';
+    // Bundlers number names they had to rename, e.g. `SWRConfig$1`.
+    const plain = (text: string | undefined) => text?.replace(/(?:\$|_)\d+$/, '');
+    const name = plain(contextName(context));
     if (value !== null && typeof value === 'object') {
       const v = value as Record<string, unknown>;
       if (typeof v.getQueryCache === 'function' && typeof v.getMutationCache === 'function') return 'TanStack Query';
@@ -788,11 +871,16 @@ function vendorOf(fiber: Fiber, context: object, value: unknown): string | undef
       if (typeof v.mutate === 'function' && cache != null && typeof cache.get === 'function' && typeof cache.set === 'function') {
         return 'SWR';
       }
+      if (name === 'ThemeContext' && isNavigationTheme(v)) return 'React Navigation';
     }
-    // Bundlers number names they had to rename, e.g. `SWRConfig$1`.
-    const plain = (text: string | undefined) => text?.replace(/(?:\$|_)\d+$/, '');
+    if (ownedByExpoRouterLayout(fiber)) return 'Expo Router';
+    const owner = plain(ownerName(fiber, true));
+    if (owner === undefined) return LIBRARY_CONTEXTS.get(name ?? '') ?? sourcePackage(fiber);
+    const byOwner = LIBRARY_COMPONENTS_BY_OWNER.get(owner);
     const byName =
-      LIBRARY_CONTEXTS.get(plain(contextName(context)) ?? '') ?? LIBRARY_COMPONENTS.get(plain(ownerName(fiber, true)) ?? '');
+      LIBRARY_CONTEXTS.get(name ?? '') ??
+      LIBRARY_COMPONENTS.get(owner) ??
+      (EXPO_ROUTE.test(owner) || (byOwner !== undefined && byOwner(plain(ownerOfOwnerName(fiber)) ?? '')) ? 'Expo Router' : undefined);
     return byName ?? sourcePackage(fiber);
   } catch {
     return undefined;

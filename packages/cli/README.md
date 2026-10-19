@@ -12,6 +12,7 @@ The UI opens at http://localhost:7357.
 - **Web (React, Vite, Next.js):** add [`@capybara-devtools/web`](https://www.npmjs.com/package/@capybara-devtools/web) to your app.
 - **React Native below 0.85, Expo Go on Android, to edit storage, or to see state:** add [`@capybara-devtools/react-native`](https://www.npmjs.com/package/@capybara-devtools/react-native).
 - **AI assistants:** `capybara mcp` is an MCP server that reads the same logs, requests, storage and state, for example `claude mcp add capybara -- npx capybara-devtools mcp`. Its state tools are `get_state` (the stores and their current state), `get_state_actions` (what changed and which action changed it) and `get_queries` (TanStack Query and SWR entries).
+- **Setting up an app:** ask your assistant to "set up Capybara in this project". The MCP tool `get_setup_guide` tells it what to change in that app, worked out from its package.json. Without the MCP server, `npx capybara-devtools setup-guide` prints the same guide.
 
 Update the SDK in your app along with the CLI: the State tab needs both.
 

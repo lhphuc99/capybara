@@ -354,6 +354,7 @@ describe('React Context stores', () => {
     vi.useRealTimers();
     delete scope[REGISTRY_GLOBAL];
     delete scope[Symbol.for('react-redux-context')];
+    delete scope.__react_navigation__elements_contexts;
   });
 
   it('names each store by displayName, then the owner component, then a number', () => {
@@ -584,6 +585,77 @@ describe('React Context stores', () => {
       ['TextAncestorContext', 'React Native'],
       ['SafeAreaProvider', 'react-native-safe-area-context'],
       ['App', undefined],
+    ]);
+  });
+
+  it("marks Expo Router's and React Navigation's contexts, which React Native can't tell by file", () => {
+    const { live } = harness();
+    type Props = { children?: any };
+    const Queue = React.createContext<unknown>(null);
+    const RouteState = React.createContext<unknown>(null);
+    const Params = React.createContext<unknown>({});
+    const Slot = React.createContext<unknown>(null);
+    const Header = React.createContext<unknown>(0);
+    scope.__react_navigation__elements_contexts = new Map([['HeaderTitleContext', Header]]);
+    const NavigationTheme = React.createContext<unknown>(null);
+    NavigationTheme.displayName = 'ThemeContext';
+    const AppTheme = React.createContext<unknown>(null);
+    AppTheme.displayName = 'ThemeContext';
+    const Mine = React.createContext<unknown>(null);
+    const colors = { primary: '#007aff', background: '#fff', card: '#fff', text: '#000', border: '#ccc', notification: '#f00' };
+
+    function RoutingQueueProvider({ children }: Props) {
+      return h(Queue.Provider, { value: [] }, children);
+    }
+    // Expo Router's Route, which each route's component renders, provides the route's params.
+    function Route({ children }: Props) {
+      return h(Params.Provider, { value: {} }, children);
+    }
+    function BaseRoute({ children }: Props) {
+      return h(RouteState.Provider, { value: 'index' }, h(Route, null, children));
+    }
+    BaseRoute.displayName = 'Route(index)';
+    function Content({ children }: Props) {
+      return h(Slot.Provider, { value: 'slot' }, children);
+    }
+    function ContextNavigator({ children }: Props) {
+      return h(Content, null, children);
+    }
+    // The app's own Content and Route: something else renders them.
+    const AppContent = function Content({ children }: Props) {
+      return h(Mine.Provider, { value: 'mine' }, children);
+    };
+    const AppRoute = function Route({ children }: Props) {
+      return h(Mine.Provider, { value: 'route' }, children);
+    };
+    // Expo Router's Stack: an arrow function, so nameless, with the screens as statics.
+    const Within = React.createContext(false);
+    const Stack = Object.assign(({ children }: Props) => h(Within.Provider, { value: true }, children), {
+      Screen: () => null,
+      Protected: () => null,
+    });
+    function HomeScreen() {
+      return h(Stack, null, h(AppContent, null, h(AppRoute, null, h('p'))));
+    }
+    mount(
+      h(RoutingQueueProvider, null,
+        h(ContextNavigator, null,
+          h(BaseRoute, null,
+            h(Header.Provider, { value: 56 },
+              h(NavigationTheme.Provider, { value: { dark: false, colors, fonts: {} } },
+                h(AppTheme.Provider, { value: { mode: 'dark' } }, h(HomeScreen))))))),
+    );
+    expect(live().map((store) => [store.label, store.vendor])).toEqual([
+      ['RoutingQueueProvider', 'Expo Router'],
+      ['Content', 'Expo Router'],
+      ['Route(index)', 'Expo Router'],
+      ['Route', 'Expo Router'],
+      ['Route #2', 'React Navigation'],
+      ['ThemeContext', 'React Navigation'],
+      ['ThemeContext #2', undefined],
+      ['HomeScreen', 'Expo Router'],
+      ['Content #2', undefined],
+      ['Route #3', undefined],
     ]);
   });
 
