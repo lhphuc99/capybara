@@ -1,7 +1,8 @@
 // Captures the Capybara UI showing made-up apps, for the website. Needs the product built
 // (`npm run build`) and Google Chrome. Writes WebP files into src/assets/screenshots/, then
 // renders the link preview card (scripts/og.html) into public/og.png.
-//   node scripts/screenshots.mjs [scene ...]   scenes: network, why, logs, storage, state, og (default: all)
+//   node scripts/screenshots.mjs [scene ...]   scenes: network, why, logs, storage, state, remote, remote-phone, og
+//   (default: all)
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
 import { fileURLToPath } from 'node:url';
@@ -23,6 +24,29 @@ for (const required of [serverModule, protocolModule, uiDir]) {
 }
 const { createServer } = await import(serverModule);
 const { PROTOCOL_VERSION } = await import(protocolModule);
+
+// The device button only appears when other devices may open the UI. The address it shows is made up, so no
+// real one ends up on the website; its QR code encodes the same one.
+const REMOTE_UI = `(() => {
+  const Native = window.WebSocket;
+  const rewrite = (data) => {
+    try {
+      const message = JSON.parse(data);
+      if (message.server) Object.assign(message.server, { addresses: ['192.168.1.42'], port: 7357, remoteUi: true });
+      return JSON.stringify(message);
+    } catch {
+      return data;
+    }
+  };
+  window.WebSocket = class extends Native {
+    get onmessage() {
+      return super.onmessage;
+    }
+    set onmessage(handler) {
+      super.onmessage = (event) => handler.call(this, new MessageEvent('message', { data: rewrite(event.data) }));
+    }
+  };
+})();`;
 
 // The hero shows the whole window; the rest sit in feature cards, so they are shorter.
 const scenes = {
@@ -73,6 +97,28 @@ const scenes = {
       await page.click('.tabs [role=tab]', 'State');
       await page.click('.entry-row', '09:41:14.280');
       await page.waitFor('.diff-op');
+    },
+  },
+  remote: {
+    app: apps.web,
+    height: 620,
+    remoteUi: true,
+    async show(page) {
+      await page.click('.tabs [role=tab]', 'Network');
+      await page.click('.net-row', '/api/products?');
+      await page.click('.remote button');
+      await page.waitFor('.remote-qr');
+    },
+  },
+  // What the QR code opens: the same UI on a phone, next to the remote scene on the website.
+  'remote-phone': {
+    app: apps.native,
+    width: 390,
+    height: 760,
+    remoteUi: true,
+    async show(page) {
+      await page.click('.tabs [role=tab]', 'Logs');
+      await page.click('.log-line.clickable', 'TypeError');
     },
   },
 };
@@ -136,15 +182,20 @@ try {
         const { port } = await server.start();
         const app = await connectApp(port, scene.app);
         const page = await chrome.newPage();
+        const width = scene.width ?? 1280;
         try {
-          await page.emulate({ width: 1280, height: scene.height, scale: 2, dark });
+          if (scene.remoteUi) {
+            await page.send('Page.enable');
+            await page.send('Page.addScriptToEvaluateOnNewDocument', { source: REMOTE_UI });
+          }
+          await page.emulate({ width, height: scene.height, scale: 2, dark });
           await page.goto(`http://127.0.0.1:${port}/`);
           await page.waitFor('.tabs [role=tab]');
           await scene.show(page);
           await until(() => page.evaluate('!document.querySelector(".empty")'), 'the panel to load');
           const theme = dark ? 'dark' : 'light';
           writeFileSync(`${outDir}${name}-${theme}@2x.webp`, await page.capture({ quality: 88 }));
-          await page.emulate({ width: 1280, height: scene.height, scale: 1, dark });
+          await page.emulate({ width, height: scene.height, scale: 1, dark });
           await delay(200);
           writeFileSync(`${outDir}${name}-${theme}.webp`, await page.capture({ quality: 90 }));
           console.log(`${name} ${theme}`);
