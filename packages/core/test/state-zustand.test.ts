@@ -85,7 +85,8 @@ describe('zustand devtools() through the shim', () => {
         store: 'zustand:1',
         rev: 2,
         cause: 'action',
-        action: { type: expect.stringMatching(/\badd$/) },
+        // zustand guesses the name from the stack, which Node 24 (like Hermes) does not give it.
+        action: { type: expect.stringMatching(/\badd$|^anonymous$/) },
         ops: [{ op: 'set', path: ['count'], value: 1, prev: 0 }],
       },
       { store: 'zustand:1', rev: 3, cause: 'action', action: { type: 'counter/reset' }, ops: [{ op: 'set', path: ['count'], value: 0, prev: 1 }] },
