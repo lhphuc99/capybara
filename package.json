@@ -22,7 +22,7 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "changeset": "changeset",
     "version-packages": "changeset version && node scripts/sync-versions.mjs",
-    "release": "npm run build && changeset publish",
+    "release": "npm run build && changeset publish && git push --tags",
     "example:web": "npm run dev -w example-web",
     "example:expo": "npm run start -w example-expo",
     "example:nextjs": "npm run dev -w example-nextjs"
