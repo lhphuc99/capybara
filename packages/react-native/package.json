@@ -1,6 +1,6 @@
 {
   "name": "@capybara-devtools/react-native",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "React Native SDK for Capybara: logs, network and storage for React Native and Expo apps",
   "keywords": [
     "capybara",
@@ -43,8 +43,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@capybara-devtools/core": "0.3.0",
-    "@capybara-devtools/protocol": "0.3.0"
+    "@capybara-devtools/core": "0.3.1",
+    "@capybara-devtools/protocol": "0.3.1"
   },
   "peerDependencies": {
     "react-native": ">=0.76"
