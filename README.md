@@ -23,6 +23,8 @@ npm start          # UI at http://localhost:7357
 npm run desktop    # or the same in a desktop app, see below
 ```
 
+The UI opens only on the computer Capybara runs on, while apps connect from any device on your network. To open it from another device, start Capybara with `--remote-ui`, or set `CAPYBARA_REMOTE_UI=1` (the desktop app reads it too); that device then sees everything apps send, tokens included. A device that is turned away gets a page saying so, and the CLI prints its address. The device button at the top right of the UI shows the address to copy and a QR code to scan with a phone or tablet, or the flag to restart with.
+
 An AI assistant can add the SDK to your app for you: see [Set up Capybara with an AI assistant](#set-up-capybara-with-an-ai-assistant).
 
 When a newer version is on npm, `npx capybara-devtools` says so when it starts, and the UI shows a notice when a connected app uses an older SDK, with the command that updates it. The server asks the npm registry (the one npm is set up with) when it starts and twice a day; `--no-update-check` or `CAPYBARA_NO_UPDATE_CHECK=1` turns that off.
@@ -33,7 +35,8 @@ Start Metro on the same computer, open your development app on a simulator or ph
 
 - Requires Hermes and **React Native 0.85 or later**, whose Metro inspector targets advertise `supportsMultipleDebuggers`. On older versions a new debugger disconnects the existing one, so Capybara skips those targets; use the SDK there. Release builds do not expose Metro's inspector.
 - **Expo Go on Android cannot be read through Metro**: its JavaScript engine does not support debugging, so Capybara opens no session for it and the CLI prints a hint once. Use the SDK or a development build there. Expo Go on iOS works.
-- Network headers, status and bodies depend on the events your React Native / Expo runtime exposes. React Native's built-in Network support starts at [0.83](https://reactnative.dev/docs/react-native-devtools#network); Expo also provides its own network interceptor. Some Expo versions do not report failed native requests, so those can remain pending. Expo's native `fetch` (`expo/fetch`) is reported only when `expo-dev-client` or Expo Go sets up Expo's network inspector; in other debug builds (seen on Android) those requests do not appear without the SDK, while XHR and axios requests still do. Missing or evicted response bodies cannot be recovered.
+- Network headers, status and bodies depend on the events your React Native / Expo runtime exposes. React Native's built-in Network support starts at [0.83](https://reactnative.dev/docs/react-native-devtools#network); Expo also provides its own network interceptor. Some Expo versions do not report failed native requests, so those can remain pending. Expo's native `fetch` (`expo/fetch`) is reported only when `expo-dev-client` or Expo Go sets up Expo's network inspector; in other debug builds (seen on Android) those requests do not appear without the SDK, while XHR and axios requests still do. Expo's inspector does not say whether `fetch` or XHR made a request, so in Expo Go requests show as `other`, under the Fetch/XHR filter. Missing or evicted response bodies cannot be recovered.
+- **Stack traces** point into your source files (`App.tsx:48:52`), with or without the SDK: Capybara asks Metro to map them, as LogBox does. This needs Metro on the same computer as Capybara.
 - **WebSockets:** while connected, Capybara hooks the app's `WebSocket` (reporting through `Runtime.addBinding`) and records connections and messages: text up to 16 KiB per message, binary as its size. React Native dispatches socket events from JS, so sockets opened before Capybara attached, and sockets made through a constructor a library saved earlier (socket.io's engine.io does), are recorded from their next event on. Sockets of dev tools (Metro, React DevTools on 8097, Reactotron on 9090) are skipped. The hook is removed on disconnect or after an unrenewed 15-second lease.
 - Reloading creates a new session; Metro disconnects are rediscovered automatically. Requests made before the bridge connects are not replayed.
 - Apps already using the Capybara SDK are skipped to avoid duplicate sessions.
@@ -213,7 +216,7 @@ In the UI, WebSocket connections are **WS** rows in the Network tab. Select one 
 
 To share what you see, **Copy all** in the Logs tab copies the entries that match the current filters as text, and the copy icon that appears when you hover over an entry copies just that one. Objects are copied in full as JSON and errors with their stack. In the Storage tab, **Copy** copies the selected value, and every object or value in a JSON tree has its own copy icon.
 
-Drag the line between the request list and its details (or between the keys and the value in the Storage tab) to resize them; double-click it to reset. With the line focused, the arrow keys move it too. Widths are remembered.
+Drag the line between the request list and its details (or between the keys and the value in the Storage tab) to resize them; double-click it to reset. The same goes for the line between the Path and Host columns, between a store's keys and values, and beside the list of stores in the Storage and State tabs, so long URLs, keys and names show in full. With a line focused, the arrow keys move it too. Widths are remembered.
 
 The **Appearance** button at the top right switches between System (the default, following your OS), Light and Dark. In the macOS desktop app the window's title bar follows it too.
 
@@ -223,7 +226,7 @@ The SDK finds your machine from the Metro bundle URL, so simulators and phones o
 
 The same server and UI in a window of their own, with a Dock or taskbar icon and no terminal to keep open. The code is in `apps/desktop` (Electron).
 
-Download it from the [website](https://capybara-devtools.chanieshop.com/#download) or [GitHub Releases](https://github.com/lhphuc99/capybara/releases), or build it yourself:
+Download it from the [website](https://capybara-devtools.chanieshop.com/#download) or [GitHub Releases](https://github.com/lhphuc99/capybara/releases), or build it yourself from a clone of this repo, after `npm install`:
 
 ```bash
 npm run desktop                  # build it and open the window; run `npm run build` once before
@@ -235,7 +238,7 @@ npm run desktop:package:all      # all three
 
 Packages land in `apps/desktop/release/`, named like `Capybara-0.1.0-win-x64.exe`. A Mac builds all three without Wine or Docker; the macOS package can only be built on a Mac.
 
-- Apps connect exactly as they do to the CLI, on port 7357. Set `CAPYBARA_PORT` to use another port.
+- Apps connect exactly as they do to the CLI, on port 7357. Set `CAPYBARA_PORT` to use another port, and `CAPYBARA_REMOTE_UI=1` to let other devices open the UI.
 - If `npx capybara-devtools` is already running, the window shows that server, and the app takes over the port once the CLI stops. If another program holds the port, the app says so and lets you try again.
 - On macOS, closing the window keeps the server running in the Dock. Quit with ⌘Q. On Windows and Linux, closing the window quits.
 - No build is signed for distribution. On another Mac the first launch is blocked until you allow it in System Settings → Privacy & Security. On Windows, SmartScreen warns about an unknown publisher: choose More info → Run anyway.
@@ -286,7 +289,7 @@ npx capybara-devtools setup-guide            # the app in this folder, or pass i
 - The tools only read. `diagnose_request` sends the request's preflight and, for GET and HEAD, the request itself again from this computer, without the app's credentials.
 - What the tools return goes to the AI model. Values that look like credentials are replaced with `[hidden]`: Authorization and cookie headers, JSON keys and query parameters such as `token`, `password`, `jwt` or `privateKey`, and storage keys such as `authToken`. In state, so are values at a path through such a key, the rest of an action whose type names one (`auth/setToken`), and the data of a query or SWR key named like one. JWTs, `Bearer …` values and Stripe, GitHub, Slack and AWS keys are hidden in the keys and errors of queries and SWR entries. Empty values (`null`, `undefined`, `false`, `''`) are shown as they are, so a signed-out app reads differently from a signed-in one. A credential under an ordinary name still reaches the model, as in storage. Pass `--show-secrets` to turn that off.
 - Lists return the newest 50 entries by default; pass `after` with the last `seq` to get only newer ones. Without a session id, the tools read the newest connected app.
-- Pass `--port` when Capybara runs on another port.
+- Pass `--port` when Capybara runs on another port, and `--host` to read Capybara on another computer, which must run with `--remote-ui`.
 
 ## Examples
 

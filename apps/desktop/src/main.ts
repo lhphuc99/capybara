@@ -80,6 +80,8 @@ async function main() {
   const options: ServerOptions = {
     port: Number(process.env.CAPYBARA_PORT || DEFAULT_PORT),
     uiDir: join(app.getAppPath(), 'dist', 'ui'),
+    remoteUi: process.env.CAPYBARA_REMOTE_UI === '1',
+    onHint: (hint) => console.log(hint),
     version: app.getVersion(),
     latestVersions: checkUpdates ? () => fetchLatestVersions() : undefined,
   };

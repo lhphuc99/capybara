@@ -7,7 +7,7 @@ import { hookWebSockets } from './websocket.js';
 const DEV_TOOL_PROTOCOLS = ['vite-hmr', 'vite-ping'];
 
 export interface NetworkPluginOptions {
-  /** Patch `fetch`. Turn off where fetch is built on XHR (whatwg-fetch), or each request is recorded twice. */
+  /** Patch `fetch`. Where fetch runs on XHR (whatwg-fetch), its requests are recorded once, by the XHR patch, as fetch. */
   fetch?: boolean;
   xhr?: boolean;
   /** Record WebSocket connections and their messages. Default true. */
@@ -43,8 +43,9 @@ export function networkPlugin(options: NetworkPluginOptions = {}): Plugin {
     setup(ctx) {
       const settings = resolveSettings(options);
       const teardowns: Array<() => void> = [() => settings.failures.stop()];
-      if (options.fetch !== false) teardowns.push(patchFetch(ctx, settings));
-      if (options.xhr !== false) teardowns.push(patchXhr(ctx, settings));
+      const fetchOverXhr = options.xhr !== false && isXhrFetch();
+      if (options.fetch !== false && !fetchOverXhr) teardowns.push(patchFetch(ctx, settings));
+      if (options.xhr !== false) teardowns.push(patchXhr(ctx, settings, fetchOverXhr));
       if (options.websocket !== false) {
         teardowns.push(
           hookWebSockets(ctx.emit, {
@@ -158,6 +159,16 @@ function isLocalNetworkHost(hostname: string): boolean {
 // ---------------------------------------------------------------------------
 // fetch
 // ---------------------------------------------------------------------------
+
+type FetchFunction = ((...args: unknown[]) => unknown) & { polyfill?: unknown };
+
+/**
+ * whatwg-fetch marks itself `polyfill`. Bare React Native ships it as fetch, so every fetch is also an
+ * XHR there, and patching both would record each request twice. Expo swaps in a native fetch.
+ */
+function isXhrFetch(): boolean {
+  return (globalThis as { fetch?: FetchFunction }).fetch?.polyfill === true;
+}
 
 function patchFetch(ctx: PluginContext, settings: Settings): () => void {
   const g = globalThis as { fetch?: typeof fetch };
@@ -297,10 +308,28 @@ interface XhrInfo {
   headers: Record<string, string>;
 }
 
-function patchXhr(ctx: PluginContext, settings: Settings): () => void {
+function patchXhr(ctx: PluginContext, settings: Settings, fetchOverXhr: boolean): () => void {
   const XHR = (globalThis as { XMLHttpRequest?: { prototype: XMLHttpRequest } }).XMLHttpRequest;
   if (!XHR?.prototype) return () => {};
   const proto = XHR.prototype;
+  const g = globalThis as { fetch?: FetchFunction };
+  // whatwg-fetch opens and sends its XHR inside the fetch call, so XHRs sent meanwhile are the fetch.
+  let fetching = 0;
+  const originalFetch = fetchOverXhr ? g.fetch : undefined;
+  const taggedFetch: FetchFunction | undefined = originalFetch
+    ? Object.assign(
+        function fetch(this: unknown) {
+          fetching++;
+          try {
+            return originalFetch.apply(this, arguments as unknown as unknown[]);
+          } finally {
+            fetching--;
+          }
+        },
+        { polyfill: originalFetch.polyfill },
+      )
+    : undefined;
+  if (taggedFetch) g.fetch = taggedFetch;
   const originalOpen = proto.open;
   const originalSend = proto.send;
   const originalSetRequestHeader = proto.setRequestHeader;
@@ -322,7 +351,7 @@ function patchXhr(ctx: PluginContext, settings: Settings): () => void {
     const start = now();
     ctx.emit('network.request', {
       id,
-      initiator: 'xhr',
+      initiator: fetching > 0 ? 'fetch' : 'xhr',
       method: info.method,
       url: absoluteUrl(info.url),
       headers: settings.redact(info.headers),
@@ -404,6 +433,7 @@ function patchXhr(ctx: PluginContext, settings: Settings): () => void {
     proto.send = originalSend;
     proto.setRequestHeader = originalSetRequestHeader;
     if (typeof originalComplete === 'function') internals.__didCompleteResponse = originalComplete;
+    if (taggedFetch && g.fetch === taggedFetch) g.fetch = originalFetch;
   };
 }
 

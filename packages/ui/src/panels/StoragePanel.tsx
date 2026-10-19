@@ -2,7 +2,7 @@ import { METRO_SDK, type StorageAdapterInfo, type StorageEntries, type StorageEn
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { CopyButton } from '../components/CopyButton';
 import { JsonTree } from '../components/JsonTree';
-import { ResizeHandle, usePaneWidth } from '../components/ResizeHandle';
+import { ColumnHandle, ResizeHandle, useColumnWidth, usePaneWidth } from '../components/ResizeHandle';
 import { storageCommand } from '../connection';
 import { formatBytes, makeMatcher, parseJson } from '../format';
 import type { SessionState } from '../store';
@@ -27,6 +27,11 @@ function StorageBrowser({ session }: { session: SessionState }) {
   const [scanToken, setScanToken] = useState(0);
   const layoutRef = useRef<HTMLDivElement>(null);
   const pane = usePaneWidth('capybara:pane:storage', 40);
+  const nav = useColumnWidth('capybara:column:storage-stores');
+  const keyColumn = useColumnWidth('capybara:column:storage-key');
+  const navRef = useRef<HTMLDivElement>(null);
+  const entriesRef = useRef<HTMLDivElement>(null);
+  const keyRef = useRef<HTMLSpanElement>(null);
   const adapter = adapters?.find((a) => a.id === adapterId);
   const version = adapterId ? (session.storageVersions[adapterId] ?? 0) : 0;
 
@@ -193,30 +198,65 @@ init({ storage: [asyncStorage(AsyncStorage), mmkvStorage(storage)] });`}</pre>
       </div>
       {error && <div className="callout error inline">{error}</div>}
 
-      <div ref={layoutRef} className="storage" style={{ '--pane-width': `${pane.width}%` } as CSSProperties}>
-        <nav className="adapters">
-          {adapters?.map((a) => (
-            <button
-              key={a.id}
-              type="button"
-              className="adapter"
-              aria-selected={a.id === adapterId}
-              onClick={() => {
-                setAdapterId(a.id);
-                setSelectedKey(null);
-                setAdding(false);
-              }}
-            >
-              <span>{a.label}</span>
-              {a.readOnly && <span className="tag">read-only</span>}
-            </button>
-          ))}
-          {adapter?.note && <p className="adapter-note">{adapter.note}</p>}
-        </nav>
+      <div
+        ref={layoutRef}
+        className="storage"
+        style={{ '--pane-width': `${pane.width}%`, ...(nav.width && { '--nav-width': `${nav.width}px` }) } as CSSProperties}
+      >
+        <div ref={navRef} className="nav-column">
+          <nav className="adapters">
+            {adapters?.map((a) => (
+              <button
+                key={a.id}
+                type="button"
+                className="adapter"
+                aria-selected={a.id === adapterId}
+                onClick={() => {
+                  setAdapterId(a.id);
+                  setSelectedKey(null);
+                  setAdding(false);
+                }}
+              >
+                <span>{a.label}</span>
+                {a.readOnly && <span className="tag">read-only</span>}
+              </button>
+            ))}
+            {adapter?.note && <p className="adapter-note">{adapter.note}</p>}
+          </nav>
+          <ColumnHandle
+            target={navRef}
+            edge="end"
+            min={140}
+            // The keys keep 240px and the value pane 320px.
+            max={() => Math.min(400, (layoutRef.current?.clientWidth ?? 0) - 560)}
+            onChange={nav.setWidth}
+            onCommit={nav.save}
+            onReset={nav.reset}
+            label="Resize the list of stores"
+          />
+        </div>
 
-        <div className="entries">
+        <div
+          ref={entriesRef}
+          className="entries"
+          style={keyColumn.width ? ({ '--key-width': `${keyColumn.width}px` } as CSSProperties) : undefined}
+        >
           <div className="entry-head">
-            <span>Key</span>
+            <span ref={keyRef} className="resizable-column">
+              Key
+              <ColumnHandle
+                target={keyRef}
+                edge="end"
+                inset={5}
+                min={90}
+                // The size column, the gaps and a value of 120px stay.
+                max={() => (entriesRef.current?.clientWidth ?? 0) - 228}
+                onChange={keyColumn.setWidth}
+                onCommit={keyColumn.save}
+                onReset={keyColumn.reset}
+                label="Resize the key and value columns"
+              />
+            </span>
             <span>Value</span>
             <span className="num">Size</span>
           </div>

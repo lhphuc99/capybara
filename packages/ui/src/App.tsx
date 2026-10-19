@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { AppearanceMenu } from './components/AppearanceMenu';
 import { EmptyState } from './components/EmptyState';
+import { RemoteAccess } from './components/RemoteAccess';
 import { SessionPicker } from './components/SessionPicker';
 import { Toaster } from './components/Toaster';
 import { UpdateBanner } from './components/UpdateBanner';
@@ -54,7 +55,7 @@ export function App() {
       <header className="topbar">
         <div className="brand">
           <Logo />
-          Capybara
+          <span className="brand-name">Capybara</span>
         </div>
         <SessionPicker sessions={sessions} selectedId={selectedId} />
         {session && (
@@ -74,6 +75,7 @@ export function App() {
           </nav>
         )}
         <ConnectionBadge status={status} session={session} />
+        <RemoteAccess />
         <AppearanceMenu />
       </header>
       <main className="main">
@@ -120,9 +122,9 @@ function ConnectionBadge({ status, session }: { status: ConnectionStatus; sessio
           ? (['on', 'Live'] as const)
           : (['on', 'Server running'] as const);
   return (
-    <div className="connection">
+    <div className="connection" title={label}>
       <span className={`dot ${tone}`} />
-      {label}
+      <span className="connection-label">{label}</span>
     </div>
   );
 }

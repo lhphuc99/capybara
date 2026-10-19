@@ -1,6 +1,6 @@
 import type { SerializedValue } from '@capybara-devtools/protocol';
 import { describe, expect, it } from 'vitest';
-import { decodeSocketIo, logEntryText, valueText } from '../src/format';
+import { decodeSocketIo, isFetchOrXhr, logEntryText, valueText } from '../src/format';
 import type { LogEntry } from '../src/store';
 
 describe('copied text', () => {
@@ -81,5 +81,11 @@ describe('decodeSocketIo', () => {
     expect(decodeSocketIo('3')).toEqual({ label: 'pong', payload: undefined });
     expect(decodeSocketIo('{"type":"hello"}')).toBeUndefined();
     expect(decodeSocketIo('9 lives')).toBeUndefined();
+  });
+});
+
+describe('the Fetch/XHR filter', () => {
+  it('takes requests whose kind Metro did not say, and leaves WebSockets and images out', () => {
+    expect(['fetch', 'xhr', 'other', 'image', 'websocket'].filter(isFetchOrXhr)).toEqual(['fetch', 'xhr', 'other']);
   });
 });

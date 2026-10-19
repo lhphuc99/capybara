@@ -11,7 +11,7 @@ import { CopyButton } from '../components/CopyButton';
 import { DiffView } from '../components/DiffView';
 import { EntryTable, Pills } from '../components/EntryTable';
 import { JsonTree } from '../components/JsonTree';
-import { ResizeHandle, usePaneWidth } from '../components/ResizeHandle';
+import { ColumnHandle, ResizeHandle, useColumnWidth, usePaneWidth } from '../components/ResizeHandle';
 import { StateTimeline } from '../components/StateTimeline';
 import { stateCommand } from '../connection';
 import { formatTime, isSpecial, makeMatcher, valueText } from '../format';
@@ -107,6 +107,8 @@ function StateBrowser({ session }: { session: SessionState }) {
   const [libraryContexts, setLibraryContexts] = useState(readLibraryContexts);
   const layoutRef = useRef<HTMLDivElement>(null);
   const pane = usePaneWidth('capybara:pane:state', 44);
+  const nav = useColumnWidth('capybara:column:state-stores');
+  const navRef = useRef<HTMLDivElement>(null);
 
   const groups = useMemo(() => groupStores(session.state, { libraryContexts }), [session.state, libraryContexts]);
   const libraryCount = useMemo(() => libraryContextCount(session.state), [session.state]);
@@ -250,13 +252,30 @@ function StateBrowser({ session }: { session: SessionState }) {
         </div>
       )}
 
-      <div ref={layoutRef} className="state-layout" style={{ '--pane-width': `${pane.width}%` } as CSSProperties}>
-        <StoreNav
-          groups={groups}
-          selected={store}
-          onSelect={selectStore}
-          libraryContexts={libraryCount > 0 ? { shown: libraryContexts, count: libraryCount, onToggle: toggleLibraryContexts } : undefined}
-        />
+      <div
+        ref={layoutRef}
+        className="state-layout"
+        style={{ '--pane-width': `${pane.width}%`, ...(nav.width && { '--nav-width': `${nav.width}px` }) } as CSSProperties}
+      >
+        <div ref={navRef} className="nav-column">
+          <StoreNav
+            groups={groups}
+            selected={store}
+            onSelect={selectStore}
+            libraryContexts={libraryCount > 0 ? { shown: libraryContexts, count: libraryCount, onToggle: toggleLibraryContexts } : undefined}
+          />
+          <ColumnHandle
+            target={navRef}
+            edge="end"
+            min={140}
+            // The changes keep 350px and the details pane 320px.
+            max={() => Math.min(400, (layoutRef.current?.clientWidth ?? 0) - 670)}
+            onChange={nav.setWidth}
+            onCommit={nav.save}
+            onReset={nav.reset}
+            label="Resize the list of stores"
+          />
+        </div>
         {entryStore ? (
           <EntryTable
             key={store.info.id}

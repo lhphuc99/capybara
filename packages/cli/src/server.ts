@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { isIPv4 } from 'node:net';
 import { networkInterfaces } from 'node:os';
 import {
   CLIENT_PATH,
@@ -18,8 +19,9 @@ import {
 } from '@capybara-devtools/protocol';
 import { WebSocket, WebSocketServer, type RawData } from 'ws';
 import { diagnoseRequest } from './diagnose.js';
-import { isAllowedHost, isAllowedViewerOrigin } from './security.js';
-import { serveStatic } from './static.js';
+import { isAllowedHost, isAllowedViewerOrigin, isLocalConnection, isLoopbackAddress, unmapped } from './security.js';
+import { refuseRemote, serveStatic } from './static.js';
+import { hasBundleFrames, symbolicateEvents } from './symbolicate.js';
 
 export { reverseAndroidPorts } from './adb.js';
 export { DEFAULT_METRO_PORTS, startMetroBridge, type MetroBridge, type MetroBridgeOptions } from './metro.js';
@@ -34,6 +36,13 @@ export interface ServerOptions {
   uiDir?: string;
   /** Extra origins allowed to open the viewer socket, e.g. the Vite dev server for the UI. */
   allowedOrigins?: string[];
+  /**
+   * Let other devices open the UI and the viewer socket (`capybara mcp --host`), which show everything
+   * apps send, tokens included. Default false: only this machine; apps connect from anywhere either way.
+   */
+  remoteUi?: boolean;
+  /** Told once per device that was refused the UI, with how to let it in. */
+  onHint?: (message: string) => void;
   /** Disconnected sessions beyond this are dropped, oldest first. Default 20. */
   maxSessions?: number;
   /** Default 5000. `state.*` events are kept apart; see `maxStateEvents`. */
@@ -54,7 +63,8 @@ export interface ServerOptions {
 }
 
 export interface CapybaraServer {
-  start(): Promise<{ port: number }>;
+  /** `address` is the one the server listens on, `::` or `0.0.0.0` for all interfaces. */
+  start(): Promise<{ port: number; address: string }>;
   close(): Promise<void>;
 }
 
@@ -71,6 +81,8 @@ interface Session {
   lastSeq: number;
   socket: WebSocket | null;
   lastSeen: number;
+  /** Set while a batch waits for Metro to map its stacks; later batches and clears wait behind it. */
+  queue?: Promise<void>;
 }
 
 interface PendingCommand {
@@ -97,13 +109,33 @@ export function createServer(options: ServerOptions): CapybaraServer {
   const alive = new WeakMap<WebSocket, boolean>();
   let commandCounter = 0;
   let port = options.port;
+  let bound = '';
   let latest: LatestVersions | undefined;
   let latestTimer: ReturnType<typeof setInterval> | undefined;
   let closed = false;
+  const closing = new AbortController();
+
+  const mayView = (req: http.IncomingMessage) => options.remoteUi === true || isLocalConnection(req.socket);
+  const hinted = new Set<string>();
+  // Whoever tried probably sits at this computer too, and may not know about --remote-ui.
+  const refused = (req: http.IncomingMessage) => {
+    const address = unmapped(req.socket.remoteAddress) ?? 'A device';
+    if (hinted.has(address)) return;
+    hinted.add(address);
+    options.onHint?.(
+      `${address} was turned away: only this computer can open the UI or read it with capybara mcp. ` +
+        'Restart with --remote-ui to let other devices in; they then see everything apps send, tokens included.',
+    );
+  };
 
   const httpServer = http.createServer((req, res) => {
     if (!isAllowedHost(req.headers.host)) {
       res.writeHead(403, { 'content-type': 'text/plain' }).end('Forbidden host');
+      return;
+    }
+    if (!mayView(req)) {
+      refused(req);
+      refuseRemote(res);
       return;
     }
     serveStatic(req, res, options.uiDir);
@@ -117,11 +149,13 @@ export function createServer(options: ServerOptions): CapybaraServer {
       wss.handleUpgrade(req, socket, head, acceptClient);
     } else if (
       path === VIEWER_PATH &&
+      mayView(req) &&
       isAllowedHost(req.headers.host) &&
       isAllowedViewerOrigin(req.headers.origin, req.headers.host, allowedOrigins)
     ) {
       wss.handleUpgrade(req, socket, head, acceptViewer);
     } else {
+      if (path === VIEWER_PATH && !mayView(req)) refused(req);
       socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
     }
   });
@@ -164,7 +198,13 @@ export function createServer(options: ServerOptions): CapybaraServer {
   const history = (s: Session): CapybaraEvent[] =>
     [...s.events, ...s.state.stores.values(), ...s.state.events].sort((a, b) => a.seq - b.seq);
 
-  const serverInfo = (): ServerInfo => ({ version: options.version ?? '0.0.0', port, addresses: lanAddresses(), latest });
+  const serverInfo = (): ServerInfo => ({
+    version: options.version ?? '0.0.0',
+    port,
+    addresses: reachableAddresses(bound),
+    remoteUi: options.remoteUi === true,
+    latest,
+  });
 
   const refreshLatest = async () => {
     const found = await options.latestVersions?.().catch(() => undefined);
@@ -252,12 +292,33 @@ export function createServer(options: ServerOptions): CapybaraServer {
       }
     }
     if (fresh.length === 0) return;
+    if (!session.queue && !hasBundleFrames(fresh)) {
+      store(session, fresh);
+      return;
+    }
+    inOrder(session, async () => {
+      await symbolicateEvents(fresh, { signal: closing.signal }).catch(() => {});
+      // The session may have been removed while Metro was answering.
+      if (sessions.get(session.info.id) === session && !closed) store(session, fresh);
+    });
+  };
+
+  const store = (session: Session, fresh: CapybaraEvent[]) => {
     for (const event of fresh) keep(session, event);
     if (session.events.length > maxEvents) session.events.splice(0, session.events.length - maxEvents);
     const timeline = session.state.events;
     if (timeline.length > maxStateEvents) timeline.splice(0, timeline.length - maxStateEvents);
     session.lastSeen = Date.now();
     broadcast({ t: 'events', sessionId: session.info.id, events: fresh });
+  };
+
+  /** Runs `task` once the batches still waiting for Metro are stored, so nothing overtakes them. */
+  const inOrder = (session: Session, task: () => void | Promise<void>) => {
+    const queued = (session.queue ?? Promise.resolve()).then(task).catch(() => {});
+    session.queue = queued;
+    void queued.then(() => {
+      if (session.queue === queued) session.queue = undefined;
+    });
   };
 
   const acceptClient = (ws: WebSocket) => {
@@ -373,11 +434,16 @@ export function createServer(options: ServerOptions): CapybaraServer {
           const session = sessions.get(message.sessionId);
           if (!session) break;
           const scope = message.scope === 'state' ? 'state' : undefined;
-          // lastSeq stays, so events the app replays later are still recognised as already seen.
-          if (!scope) session.events = [];
-          // Registered stores stay: the app still has them, and their current state can still be read.
-          session.state.events = [];
-          broadcast(scope ? { t: 'cleared', sessionId: message.sessionId, scope } : { t: 'cleared', sessionId: message.sessionId });
+          const clear = () => {
+            // lastSeq stays, so events the app replays later are still recognised as already seen.
+            if (!scope) session.events = [];
+            // Registered stores stay: the app still has them, and their current state can still be read.
+            session.state.events = [];
+            broadcast(scope ? { t: 'cleared', sessionId: message.sessionId, scope } : { t: 'cleared', sessionId: message.sessionId });
+          };
+          // Batches waiting for Metro arrived before the clear, so they are cleared too.
+          if (session.queue) inOrder(session, clear);
+          else clear();
           break;
         }
         case 'remove': {
@@ -410,13 +476,16 @@ export function createServer(options: ServerOptions): CapybaraServer {
         const onListening = () => {
           httpServer.off('error', onError);
           const address = httpServer.address();
-          if (address && typeof address === 'object') port = address.port;
+          if (address && typeof address === 'object') {
+            port = address.port;
+            bound = address.address;
+          }
           if (options.latestVersions) {
             void refreshLatest();
             latestTimer = setInterval(() => void refreshLatest(), LATEST_REFRESH_MS);
             latestTimer.unref();
           }
-          resolve({ port });
+          resolve({ port, address: bound });
         };
         httpServer.once('error', onError);
         httpServer.once('listening', onListening);
@@ -427,6 +496,7 @@ export function createServer(options: ServerOptions): CapybaraServer {
     close: () =>
       new Promise((resolve) => {
         closed = true;
+        closing.abort();
         clearInterval(heartbeat);
         clearInterval(latestTimer);
         for (const command of pending.values()) clearTimeout(command.timer);
@@ -437,6 +507,12 @@ export function createServer(options: ServerOptions): CapybaraServer {
         httpServer.closeAllConnections();
       }),
   };
+}
+
+/** Where phones on the network reach a server listening on `bound`: nowhere when that is loopback. */
+export function reachableAddresses(bound: string): string[] {
+  if (bound === '::' || bound === '0.0.0.0') return lanAddresses();
+  return isIPv4(bound) && !isLoopbackAddress(bound) ? [bound] : [];
 }
 
 export function lanAddresses(): string[] {

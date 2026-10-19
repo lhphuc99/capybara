@@ -103,8 +103,9 @@ code {
 /* ---------------------------------------------------------------- layout */
 
 .app {
+  --topbar-height: 46px;
   display: grid;
-  grid-template-rows: 46px minmax(0, 1fr);
+  grid-template-rows: var(--topbar-height) minmax(0, 1fr);
   height: 100%;
 }
 
@@ -236,7 +237,7 @@ code {
   display: flex;
   align-items: center;
   gap: 8px;
-  max-width: 360px;
+  max-width: min(360px, 100%);
   height: 30px;
   padding: 0 10px;
   border: 1px solid var(--border);
@@ -291,6 +292,97 @@ code {
 .appearance {
   position: relative;
   flex: none;
+}
+
+.remote {
+  position: relative;
+  flex: none;
+}
+
+.remote-panel {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 6px);
+  right: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  width: min(380px, calc(100vw - 24px));
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+}
+
+.remote-title {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.remote-panel p {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.remote-panel p.remote-note {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.remote-note.centered {
+  text-align: center;
+}
+
+.remote-panel p code {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+
+.remote-urls {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.remote-urls li,
+.remote-command {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 4px 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-subtle);
+}
+
+/* Wrapped rather than cut: the whole address or command has to be typed or read. */
+.remote-urls code,
+.remote-command code {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  background: none;
+  font-size: 12px;
+  overflow-wrap: break-word;
+}
+
+.remote-qr {
+  justify-self: center;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.remote-qr svg {
+  display: block;
 }
 
 .appearance-menu {
@@ -829,7 +921,7 @@ code {
 .net-head,
 .net-row {
   display: grid;
-  grid-template-columns: 62px 62px minmax(0, 1fr) minmax(0, 0.5fr) 48px 70px 70px;
+  grid-template-columns: 62px 62px minmax(0, 1fr) var(--host-width, minmax(0, 0.5fr)) 74px 70px 70px;
   align-items: center;
   gap: 10px;
   padding: 0 12px;
@@ -1060,8 +1152,21 @@ code {
 .storage {
   display: grid;
   flex: 1;
-  grid-template-columns: 190px minmax(240px, 1fr) minmax(320px, var(--pane-width, 40%));
+  grid-template-columns: var(--nav-width, 190px) minmax(240px, 1fr) minmax(320px, var(--pane-width, 40%));
   min-height: 0;
+}
+
+/* Holds the list of stores and the handle that resizes it, which must not scroll away with the list. */
+.nav-column {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+
+.nav-column > nav {
+  flex: 1;
+  min-width: 0;
 }
 
 .adapters,
@@ -1069,6 +1174,15 @@ code {
   overflow: auto;
   padding: 8px;
   border-right: 1px solid var(--border);
+}
+
+.resizable-column {
+  position: relative;
+}
+
+/* Header handles show where the columns meet, so people find them without hovering first. */
+.resizable-column > .resize-handle::after {
+  background: var(--border-strong);
 }
 
 .adapter,
@@ -1112,7 +1226,7 @@ code {
 .entry-head,
 .entry-row {
   display: grid;
-  grid-template-columns: minmax(110px, 0.45fr) minmax(0, 1fr) 64px;
+  grid-template-columns: var(--key-width, minmax(110px, 0.45fr)) minmax(0, 1fr) 64px;
   align-items: center;
   gap: 10px;
   padding: 0 12px;
@@ -1240,12 +1354,15 @@ code {
 
 /*
  * Like .storage, but the pane never takes the room the list needs (the entry table's fixed columns alone
- * take 280px), so a wide pane cannot squeeze the keys away or scroll the page sideways. Fits at 860px.
+ * take 280px), so a wide pane cannot squeeze the keys away or scroll the page sideways. Fits at 860px with the
+ * list of stores at its default 190px.
  */
 .state-layout {
   display: grid;
   flex: 1;
-  grid-template-columns: 190px minmax(350px, 1fr) minmax(320px, min(var(--pane-width, 44%), calc(100% - 540px)));
+  grid-template-columns:
+    var(--nav-width, 190px) minmax(350px, 1fr)
+    minmax(320px, min(var(--pane-width, 44%), calc(100% - var(--nav-width, 190px) - 350px)));
   min-height: 0;
 }
 
@@ -1693,7 +1810,33 @@ code {
 
 @media (max-width: 860px) {
   .topbar {
+    gap: 10px;
     overflow-x: auto;
+  }
+
+  .brand-name {
+    display: none;
+  }
+
+  .tab {
+    padding: 0 8px;
+  }
+
+  /* The bar can scroll sideways here, which clips whatever drops out of it; pin the menus under it instead. */
+  .picker-menu,
+  .appearance-menu,
+  .remote-panel {
+    position: fixed;
+    top: calc(var(--topbar-height) + 6px);
+  }
+
+  .picker-menu {
+    left: 12px;
+  }
+
+  .appearance-menu,
+  .remote-panel {
+    right: 12px;
   }
 
   .network.with-detail {
@@ -1746,6 +1889,36 @@ code {
 
   .log-details {
     padding-left: 12px;
+  }
+}
+
+/* The tabs get a row of their own, so the app picker keeps room for the app's name. */
+@media (max-width: 720px) {
+  .app:has(.topbar .tabs) {
+    --topbar-height: 84px;
+  }
+
+  .topbar {
+    flex-wrap: wrap;
+    align-content: center;
+    row-gap: 8px;
+    overflow-x: visible;
+  }
+
+  .picker {
+    flex: 1 1 0;
+  }
+
+  .tabs {
+    order: 1;
+    flex: 1 0 100%;
+    overflow-x: auto;
+  }
+}
+
+@media (max-width: 480px) {
+  .connection-label {
+    display: none;
   }
 }
 
@@ -1952,7 +2125,10 @@ code {
 
 .resize-handle:hover::after,
 .resize-handle:focus-visible::after,
-.resize-handle.dragging::after {
+.resize-handle.dragging::after,
+.resizable-column > .resize-handle:hover::after,
+.resizable-column > .resize-handle:focus-visible::after,
+.resizable-column > .resize-handle.dragging::after {
   background: var(--accent);
 }
 

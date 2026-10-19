@@ -6,7 +6,7 @@ Debug React Native and web apps from one place: logs, network (including WebSock
 npx capybara-devtools
 ```
 
-The UI opens at http://localhost:7357.
+The UI opens at http://localhost:7357, on this computer only; apps connect from any device on your network. `--remote-ui` (or `CAPYBARA_REMOTE_UI=1`) lets other devices open the UI too.
 
 - **React Native / Expo 0.85 or later:** start Metro and open your development app. Capybara finds it through Metro, with no SDK or code changes. Expo Go on Android is the exception: its JavaScript engine cannot be debugged, so use the SDK or a development build there.
 - **Web (React, Vite, Next.js):** add [`@capybara-devtools/web`](https://www.npmjs.com/package/@capybara-devtools/web) to your app.

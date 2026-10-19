@@ -120,6 +120,11 @@ export class ViewerConnection {
           this.receive(message);
         }
       });
+      socket.on('unexpected-response', (request, response) => {
+        clearTimeout(timer);
+        request.destroy();
+        reject(response.statusCode === 403 ? refused(address) : notRunning(address));
+      });
       socket.on('error', () => {
         clearTimeout(timer);
         reject(notRunning(address));
@@ -174,6 +179,13 @@ export class ViewerConnection {
   private send(message: ViewerToServer): void {
     if (this.socket?.readyState === WebSocket.OPEN) this.socket.send(JSON.stringify(message));
   }
+}
+
+function refused(address: string): Error {
+  return new Error(
+    `Capybara on ${address} refused the connection: only the computer it runs on can read it. ` +
+      'On that computer, start it with --remote-ui (or set CAPYBARA_REMOTE_UI=1 for the desktop app), and pass its IP address as --host.',
+  );
 }
 
 function notRunning(address: string): Error {
