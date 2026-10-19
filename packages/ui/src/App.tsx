@@ -55,7 +55,7 @@ export function App() {
       <header className="topbar">
         <div className="brand">
           <Logo />
-          Capybara
+          <span className="brand-name">Capybara</span>
         </div>
         <SessionPicker sessions={sessions} selectedId={selectedId} />
         {session && (
@@ -122,9 +122,9 @@ function ConnectionBadge({ status, session }: { status: ConnectionStatus; sessio
           ? (['on', 'Live'] as const)
           : (['on', 'Server running'] as const);
   return (
-    <div className="connection">
+    <div className="connection" title={label}>
       <span className={`dot ${tone}`} />
-      {label}
+      <span className="connection-label">{label}</span>
     </div>
   );
 }

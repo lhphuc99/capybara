@@ -103,8 +103,9 @@ code {
 /* ---------------------------------------------------------------- layout */
 
 .app {
+  --topbar-height: 46px;
   display: grid;
-  grid-template-rows: 46px minmax(0, 1fr);
+  grid-template-rows: var(--topbar-height) minmax(0, 1fr);
   height: 100%;
 }
 
@@ -236,7 +237,7 @@ code {
   display: flex;
   align-items: center;
   gap: 8px;
-  max-width: 360px;
+  max-width: min(360px, 100%);
   height: 30px;
   padding: 0 10px;
   border: 1px solid var(--border);
@@ -1784,7 +1785,33 @@ code {
 
 @media (max-width: 860px) {
   .topbar {
+    gap: 10px;
     overflow-x: auto;
+  }
+
+  .brand-name {
+    display: none;
+  }
+
+  .tab {
+    padding: 0 8px;
+  }
+
+  /* The bar can scroll sideways here, which clips whatever drops out of it; pin the menus under it instead. */
+  .picker-menu,
+  .appearance-menu,
+  .remote-panel {
+    position: fixed;
+    top: calc(var(--topbar-height) + 6px);
+  }
+
+  .picker-menu {
+    left: 12px;
+  }
+
+  .appearance-menu,
+  .remote-panel {
+    right: 12px;
   }
 
   .network.with-detail {
@@ -1837,6 +1864,36 @@ code {
 
   .log-details {
     padding-left: 12px;
+  }
+}
+
+/* The tabs get a row of their own, so the app picker keeps room for the app's name. */
+@media (max-width: 720px) {
+  .app:has(.topbar .tabs) {
+    --topbar-height: 84px;
+  }
+
+  .topbar {
+    flex-wrap: wrap;
+    align-content: center;
+    row-gap: 8px;
+    overflow-x: visible;
+  }
+
+  .picker {
+    flex: 1 1 0;
+  }
+
+  .tabs {
+    order: 1;
+    flex: 1 0 100%;
+    overflow-x: auto;
+  }
+}
+
+@media (max-width: 480px) {
+  .connection-label {
+    display: none;
   }
 }
 
