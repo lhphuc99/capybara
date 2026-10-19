@@ -1,6 +1,6 @@
 {
   "name": "@capybara-devtools/web",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Browser SDK for Capybara: logs, network and storage for React, Vite and Next.js apps",
   "keywords": [
     "capybara",
@@ -43,8 +43,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@capybara-devtools/core": "0.4.0",
-    "@capybara-devtools/protocol": "0.4.0"
+    "@capybara-devtools/core": "0.5.0",
+    "@capybara-devtools/protocol": "0.5.0"
   },
   "publishConfig": {
     "access": "public"

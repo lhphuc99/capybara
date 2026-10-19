@@ -1,5 +1,15 @@
 # @capybara-devtools/react-native
 
+## 0.5.0
+
+### Patch Changes
+
+- 69ff11d: The Network tab's Fetch and XHR filters are one Fetch/XHR filter, as in Chrome's DevTools, and it includes requests whose kind is unknown. The Fetch filter showed nothing for most React Native apps: React Native's `fetch` runs on XHR, and through Metro, Expo Go reports every request without saying whether `fetch` or XHR made it. The Type column is more exact where that can be told: with the SDK in bare React Native, a `fetch` is recorded once, as fetch rather than XHR, and through Metro, React Native's own network reporting is told apart by the JavaScript stack it sends.
+- Updated dependencies [69ff11d]
+- Updated dependencies [b38c5a1]
+  - @capybara-devtools/core@0.5.0
+  - @capybara-devtools/protocol@0.5.0
+
 ## 0.4.0
 
 ### Patch Changes
