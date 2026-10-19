@@ -27,8 +27,7 @@ Năm gói npm, UI và app desktop dùng chung một số version (nhóm `fixed` 
 
    ```bash
    git pull
-   npm run release      # build, rồi publish các gói theo thứ tự phụ thuộc; hỏi 2FA
-   git push --tags      # tag của từng gói, như capybara-devtools@0.2.0
+   npm run release      # build, publish các gói theo thứ tự phụ thuộc (hỏi 2FA), rồi đẩy tag của từng gói
    ```
 
    Khi npm mở trang xác nhận 2FA, tick "skip 2FA for 5 minutes" để các gói sau không phải xác nhận lại. Lỗi giữa chừng thì chạy lại `npm run release`: changesets bỏ qua các version đã có trên npm.
