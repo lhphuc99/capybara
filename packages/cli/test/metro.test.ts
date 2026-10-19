@@ -207,9 +207,10 @@ async function fixture(options: {
     log: (args: unknown[], type = 'log') => event('Runtime.consoleAPICalled', {
       type, args, executionContextId: contextId, timestamp: 1_800_000_000_000,
     }),
-    request: (id: string, url = 'https://api.example.test/users', postData?: string) => event('Network.requestWillBeSent', {
+    request: (id: string, url = 'https://api.example.test/users', postData?: string, params: Record<string, unknown> = {}) => event('Network.requestWillBeSent', {
       requestId: id, timestamp: 10, wallTime: 1_800_000_000, type: 'Fetch',
       request: { url, method: postData ? 'POST' : 'GET', headers: { 'Content-Type': 'application/json' }, postData },
+      ...params,
     }),
     finish: (id: string, status = 200, mimeType = 'application/json', size = 32) => {
       event('Network.responseReceived', {
@@ -293,6 +294,27 @@ describe('Metro discovery and CDP event relay', () => {
     expect(f.events()[1].payload).toMatchObject({ status: 404, duration: 125, headers: { 'X-Response': 'yes' }, body: { text: '{"error":"missing"}' } });
     expect(f.events()[3]).toMatchObject({ kind: 'network.error', payload: { message: 'Connection refused', duration: 200 } });
     expect(f.events()[5].payload).toMatchObject({ aborted: true, duration: 300 });
+  });
+
+  it('tells fetch from XHR by the JS stack React Native sends', async () => {
+    const f = await fixture();
+    f.start();
+    await until(() => expect(f.sessions()).toHaveLength(1));
+    // React Native sends no type, but the stack of the request; whatwg-fetch sends its XHR from inside fetch().
+    const stack = (...names: string[]) => ({
+      type: 'script',
+      stack: { callFrames: names.map((functionName) => ({ functionName, url: 'http://localhost:8081/index.bundle', lineNumber: 1, columnNumber: 1 })) },
+    });
+    f.request('rn-fetch', undefined, undefined, { type: undefined, initiator: stack('sendRequest', 'send', 'anonymous', 'Promise', 'fetch', 'onPress') });
+    f.request('rn-xhr', undefined, undefined, { type: undefined, initiator: stack('sendRequest', 'send', 'dispatchXhrRequest', 'xhrAdapter') });
+    // Expo Go's network inspector reports fetch and XHR alike: type "Other", no stack.
+    f.request('expo', undefined, undefined, { type: 'Other', initiator: { type: 'script' } });
+    await until(() => expect(f.events()).toHaveLength(3));
+    expect(f.events().map((e) => [e.payload.id, e.payload.initiator])).toEqual([
+      ['rn-fetch', 'fetch'],
+      ['rn-xhr', 'xhr'],
+      ['expo', 'other'],
+    ]);
   });
 
   it('skips binary/oversized body downloads and keeps the status when a body is unavailable', async () => {

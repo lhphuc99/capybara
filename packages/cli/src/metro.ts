@@ -27,6 +27,7 @@ import {
   responseBody,
   textBody,
   type RemoteObject,
+  type RequestInitiator,
 } from './cdp.js';
 
 /** Expo moves to 8082 when 8081 is taken. */
@@ -142,6 +143,7 @@ interface ExceptionThrown {
 interface RequestSent {
   requestId: string;
   type?: string;
+  initiator?: RequestInitiator;
   timestamp: number;
   wallTime?: number;
   request: { url: string; method: string; headers?: Record<string, string>; postData?: string };
@@ -573,7 +575,7 @@ function watchApp(
         return;
       }
       case 'Network.requestWillBeSent': {
-        const { requestId, request, type, timestamp, wallTime } = event.params as RequestSent;
+        const { requestId, request, type, initiator, timestamp, wallTime } = event.params as RequestSent;
         // Redirects reuse the id; the first request stands for the chain.
         if (current.requests.has(requestId)) return;
         const ignored = isDevServerRequest(request.url, metroPort);
@@ -584,7 +586,7 @@ function watchApp(
           'network.request',
           {
             id: requestId,
-            initiator: initiatorOf(type),
+            initiator: initiatorOf(type, initiator),
             method: request.method,
             url: request.url,
             headers,

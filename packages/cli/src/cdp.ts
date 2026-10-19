@@ -70,7 +70,12 @@ export function isUnhandledRejection(args: SerializedValue[]): boolean {
   );
 }
 
-export function initiatorOf(type: string | undefined): NetworkInitiator {
+/** The `initiator` of `Network.requestWillBeSent`; React Native puts the JS stack of the request in it. */
+export interface RequestInitiator {
+  stack?: { callFrames?: Array<{ functionName?: string }> };
+}
+
+export function initiatorOf(type: string | undefined, initiator?: RequestInitiator): NetworkInitiator {
   switch (type) {
     case 'XHR':
       return 'xhr';
@@ -78,9 +83,13 @@ export function initiatorOf(type: string | undefined): NetworkInitiator {
       return 'fetch';
     case 'Image':
       return 'image';
-    default:
-      return 'other';
   }
+  // React Native sends no type. What it reports goes through its networking module, which XHR uses,
+  // and so does its fetch (whatwg-fetch): only the JS stack of the request tells the two apart.
+  // Expo's network inspector sends "Other" and no stack for fetch and XHR alike.
+  const frames = initiator?.stack?.callFrames;
+  if (!Array.isArray(frames) || frames.length === 0) return 'other';
+  return frames.some((frame) => frame?.functionName === 'fetch') ? 'fetch' : 'xhr';
 }
 
 export function platformOf(name: string | undefined): Platform {

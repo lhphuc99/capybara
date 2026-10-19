@@ -91,7 +91,7 @@ export interface LogPayload {
   args: SerializedValue[];
 }
 
-/** Metro reports fetch and XHR alike, so its requests are `other` (or `image`). */
+/** Through Metro, `other` is a request reported without the JS stack that tells fetch from XHR, as Expo Go reports them. */
 export type NetworkInitiator = 'fetch' | 'xhr' | 'image' | 'other';
 
 export interface BodyPreview {

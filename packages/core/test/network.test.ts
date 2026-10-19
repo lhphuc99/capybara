@@ -150,6 +150,35 @@ describe('networkPlugin: XMLHttpRequest', () => {
     teardown();
   });
 
+  it('records fetch built on XHR (whatwg-fetch, bare React Native) once, as fetch', async () => {
+    (globalThis as Record<string, unknown>).XMLHttpRequest = FakeXHR;
+    // whatwg-fetch marks itself, and opens and sends its XHR inside the call.
+    const polyfill = Object.assign(
+      (url: string) =>
+        new Promise((resolve) => {
+          const xhr = new FakeXHR();
+          xhr.open('GET', url);
+          xhr.send(null);
+          resolve(undefined);
+        }),
+      { polyfill: true },
+    );
+    globalThis.fetch = polyfill as unknown as typeof fetch;
+    const { of, teardown } = harness();
+    await fetch('https://api.test/fetched');
+    const xhr = new FakeXHR();
+    xhr.open('GET', 'https://api.test/plain');
+    xhr.send(null);
+
+    expect(of('network.request').map((request) => [request.initiator, request.url])).toEqual([
+      ['fetch', 'https://api.test/fetched'],
+      ['xhr', 'https://api.test/plain'],
+    ]);
+    expect((globalThis.fetch as unknown as { polyfill?: boolean }).polyfill).toBe(true);
+    teardown();
+    expect(globalThis.fetch).toBe(polyfill);
+  });
+
   it('restores the prototype on teardown', () => {
     const { open, send, setRequestHeader } = FakeXHR.prototype;
     (globalThis as Record<string, unknown>).XMLHttpRequest = FakeXHR;

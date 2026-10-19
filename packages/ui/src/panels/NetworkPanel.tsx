@@ -12,6 +12,7 @@ import {
   formatBytes,
   formatDuration,
   formatTime,
+  isFetchOrXhr,
   makeMatcher,
   parseJson,
   responseSize,
@@ -21,14 +22,13 @@ import {
 } from '../format';
 import { clearSession, type NetworkEntry, type SessionState, type SocketInfo, type SocketMessage } from '../store';
 
-type Filter = 'all' | 'fetch' | 'xhr' | 'ws' | 'failed';
+type Filter = 'all' | 'fetch-xhr' | 'ws' | 'failed';
 type DetailTab = 'headers' | 'request' | 'response';
 type SocketEntry = NetworkEntry & { socket: SocketInfo };
 
 const FILTERS: Array<{ id: Filter; label: string }> = [
   { id: 'all', label: 'All' },
-  { id: 'fetch', label: 'Fetch' },
-  { id: 'xhr', label: 'XHR' },
+  { id: 'fetch-xhr', label: 'Fetch/XHR' },
   { id: 'ws', label: 'WS' },
   { id: 'failed', label: 'Failed' },
 ];
@@ -49,11 +49,9 @@ export function NetworkPanel({ session }: { session: SessionState }) {
   const visible = useMemo(
     () =>
       network.filter((entry) => {
-        if (filter === 'fetch' || filter === 'xhr' || filter === 'ws') {
-          if (entry.initiator !== (filter === 'ws' ? 'websocket' : filter)) return false;
-        } else if (filter === 'failed' && statusTone(entry) !== 'error') {
-          return false;
-        }
+        if (filter === 'fetch-xhr' && !isFetchOrXhr(entry.initiator)) return false;
+        if (filter === 'ws' && entry.initiator !== 'websocket') return false;
+        if (filter === 'failed' && statusTone(entry) !== 'error') return false;
         return !matcher || matcher.test(`${entry.method} ${entry.url} ${entry.status ?? ''}`);
       }),
     [network, filter, matcher],

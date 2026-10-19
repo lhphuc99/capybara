@@ -177,6 +177,14 @@ export function describeSession(info: SessionInfo): string {
     .join(' · ');
 }
 
+/**
+ * What the Fetch/XHR filter shows. React Native's fetch is an XHR underneath, and through Metro Expo
+ * reports both without saying which (`other`), so the two are one filter, as in Chrome's DevTools.
+ */
+export function isFetchOrXhr(initiator: string): boolean {
+  return initiator === 'fetch' || initiator === 'xhr' || initiator === 'other';
+}
+
 /** Resolves false when neither the Clipboard API nor the older copy command worked. */
 export async function copyText(text: string): Promise<boolean> {
   try {

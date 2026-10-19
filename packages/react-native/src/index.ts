@@ -59,8 +59,6 @@ export function init(options: InitOptions = {}): CapybaraClient | undefined {
     const network = typeof options.network === 'object' ? options.network : {};
     plugins.push(
       networkPlugin({
-        fetch: !fetchRunsOnXhr(),
-        xhr: true,
         ...network,
         ignoreUrls: [...DEV_SERVER_NOISE, ...devToolSockets(portFromUrl(bundleUrl() ?? '')), ...(network.ignoreUrls ?? [])],
       }),
@@ -82,14 +80,6 @@ export function init(options: InitOptions = {}): CapybaraClient | undefined {
     },
     plugins,
   });
-}
-
-/**
- * Bare React Native ships whatwg-fetch, which runs on XHR, so patching fetch as well would record
- * every request twice. Expo (SDK 52+) swaps in a native fetch that never touches XHR.
- */
-function fetchRunsOnXhr(): boolean {
-  return (globalThis as { fetch?: { polyfill?: boolean } }).fetch?.polyfill === true;
 }
 
 function bundleUrl(): string | undefined {
