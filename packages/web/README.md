@@ -32,7 +32,7 @@ import { init } from '@capybara-devtools/web';
 if (process.env.NODE_ENV === 'development') init({ appName: 'My Next.js app' });
 ```
 
-Then run `npx capybara-devtools` (or open the desktop app) to see the data. If Capybara runs on another port (`--port`, or `CAPYBARA_PORT`), pass the same `port` to `init()`. `enabled: false` makes `init()` do nothing, to turn it off at run time.
+Then run `npx capybara-devtools` (or open the desktop app) to see the data. If Capybara runs on another port (`--port`, or `CAPYBARA_PORT`), pass the same `port` to `init()`. `enabled: false` makes `init()` do nothing, to turn it off at run time. In a production build (`NODE_ENV=production`) `init()` does nothing, even without the `if`, unless you pass `allowProduction: true`, for example in a staging build for testers. Keep the `if` anyway: it also keeps the SDK out of the bundle.
 
 ## State
 

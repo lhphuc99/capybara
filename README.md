@@ -74,7 +74,7 @@ import App from './App';
 
 Called in `main.tsx` itself, `init()` would run too late: a file's imports all run before its own code, so your other modules, and the stores they create, would load first.
 
-If Capybara runs on another port (`--port`, or `CAPYBARA_PORT`), pass the same `port` to `init()`. `enabled: false` makes `init()` do nothing, to turn it off at run time; unlike the `if`, it leaves the SDK in production builds.
+If Capybara runs on another port (`--port`, or `CAPYBARA_PORT`), pass the same `port` to `init()`. `enabled: false` makes `init()` do nothing, to turn it off at run time; unlike the `if`, it leaves the SDK in production builds. In a production build (`NODE_ENV=production`) `init()` does nothing, even without the `if`, unless you pass `allowProduction: true`, for example in a staging build for testers. Keep the `if` anyway: it also keeps the SDK out of the bundle.
 
 In Next.js 15.3 or later, put it in `instrumentation-client.ts` at the project root. Next.js runs that file in the browser before your app's code, and production builds drop the call:
 
@@ -205,7 +205,7 @@ import App from './App';
 registerRootComponent(App);
 ```
 
-The SDK also works below React Native 0.85, where Metro discovery is not available, and it is what the [State tab](#state-redux-zustand-tanstack-query-swr-react-context) needs. WebSockets are recorded by default; pass `network: { websocket: false }` to turn that off, or `maxMessageSize` to change the 16 KiB message preview. Socket URLs are shown as the app opened them, query string included, and some apps put an auth token there.
+The SDK also works below React Native 0.85, where Metro discovery is not available, and it is what the [State tab](#state-redux-zustand-tanstack-query-swr-react-context) needs. In a release build (`__DEV__` false) `init()` does nothing, even without the `if`, unless you pass `allowProduction: true`, for example in an internal test build. WebSockets are recorded by default; pass `network: { websocket: false }` to turn that off, or `maxMessageSize` to change the 16 KiB message preview. Socket URLs are shown as the app opened them, query string included, and some apps put an auth token there.
 
 In the UI, WebSocket connections are **WS** rows in the Network tab. Select one to see its messages, filter them by text or direction, and inspect JSON payloads; socket.io frames are decoded into event names and arguments.
 
