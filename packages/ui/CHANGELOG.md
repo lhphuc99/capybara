@@ -1,5 +1,17 @@
 # @capybara-devtools/ui
 
+## 0.5.0
+
+### Minor Changes
+
+- b38c5a1: The UI, and what apps send to it, are now only for the computer Capybara runs on. Until now anyone on the same network could open `http://<your IP>:7357` and read everything apps send, tokens and app state included, and send commands to the apps. Apps still connect from any device. To open the UI from another device, or to point `capybara mcp --host` at this computer, start the CLI with `--remote-ui` or set `CAPYBARA_REMOTE_UI=1`, which the desktop app reads too. The UI's device button shows the address to copy and a QR code to scan with a phone or tablet, or how to turn it on. The CLI's startup message says so too, as Vite does for `--host`; a device that is turned away gets a page that says how to let it in, the CLI prints its address once, and `capybara mcp --host` says Capybara refused it instead of that Capybara is not running. With `--host`, the CLI prints and opens the address it listens on instead of every LAN address, and the UI no longer offers phones an address they cannot reach.
+
+### Patch Changes
+
+- 69ff11d: The Network tab's Fetch and XHR filters are one Fetch/XHR filter, as in Chrome's DevTools, and it includes requests whose kind is unknown. The Fetch filter showed nothing for most React Native apps: React Native's `fetch` runs on XHR, and through Metro, Expo Go reports every request without saying whether `fetch` or XHR made it. The Type column is more exact where that can be told: with the SDK in bare React Native, a `fetch` is recorded once, as fetch rather than XHR, and through Metro, React Native's own network reporting is told apart by the JavaScript stack it sends.
+- 91f6e20: On narrow windows and phones the top bar fits again: the app picker no longer covers the tabs, and the app, appearance and device menus are no longer cut off. Below 860 pixels the bar shows the logo without the name, below 720 the tabs get a row of their own, and below 480 the connection status is a dot whose label shows on hover.
+- 462dfd5: More of the UI can be resized, so long URLs, keys and store names show in full: drag the line between the Path and Host columns in the Network tab, between the keys and values in the Storage tab, or beside the list of stores in the Storage and State tabs. Double-click a line to reset it; widths are remembered. The Type column fits `websocket` without cutting it.
+
 ## 0.4.0
 
 No changes in this release.
