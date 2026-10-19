@@ -47,7 +47,8 @@
     },
     "npmRebuild": false,
     "toolsets": {
-      "appimage": "1.0.3"
+      "appimage": "1.0.3",
+      "nsis": "1.2.1"
     },
     "mac": {
       "category": "public.app-category.developer-tools",
