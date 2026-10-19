@@ -1,5 +1,12 @@
 # capybara-devtools
 
+## 0.3.1
+
+### Patch Changes
+
+- @capybara-devtools/core@0.3.1
+  - @capybara-devtools/protocol@0.3.1
+
 ## 0.3.0
 
 ### Minor Changes
