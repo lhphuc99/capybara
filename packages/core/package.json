@@ -1,6 +1,6 @@
 {
   "name": "@capybara-devtools/core",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Client runtime and built-in plugins for Capybara",
   "keywords": [
     "capybara",
@@ -37,7 +37,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@capybara-devtools/protocol": "0.3.1"
+    "@capybara-devtools/protocol": "0.4.0"
   },
   "publishConfig": {
     "access": "public"
