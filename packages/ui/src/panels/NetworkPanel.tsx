@@ -2,7 +2,7 @@ import type { BodyPreview, NetworkDiagnosis } from '@capybara-devtools/protocol'
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { JsonTree } from '../components/JsonTree';
-import { ResizeHandle, usePaneWidth } from '../components/ResizeHandle';
+import { ColumnHandle, ResizeHandle, useColumnWidth, usePaneWidth } from '../components/ResizeHandle';
 import { diagnose } from '../connection';
 import { useFollow } from '../follow';
 import { showToast } from '../toast';
@@ -42,6 +42,9 @@ export function NetworkPanel({ session }: { session: SessionState }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const layoutRef = useRef<HTMLDivElement>(null);
   const pane = usePaneWidth('capybara:pane:network', 46);
+  const host = useColumnWidth('capybara:column:network-host');
+  const tableRef = useRef<HTMLDivElement>(null);
+  const hostRef = useRef<HTMLSpanElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const { network } = session;
 
@@ -127,12 +130,30 @@ export function NetworkPanel({ session }: { session: SessionState }) {
         className={`network${selected ? ' with-detail' : ''}`}
         style={{ '--pane-width': `${pane.width}%` } as CSSProperties}
       >
-        <div className="net-table">
+        <div
+          ref={tableRef}
+          className="net-table"
+          style={host.width ? ({ '--host-width': `${host.width}px` } as CSSProperties) : undefined}
+        >
           <div className="net-head">
             <span>Status</span>
             <span>Method</span>
             <span>Path</span>
-            <span>Host</span>
+            <span ref={hostRef} className="resizable-column">
+              Host
+              <ColumnHandle
+                target={hostRef}
+                edge="start"
+                inset={5}
+                min={80}
+                // The other columns, their gaps and a path of 160px stay.
+                max={() => (tableRef.current?.clientWidth ?? 0) - 582}
+                onChange={host.setWidth}
+                onCommit={host.save}
+                onReset={host.reset}
+                label="Resize the path and host columns"
+              />
+            </span>
             <span>Type</span>
             <span className="num">Size</span>
             <span className="num">Time</span>

@@ -921,7 +921,7 @@ code {
 .net-head,
 .net-row {
   display: grid;
-  grid-template-columns: 62px 62px minmax(0, 1fr) minmax(0, 0.5fr) 48px 70px 70px;
+  grid-template-columns: 62px 62px minmax(0, 1fr) var(--host-width, minmax(0, 0.5fr)) 74px 70px 70px;
   align-items: center;
   gap: 10px;
   padding: 0 12px;
@@ -1152,8 +1152,21 @@ code {
 .storage {
   display: grid;
   flex: 1;
-  grid-template-columns: 190px minmax(240px, 1fr) minmax(320px, var(--pane-width, 40%));
+  grid-template-columns: var(--nav-width, 190px) minmax(240px, 1fr) minmax(320px, var(--pane-width, 40%));
   min-height: 0;
+}
+
+/* Holds the list of stores and the handle that resizes it, which must not scroll away with the list. */
+.nav-column {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+
+.nav-column > nav {
+  flex: 1;
+  min-width: 0;
 }
 
 .adapters,
@@ -1161,6 +1174,15 @@ code {
   overflow: auto;
   padding: 8px;
   border-right: 1px solid var(--border);
+}
+
+.resizable-column {
+  position: relative;
+}
+
+/* Header handles show where the columns meet, so people find them without hovering first. */
+.resizable-column > .resize-handle::after {
+  background: var(--border-strong);
 }
 
 .adapter,
@@ -1204,7 +1226,7 @@ code {
 .entry-head,
 .entry-row {
   display: grid;
-  grid-template-columns: minmax(110px, 0.45fr) minmax(0, 1fr) 64px;
+  grid-template-columns: var(--key-width, minmax(110px, 0.45fr)) minmax(0, 1fr) 64px;
   align-items: center;
   gap: 10px;
   padding: 0 12px;
@@ -1332,12 +1354,15 @@ code {
 
 /*
  * Like .storage, but the pane never takes the room the list needs (the entry table's fixed columns alone
- * take 280px), so a wide pane cannot squeeze the keys away or scroll the page sideways. Fits at 860px.
+ * take 280px), so a wide pane cannot squeeze the keys away or scroll the page sideways. Fits at 860px with the
+ * list of stores at its default 190px.
  */
 .state-layout {
   display: grid;
   flex: 1;
-  grid-template-columns: 190px minmax(350px, 1fr) minmax(320px, min(var(--pane-width, 44%), calc(100% - 540px)));
+  grid-template-columns:
+    var(--nav-width, 190px) minmax(350px, 1fr)
+    minmax(320px, min(var(--pane-width, 44%), calc(100% - var(--nav-width, 190px) - 350px)));
   min-height: 0;
 }
 
@@ -2100,7 +2125,10 @@ code {
 
 .resize-handle:hover::after,
 .resize-handle:focus-visible::after,
-.resize-handle.dragging::after {
+.resize-handle.dragging::after,
+.resizable-column > .resize-handle:hover::after,
+.resizable-column > .resize-handle:focus-visible::after,
+.resizable-column > .resize-handle.dragging::after {
   background: var(--accent);
 }
 

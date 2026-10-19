@@ -216,7 +216,7 @@ In the UI, WebSocket connections are **WS** rows in the Network tab. Select one 
 
 To share what you see, **Copy all** in the Logs tab copies the entries that match the current filters as text, and the copy icon that appears when you hover over an entry copies just that one. Objects are copied in full as JSON and errors with their stack. In the Storage tab, **Copy** copies the selected value, and every object or value in a JSON tree has its own copy icon.
 
-Drag the line between the request list and its details (or between the keys and the value in the Storage tab) to resize them; double-click it to reset. With the line focused, the arrow keys move it too. Widths are remembered.
+Drag the line between the request list and its details (or between the keys and the value in the Storage tab) to resize them; double-click it to reset. The same goes for the line between the Path and Host columns, between a store's keys and values, and beside the list of stores in the Storage and State tabs, so long URLs, keys and names show in full. With a line focused, the arrow keys move it too. Widths are remembered.
 
 The **Appearance** button at the top right switches between System (the default, following your OS), Light and Dark. In the macOS desktop app the window's title bar follows it too.
 
