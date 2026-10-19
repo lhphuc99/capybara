@@ -1,5 +1,13 @@
 # @capybara-devtools/web
 
+## 0.4.0
+
+### Patch Changes
+
+- Updated dependencies [c1b095e]
+  - @capybara-devtools/core@0.4.0
+  - @capybara-devtools/protocol@0.4.0
+
 ## 0.3.1
 
 ### Patch Changes
