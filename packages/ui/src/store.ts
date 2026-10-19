@@ -10,9 +10,12 @@ import type {
   ServerInfo,
   ServerToViewer,
   SessionMeta,
+  StateEntrySummary,
+  StateStoreInfo,
 } from '@capybara-devtools/protocol';
 import { useSyncExternalStore } from 'react';
 import { send, type ConnectionStatus } from './connection';
+import { applyStateEvent, clearStateRecords, emptyStateSlice, type StateEvent, type StateSlice } from './state';
 
 export interface LogEntry {
   seq: number;
@@ -79,6 +82,7 @@ export interface SessionState {
   network: NetworkEntry[];
   /** Bumped per storage adapter whenever the app reports a write. */
   storageVersions: Record<string, number>;
+  state: StateSlice;
 }
 
 export interface State {
@@ -171,7 +175,7 @@ export function receive(message: Exclude<ServerToViewer, CommandResult>): void {
     case 'history': {
       const session = state.sessions[message.sessionId];
       if (!session) break;
-      const reset: SessionState = { ...session, loaded: true, lastSeq: 0, logs: [], network: [] };
+      const reset: SessionState = { ...session, loaded: true, lastSeq: 0, logs: [], network: [], state: emptyStateSlice() };
       updateSession(applyEvents(reset, message.events));
       break;
     }
@@ -185,11 +189,13 @@ export function receive(message: Exclude<ServerToViewer, CommandResult>): void {
       // lastSeq is kept: the app keeps counting, so later events still apply. Live sockets stay,
       // without their messages, so the ones that arrive next still have a row to land in.
       const live = (entry: NetworkEntry) => entry.socket && (entry.state === 'open' || entry.state === 'pending');
-      if (session) {
+      if (session && message.scope === 'state') {
+        updateSession({ ...session, state: clearStateRecords(session.state) });
+      } else if (session) {
         const network = session.network
           .filter(live)
           .map((entry) => ({ ...entry, socket: { ...entry.socket!, messages: [], dropped: 0, sent: 0, received: 0, bytes: 0 } }));
-        updateSession({ ...session, logs: [], network });
+        updateSession({ ...session, logs: [], network, state: clearStateRecords(session.state) });
       }
       break;
     }
@@ -211,8 +217,38 @@ export function clearSession(id: string): void {
   send({ t: 'clear', sessionId: id });
 }
 
+/** Clears the recorded state changes and leaves logs and requests alone. */
+export function clearStateTimeline(id: string): void {
+  send({ t: 'clear', sessionId: id, scope: 'state' });
+}
+
 export function removeSession(id: string): void {
   send({ t: 'remove', sessionId: id });
+}
+
+/** Adds or updates stores the `stores` command found, e.g. ones the server lost when it restarted. */
+export function mergeStateStores(sessionId: string, stores: StateStoreInfo[]): void {
+  const session = state.sessions[sessionId];
+  if (!session) return;
+  const owned = new WeakSet<object>();
+  let slice = session.state;
+  for (const store of stores) {
+    slice = applyStateEvent(slice, { seq: 0, ts: Date.now(), kind: 'state.store', payload: { store } }, owned);
+  }
+  updateSession({ ...session, state: slice });
+}
+
+/** Replaces a store's entries with the list the `entries` command read; `clear` and trimming drop the patches. */
+export function loadStateEntries(sessionId: string, store: string, entries: StateEntrySummary[]): void {
+  const session = state.sessions[sessionId];
+  if (!session) return;
+  const event: StateEvent = {
+    seq: 0,
+    ts: Date.now(),
+    kind: 'state.entries',
+    payload: { store, upserts: entries, removed: [], reset: true },
+  };
+  updateSession({ ...session, state: applyStateEvent(session.state, event) });
 }
 
 // ---------------------------------------------------------------------------
@@ -220,7 +256,7 @@ export function removeSession(id: string): void {
 // ---------------------------------------------------------------------------
 
 function emptySession(meta: SessionMeta): SessionState {
-  return { meta, loaded: false, lastSeq: 0, logs: [], network: [], storageVersions: {} };
+  return { meta, loaded: false, lastSeq: 0, logs: [], network: [], storageVersions: {}, state: emptyStateSlice() };
 }
 
 function updateSession(session: SessionState): void {
@@ -244,7 +280,8 @@ function sameApp(a: SessionMeta, b: SessionMeta): boolean {
 }
 
 function applyEvents(session: SessionState, events: CapybaraEvent[]): SessionState {
-  let { logs, network, storageVersions, lastSeq } = session;
+  let { logs, network, storageVersions, lastSeq, state: stateSlice } = session;
+  const stateOwned = new WeakSet<object>();
   let logsCopied = false;
   let networkCopied = false;
   let versionsCopied = false;
@@ -404,12 +441,17 @@ function applyEvents(session: SessionState, events: CapybaraEvent[]): SessionSta
         }
         storageVersions[event.payload.adapter] = (storageVersions[event.payload.adapter] ?? 0) + 1;
         break;
+      case 'state.store':
+      case 'state.change':
+      case 'state.entries':
+        stateSlice = applyStateEvent(stateSlice, event, stateOwned);
+        break;
     }
   }
 
   if (logs.length > MAX_LOGS) logs = logs.slice(-MAX_LOGS);
   if (network.length > MAX_REQUESTS) network = network.slice(-MAX_REQUESTS);
-  return { ...session, logs, network, storageVersions, lastSeq };
+  return { ...session, logs, network, storageVersions, lastSeq, state: stateSlice };
 }
 
 /** Responses usually belong to recent requests, so search from the end. */

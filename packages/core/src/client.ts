@@ -16,7 +16,8 @@ import { errorMessage, randomId } from './utils.js';
 type ConsoleMethod = (...args: unknown[]) => void;
 
 export interface PluginContext {
-  emit<K extends EventKind>(kind: K, payload: EventPayloads[K]): void;
+  /** `ts` dates the event when it happened earlier than now, e.g. a state change sent in a later batch. */
+  emit<K extends EventKind>(kind: K, payload: EventPayloads[K], ts?: number): void;
   serialize(value: unknown): SerializedValue;
   /** Console methods saved before any plugin patched them. SDK diagnostics written here are not captured. */
   console: { log: ConsoleMethod; warn: ConsoleMethod; error: ConsoleMethod };
@@ -33,7 +34,7 @@ export interface Plugin {
 export interface ClientOptions {
   /** e.g. `ws://192.168.1.5:7357/client` */
   url: string;
-  session: Omit<SessionInfo, 'id' | 'startedAt'>;
+  session: Omit<SessionInfo, 'id' | 'startedAt' | 'plugins'>;
   plugins?: Plugin[];
   /** Events kept for replay after a reconnect. Default 2000. */
   maxBufferEvents?: number;
@@ -73,11 +74,16 @@ export function createClient(options: ClientOptions): CapybaraClient {
   // Two clients would patch console and network twice.
   getActiveClient()?.stop();
 
-  const session: SessionInfo = { ...options.session, id: randomId(), startedAt: Date.now() };
+  const plugins = options.plugins ?? [];
+  const session: SessionInfo = {
+    ...options.session,
+    id: randomId(),
+    startedAt: Date.now(),
+    plugins: plugins.map((p) => p.name),
+  };
   const maxEvents = options.maxBufferEvents ?? 2_000;
   const maxChars = options.maxBufferBytes ?? 8 * 1024 * 1024;
   const flushInterval = options.flushInterval ?? 50;
-  const plugins = options.plugins ?? [];
   const originalConsole = {
     log: console.log.bind(console),
     warn: console.warn.bind(console),
@@ -97,11 +103,11 @@ export function createClient(options: ClientOptions): CapybaraClient {
 
   const send = (message: ClientToServer) => connection.send(JSON.stringify(message));
 
-  const emit: PluginContext['emit'] = (kind, payload) => {
+  const emit: PluginContext['emit'] = (kind, payload, ts) => {
     if (stopped) return;
     let json: string;
     try {
-      json = JSON.stringify({ seq: seq + 1, ts: Date.now(), kind, payload });
+      json = JSON.stringify({ seq: seq + 1, ts: ts ?? Date.now(), kind, payload });
     } catch {
       return;
     }

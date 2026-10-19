@@ -33,6 +33,8 @@ export interface SessionInfo {
   /** Page URL, web only. */
   url?: string;
   userAgent?: string;
+  /** Names of the plugins the SDK runs, e.g. "network". Older SDKs and Metro sessions leave it out. */
+  plugins?: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -187,6 +189,84 @@ export interface StorageChangePayload {
   key?: string;
 }
 
+export type StateLibrary = 'redux' | 'zustand' | 'tanstack-query' | 'swr' | 'context';
+
+/** Keys from the root of a store's state or an entry's data, e.g. `['todos', 0, 'title']`. */
+export type StatePath = Array<string | number>;
+
+/** Commands on one cache entry; each store lists the ones it supports in `ops`. */
+export type StateEntryOp = 'refetch' | 'invalidate' | 'reset' | 'cancel' | 'remove' | 'revalidate' | 'clear';
+
+/** A store the app registered. Sent again under the same `id` whenever this changes, e.g. once it is disposed. */
+export interface StateStoreInfo {
+  /** Stable for the session, e.g. "redux:1". */
+  id: string;
+  library: StateLibrary;
+  label: string;
+  /** How the SDK found the store. */
+  via: 'shim' | 'enhancer' | 'connect' | 'subscribe' | 'client' | 'cache' | 'fiber' | 'module';
+  /** False when changes come with a diff but no action name. */
+  actions: boolean;
+  /** Commands its entries support. Only stores with entries (TanStack Query, SWR) have any. */
+  ops?: StateEntryOp[];
+  /** React Context: the library the context belongs to, e.g. "react-redux", rather than the app. */
+  vendor?: string;
+  /** React Context: providers of the context mounted under this label, when there is more than one. */
+  instances?: number;
+  disposed?: boolean;
+  note?: string;
+}
+
+/** `value` and `prev` are short previews; the `get` command reads the full value. */
+export interface StateDiffOp {
+  op: 'set' | 'add' | 'del';
+  path: StatePath;
+  value?: SerializedValue;
+  prev?: SerializedValue;
+}
+
+export interface StateChangePayload {
+  store: string;
+  /** Counts up by one per `state.change` of the store, so a gap means some were missed. */
+  rev: number;
+  cause: 'init' | 'action' | 'set' | 'external';
+  /** `payload` previews the rest of the action without `type`, e.g. `{payload, meta}` for Redux Toolkit. */
+  action?: { type: string; payload?: SerializedValue };
+  ops: StateDiffOp[];
+  /** Number of ops before `ops` was cut, when it was. */
+  opCount?: number;
+  /** Changes folded into this one, by the rate limit or while the app was not connected. */
+  skipped?: number;
+}
+
+/** A TanStack Query or SWR cache entry, without its data. */
+export interface StateEntrySummary {
+  /** Names the entry in the `entry` and `act` commands, e.g. a query hash. */
+  key: string;
+  label: string;
+  kind: 'query' | 'infinite' | 'mutation' | 'swr' | 'swr-infinite' | 'swr-subscription';
+  status: 'pending' | 'success' | 'error' | 'idle';
+  fetching: boolean;
+  paused?: boolean;
+  stale?: boolean;
+  invalidated?: boolean;
+  active?: boolean;
+  disabled?: boolean;
+  observers?: number;
+  updatedAt?: number;
+  error?: string;
+  /** Short description of the data, e.g. "Array(20)". */
+  preview?: string;
+}
+
+export interface StateEntriesPayload {
+  store: string;
+  upserts: StateEntrySummary[];
+  removed: string[];
+  /** Forget every entry seen before. `upserts` may then hold only some; the `entries` command lists them all. */
+  reset?: boolean;
+}
+
 export interface EventPayloads {
   log: LogPayload;
   'network.request': NetworkRequestPayload;
@@ -198,6 +278,10 @@ export interface EventPayloads {
   'ws.error': WebSocketErrorPayload;
   'ws.close': WebSocketClosePayload;
   'storage.change': StorageChangePayload;
+  /** The server keeps the latest one of each store in the history, through `clear` too. */
+  'state.store': { store: StateStoreInfo };
+  'state.change': StateChangePayload;
+  'state.entries': StateEntriesPayload;
 }
 
 export type EventKind = keyof EventPayloads;
@@ -242,6 +326,31 @@ export interface StorageCommands {
   set: { params: { adapter: string; key: string; value: string }; result: null };
   remove: { params: { adapter: string; key: string }; result: null };
   clear: { params: { adapter: string }; result: null };
+}
+
+// ---------------------------------------------------------------------------
+// State commands
+// ---------------------------------------------------------------------------
+
+/**
+ * `plugin: 'state'` commands, keyed by method. Events only say what changed; current values are read here,
+ * by path. A `truncated` value was cut to fit: read a deeper `path` for the rest.
+ */
+export interface StateCommands {
+  stores: { params: undefined; result: StateStoreInfo[] };
+  /** `rev` is the latest recorded change; `pending` means the store has changed since. */
+  get: {
+    params: { store: string; path?: StatePath };
+    result: { rev: number; pending: boolean; value: SerializedValue; truncated: boolean };
+  };
+  /** `total` counts every entry; `entries` may be capped. */
+  entries: { params: { store: string }; result: { entries: StateEntrySummary[]; total: number } };
+  entry: {
+    params: { store: string; key: string; path?: StatePath };
+    result: { summary: StateEntrySummary; data: SerializedValue; truncated: boolean } | null;
+  };
+  /** `done: false` comes with a `note` saying why, e.g. no mounted hook to revalidate. */
+  act: { params: { store: string; key: string; op: StateEntryOp }; result: { done: boolean; note?: string } };
 }
 
 // ---------------------------------------------------------------------------
@@ -300,7 +409,8 @@ export type ViewerToServer =
   | { t: 'command'; id: string; sessionId: string; plugin: string; method: string; params?: unknown }
   /** Answered with a CommandResult whose `result` is a NetworkDiagnosis. */
   | { t: 'diagnose'; id: string; sessionId: string; requestId: string }
-  | { t: 'clear'; sessionId: string }
+  /** `scope: 'state'` clears only the state timeline; servers before 0.3.0 ignore it and clear everything. */
+  | { t: 'clear'; sessionId: string; scope?: 'state' }
   | { t: 'remove'; sessionId: string };
 
 export type ServerToViewer =
@@ -311,7 +421,7 @@ export type ServerToViewer =
   | { t: 'session.removed'; sessionId: string }
   | { t: 'history'; sessionId: string; events: CapybaraEvent[] }
   | { t: 'events'; sessionId: string; events: CapybaraEvent[] }
-  | { t: 'cleared'; sessionId: string }
+  | { t: 'cleared'; sessionId: string; scope?: 'state' }
   | CommandResult;
 
 export * from './values.js';

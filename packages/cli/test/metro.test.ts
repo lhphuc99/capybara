@@ -15,12 +15,22 @@ const until = (assertion: () => void) => vi.waitFor(assertion, { timeout: 4_000,
 
 type Command = { id: number; method: string; params: Record<string, any> };
 
-async function fixture(options: { sdk?: boolean; ready?: boolean; multiple?: boolean; fallbackOrigin?: boolean } = {}) {
+async function fixture(options: {
+  sdk?: boolean;
+  ready?: boolean;
+  multiple?: boolean;
+  fallbackOrigin?: boolean;
+  /** Listed and described as Expo Go on an Android emulator. */
+  expoGo?: boolean;
+  /** The answer to every `Runtime.evaluate`. */
+  evaluateError?: { code: number; message: string };
+} = {}) {
   const metro = http.createServer((_req, res) => {
     res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify(visible ? [null, { id: 'invalid' }, {
       id: 'app',
       title: 'Hermes app',
+      appId: options.expoGo ? 'host.exp.exponent' : undefined,
       webSocketDebuggerUrl: `ws://localhost:${metroPort}/inspector/debug`,
       reactNative: { capabilities: { supportsMultipleDebuggers: options.multiple ?? true } },
     }] : []));
@@ -91,13 +101,15 @@ async function fixture(options: { sdk?: boolean; ready?: boolean; multiple?: boo
       commands.push(command);
       const { id, method, params } = command;
       if (method === 'ReactNativeApplication.enable') {
-        event('ReactNativeApplication.metadataUpdated', {
-          platform: 'ios', deviceName: 'iPhone simulator', reactNativeVersion: '0.86.3',
-        });
+        event('ReactNativeApplication.metadataUpdated', options.expoGo
+          ? { appDisplayName: 'Expo Go', platform: 'android', deviceName: 'Google sdk_gphone64_arm64', reactNativeVersion: '0.86.2' }
+          : { platform: 'ios', deviceName: 'iPhone simulator', reactNativeVersion: '0.86.3' });
       } else if (method === 'Runtime.enable') {
         event('Runtime.executionContextCreated', { context: { id: contextId } });
       } else if (method === 'Runtime.evaluate') {
-        if (params.expression.includes('__CAPYBARA_CLIENT__')) {
+        if (options.evaluateError) {
+          ws.send(JSON.stringify({ id, error: options.evaluateError }));
+        } else if (params.expression.includes('__CAPYBARA_CLIENT__')) {
           // Read now, as the app would, even when the answer is held back.
           const value = JSON.stringify({ sdk, ready, name: 'No SDK app' });
           if (heldProbes) heldProbes.push(() => reply(ws, id, { result: { value } }));
@@ -160,14 +172,17 @@ async function fixture(options: { sdk?: boolean; ready?: boolean; multiple?: boo
   cleanups.push(() => viewers.forEach((ws) => ws.terminate()));
   let bridge: MetroBridge | undefined;
   cleanups.push(() => bridge?.stop());
+  const hints: string[] = [];
 
   return {
-    messages, commands, bodies, origins, viewer, event,
+    messages, commands, bodies, origins, viewer, event, hints,
     run: (code: string) => runInContext(code, vm),
     events: () => messages.filter((m) => m.t === 'events').flatMap((m) => m.events),
     sessions: () => messages.filter((m) => m.t === 'session' && m.session.connected),
     connections: () => connections,
-    start: () => { bridge = startMetroBridge({ port, metroPorts: [metroPort], pollInterval: 25, version: 'test' }); },
+    start: () => {
+      bridge = startMetroBridge({ port, metroPorts: [metroPort], pollInterval: 25, version: 'test', onHint: (hint) => hints.push(hint) });
+    },
     stop: () => bridge?.stop(),
     setSdk: (value: boolean) => { sdk = value; },
     probes: () => commands.filter((c) => c.method === 'Runtime.evaluate' && c.params.expression.includes('__CAPYBARA_CLIENT__')).length,
@@ -322,6 +337,38 @@ describe('Metro discovery and CDP event relay', () => {
     expect(f.probes()).toBe(2);
     expect(f.sessions()).toHaveLength(0);
     expect(f.events()).toHaveLength(0);
+  });
+
+  it('opens no session for an engine that cannot evaluate, as Expo Go on Android, and says so once', async () => {
+    // What Expo Go 57.0.9 on Android answers, with or without the SDK in the app.
+    const f = await fixture({ expoGo: true, evaluateError: { code: -32601, message: 'Runtime.evaluate' } });
+    f.start();
+    await until(() => expect(f.hints).toHaveLength(1));
+    expect(f.hints[0]).toBe(
+      "Expo Go on Android (Google sdk_gphone64_arm64) can't be read through Metro: its JavaScript engine does not support debugging. " +
+        'Capybara shows it only when the app runs the SDK (@capybara-devtools/react-native), or as a development build.',
+    );
+    f.log([{ type: 'string', value: 'Running "main"' }]);
+    // Expo's inspector proxy also sends this target the requests of other apps.
+    f.request('other-app'); f.finish('other-app');
+    f.reload();
+    await until(() => expect(f.probes()).toBe(2));
+    f.disconnect();
+    await until(() => expect(f.probes()).toBe(3));
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(f.hints).toHaveLength(1);
+    expect(f.messages.filter((m) => m.t === 'session')).toHaveLength(0);
+  });
+
+  it('keeps checking an app whose check fails for another reason, and reads it once it has started', async () => {
+    const f = await fixture({ evaluateError: { code: -32000, message: 'Execution context was destroyed' } });
+    f.start();
+    await until(() => expect(f.probes()).toBe(1));
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(f.sessions()).toHaveLength(0);
+    f.log([{ type: 'string', value: 'Running "App"' }]);
+    await until(() => expect(f.sessions()).toHaveLength(1));
+    expect(f.hints).toHaveLength(0);
   });
 
   it('starts a new session after reload and allows request IDs to be reused', async () => {

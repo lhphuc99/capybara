@@ -24,8 +24,9 @@ SDK tách phần **thu thập** (plugin ghi event vào ring buffer) khỏi phầ
 | Storage web: localStorage, sessionStorage, cookie | IndexedDB |
 | Storage RN: AsyncStorage, MMKV (best-effort) | SecureStore, Keychain |
 | Xem/sửa/xoá/clear storage, tự refresh khi app ghi | |
+| State qua SDK: Redux, Zustand, TanStack Query, SWR, React Context (timeline, diff, state hiện tại; lệnh cho query và key SWR) | |
 | Nhiều app/thiết bị cùng lúc, tự kết nối lại, rớt mạng ngắn không mất log | Export/import phiên |
-| UI web do CLI phục vụ (`npx capybara-devtools`); app desktop (macOS, Windows, Linux) bọc cùng server và UI | Next.js server, state (Redux/Zustand/TanStack Query), MCP |
+| UI web do CLI phục vụ (`npx capybara-devtools`); app desktop (macOS, Windows, Linux) bọc cùng server và UI | Next.js server, time travel/sửa state, Jotai/MobX/XState/Apollo, MCP |
 
 ## Kiến trúc
 
@@ -36,16 +37,17 @@ App (RN / web)                                 Máy dev
        plugin console                            ├─ /viewer   đẩy event cho UI, chuyển lệnh UI → app
        plugin network                            └─ HTTP      phục vụ UI (@capybara-devtools/ui)
        plugin storage
+       plugin state
 ```
 
 | Package | Vai trò |
 |---|---|
 | `packages/protocol` | Kiểu message, event và hằng số (port, path), dùng chung cho mọi package. |
-| `packages/core` | Runtime phía app: ring buffer, gửi theo batch, kết nối lại, serialize an toàn, plugin console/network/storage. |
+| `packages/core` | Runtime phía app: ring buffer, gửi theo batch, kết nối lại, serialize an toàn, plugin console/network/storage/state. |
 | `packages/web` | `init()` cho browser: lỗi của window, localStorage/sessionStorage/cookie. |
 | `packages/react-native` | `init()` cho RN: tự tìm IP máy dev từ URL bundle của Metro, `ErrorUtils`, adapter AsyncStorage/MMKV. |
 | `packages/cli` | `npx capybara-devtools`: HTTP + WebSocket server, lưu event theo phiên, chuyển lệnh UI → app, tự `adb reverse`. |
-| `packages/ui` | UI React (Vite) với tab Logs / Network / Storage. Bản build được copy vào CLI và app desktop. |
+| `packages/ui` | UI React (Vite) với tab Logs / Network / Storage / State. Bản build được copy vào CLI và app desktop. |
 | `apps/desktop` | App desktop (Electron, private): main process gọi `createServer()` của `capybara-devtools` rồi mở cửa sổ tới `http://localhost:<port>`. |
 | `examples/web`, `examples/nextjs`, `examples/expo` | App mẫu để chạy thử. |
 
@@ -76,6 +78,11 @@ App (RN / web)                                 Máy dev
 - **Đóng gói Windows và Linux**: build được ngay trên Mac, không cần Wine hay Docker. Windows có bộ cài NSIS (cài cho user hiện tại, không cần quyền admin) và `.zip`, bản x64. Linux có AppImage và `.tar.gz`, bản x64 và arm64; chưa có deb/rpm vì gói deb bắt buộc có email người bảo trì. AppImage dùng runtime tĩnh (`toolsets.appimage: "1.0.3"`): runtime cũ cần libfuse2, và bản arm64 không chạy được vì thiếu `libz.so`. Runtime cũ còn luôn tắt sandbox của Chromium; launcher của bản mới thử `unshare -Ur` và chỉ thêm `--no-sandbox` khi máy không cho tạo user namespace (Ubuntu 24.04+ chặn qua AppArmor). Đặt `desktopName` trong package.json kèm `linux.syncDesktopName` để tên file `.desktop`, `StartupWMClass` và WM_CLASS của cửa sổ cùng là `capybara-desktop`. Thiếu nó thì cửa sổ có class `capybara` còn file `.desktop` ghi `Capybara`, nên desktop environment không gắn cửa sổ với app. Binary Linux không chứa icon, nên cửa sổ được gán `dist/icon.png`. Icon Windows/Linux (`build/icon.png`) vẽ từ cùng file SVG nhưng cắt bỏ lề, vì chỉ macOS chừa lề quanh icon.
 - **Cổng của app desktop đang bận**: nếu là một Capybara khác (vd. `npx capybara-devtools`), cửa sổ hiện server đó và app thử nhận cổng mỗi 2 giây, nên tắt CLI là app tự thay chỗ. Nếu là chương trình khác thì báo lỗi, có nút thử lại. macOS vẫn cho bind mọi interface khi chương trình khác giữ cùng cổng trên `0.0.0.0`, `127.0.0.1` hoặc `::1`, và localhost vẫn đi tới chương trình đó, nên app thử bind từng địa chỉ này trước. CLI chưa có kiểm tra này.
 - **Bridge Metro (React Native không cần SDK)**: CLI/desktop nối vào `/inspector/debug` của Metro như một debugger thứ hai (CDP, kênh React Native DevTools dùng). Mỗi JS context là một phiên, gửi vào server qua `/client` như SDK. Hermes chỉ mô tả Date/Map/Set là "Object", nên tham số log được serialize ngay trong app bằng chính `serialize()` của SDK (hàm tự chứa, gửi qua `serialize.toString()`). App có SDK (`__CAPYBARA_CLIENT__`) thì bỏ qua; quyết định đợi tới khi app chạy xong file entry (`RN$AppRegistry` hoặc log `Running "…"`), vì SDK khởi tạo trong đó. Expo CLI chỉ giữ socket debugger khi Origin đúng địa chỉ của nó (`http://127.0.0.1:<port>`); Metro thường nhận mọi origin localhost.
+- **State**: một plugin `state` trong core, adapter duck-typed nên core không phụ thuộc thư viện state nào. Store đăng ký vào registry trên `globalThis` (`__CAPYBARA_STATE_V1__`), nên adapter gọi trước hay sau `init()` đều được và sống qua HMR.
+  - **Mô hình kéo**: event chỉ mang đăng ký store, bản ghi thay đổi gọn (tên action, tối đa 100 op diff kèm preview nhỏ, `rev` tăng 1 mỗi bản ghi) và summary của entry TanStack/SWR. State đầy đủ và data của entry đọc qua command theo path khi UI hay MCP cần, cắt ở 128 KB như body. Snapshot định kỳ tốn băng thông và chỗ trong ring theo cỡ state, kể cả khi không ai xem. SDK chỉ diff và gửi bản ghi khi đang nối server, tối đa 30 bản ghi/giây mỗi store, dư thì gộp vào bản ghi sau kèm `skipped`.
+  - **Shim Redux DevTools**: `init()` đặt `__REDUX_DEVTOOLS_EXTENSION__` và `__REDUX_DEVTOOLS_EXTENSION_COMPOSE__`, bọc extension thật nếu có. Enhancer của Capybara nằm dưới `applyMiddleware` nên thấy cả action từ thunk. Nhờ vậy `configureStore()` của RTK và `devtools()` của zustand hiện mà không sửa code. RTK đọc global lúc module evaluate, nên file gọi `init()` phải import trước RTK; dự phòng là `capybaraReduxEnhancer()`. Không làm entry `/register`: các gói khai báo `"sideEffects": false`, nên bundler có thể bỏ một import chỉ để lấy side effect.
+  - **Retention riêng**: server giữ `state.*` trong ring riêng 2000 event/phiên và ghim bản đăng ký mới nhất của mỗi store (tối đa 200), để event state dày không đẩy log và network ra, không làm hỏng "Find out why". `clear` xoá timeline, giữ store. Protocol chỉ thêm, `PROTOCOL_VERSION` giữ 1; `SessionInfo.plugins` cho UI phân biệt SDK cũ với app chưa có store.
+  - **Context qua hook React DevTools**: bọc property `onCommitFiberRoot` của `__REACT_DEVTOOLS_GLOBAL_HOOK__` đang có (React giữ object hook từ lúc react-dom nạp), chưa có hook thì cài hook tối giản. Mỗi commit chỉ duyệt cây con có `child` đổi; lần duyệt đầu chia chunk 5 ms. Chỉ đọc, không bao giờ đặt `isDisabled`; sổ sách nằm trong `WeakMap` vì fiber bị `preventExtensions` ở bản dev.
 
 ## Lộ trình
 
@@ -84,7 +91,7 @@ App (RN / web)                                 Máy dev
 **M2 — Hoàn thiện cho người dùng đầu tiên**
 
 - Script `dev` chạy watch song song, thêm bản CJS. CI (typecheck + test) và publish npm bằng changesets: đã có (xem Trạng thái).
-- Plugin state: Redux, Zustand, TanStack Query.
+- Plugin state: Redux, Zustand, TanStack Query, SWR, React Context: đã có (xem Trạng thái). RN không SDK: đang làm.
 - Stack trace qua source map (gọi `/symbolicate` của Metro).
 - Lệnh tuỳ biến từ UI xuống app (clear storage, đổi env, logout…).
 
@@ -95,10 +102,26 @@ App (RN / web)                                 Máy dev
 - MCP server để Claude Code/Cursor đọc log/network: đã có bản chỉ đọc (xem Trạng thái).
 - Đóng gói desktop app: đã có bản macOS, Windows, Linux chưa ký (xem Trạng thái). Còn ký code (Developer ID + notarize, chứng chỉ ký Windows), bản macOS Intel/universal, Windows arm64, gói deb/rpm, tự cài bản cập nhật trên macOS (Squirrel.Mac cần app ký bằng một danh tính cố định: Developer ID hoặc chứng chỉ tự ký, cần thử).
 
-## Trạng thái (16/10/2026)
+## Trạng thái (19/10/2026)
 
 **Đã xong và đã chạy thử**
 
+- Tab State (18/10/2026), sẽ có từ 0.3.0.
+  - SDK web và RN: plugin `state` bật mặc định (`state: false` để tắt). Tự thấy store từ `configureStore()` của Redux Toolkit, `devtools()` của zustand (qua shim Redux DevTools) và provider React Context (qua hook React DevTools). Phần còn lại mỗi thứ một dòng: `watchZustand`, `watchQueryClient`, `watchSWR` (thêm `swrMiddleware` khi `SWRConfig` có `provider` riêng, như trên RN), `capybaraReduxEnhancer` hoặc `connectReduxStore` cho store Redux mà shim không thấy. Chỉ chạy ở dev, không throw vào app, không làm gì khi không có `window`.
+  - UI: tab State theo mockup A (bố cục như tab Storage), store nhóm theo thư viện. Redux, Zustand, Context có timeline, diff và cây state hiện tại. TanStack Query, SWR có danh sách entry lọc theo trạng thái, data, các lệnh refetch/invalidate/reset/cancel/remove và revalidate/clear/reset; xoá hay đặt lại phải xác nhận. Context của thư viện ẩn sau nút "Show library contexts". Không có dispatch, sửa state hay time travel.
+  - MCP: 3 tool chỉ đọc `get_state`, `get_state_actions`, `get_queries`. Che thêm key tên `jwt`, `bearer`, `private key`; trong state còn che theo path, theo action type và theo key của query; JWT, `Bearer …`, khoá Stripe/GitHub/Slack/AWS trong key và lỗi của entry cũng bị che.
+  - Đã thử: test với thư viện thật (redux 5.0.1, Redux Toolkit 2.13.0, zustand 5.0.15, @tanstack/query-core 5.104.4, swr 2.5.1, React 19.2.3 trên happy-dom). Đếm event TanStack thật: observer mount và fetch đầu ra 7 event, refetch ra 2 cộng 2 mỗi observer, mỗi đợt thành đúng 1 patch.
+  - Spike React Context: cây ~10k fiber, ~200 provider, cập nhật 60 lần/giây. p95 thêm vào mỗi commit là 0,07–0,27 ms trên web (React 19.2.3 và 18.3.1, Chrome 155 headless, Apple M3 Pro) và 0,04–0,38 ms trên Hermes (Expo Go 57, RN 0.86.3, iPhone 17 simulator); lần duyệt đầu 1–3 ms trên web, 6,7–7,8 ms trên Hermes. Đạt cổng (< 1 ms mỗi commit, lần đầu < 50 ms) nên Context bật mặc định. Ca stress (cả cây render lại, 200 value đổi mỗi commit) có p95 2,2 ms trên Hermes, trong khi React tự mất ~125 ms mỗi commit. Chung sống với backend React DevTools (cùng hook với extension), React Refresh của Vite và `react-devtools-core` trên RN: Fast Refresh của Vite và Metro vẫn giữ state, không có cảnh báo.
+  - Chạy thật SDK → server → UI → MCP với `examples/web` (Vite, Chrome) và `examples/nextjs` (Next.js 16.4.2, App Router), đủ 4 thư viện: thunk có pending/fulfilled, refetch và invalidate chạy, query lỗi hiện "error 404", `capybara mcp` đọc được store, state, timeline và query. Next.js nạp `instrumentation-client` trước component import RTK (cả Turbopack lẫn `next dev --webpack`), nên `configureStore()` và `devtools()` không cần thêm code. `next build` không còn code Capybara. Lần chạy này lộ ra 3 lỗi của MCP, đã sửa.
+  - Expo: chạy `examples/expo` với SDK (`EXPO_PUBLIC_CAPYBARA_SDK=1 npx expo start`) trên Expo Go 57.0.9, iPhone 17 simulator (iOS 26.5): đủ store Redux `shop`, zustand `ui` (`devtools()`) và `counter` (`watchZustand`), TanStack `QueryClient`, SWR `cache #1` (provider + `swrMiddleware`), context `AuthProvider`; 6 context thư viện được ẩn. Lệnh TanStack (Refetch, Invalidate, Reset, Remove) và SWR (Revalidate, Clear, Reset) đều chạy; Cancel chưa thử vì cần fetch đang chạy. Trên Hermes, `set()` không đặt tên ra `anonymous` (Hermes in frame là `at anonymous` nên zustand không đoán được tên), action có tên giữ nguyên. Chạy lại không có biến môi trường: app không có SDK, session Metro hiện "State needs the SDK".
+  - Project mới (18/10/2026): một app Vite và một app Expo tạo mới, cài Capybara từ tarball đóng gói chứ không qua workspace. Mọi bước kiểm đều pass trên web (Chrome), simulator iOS và máy ảo Android `Capybara-Android-Test` (API 34): lần đầu tab State chạy trên Android.
+  - Lần chạy đó lộ ra các lỗi sau, đã sửa (19/10/2026):
+    - Expo Go 57.0.9 trên Android có `supportsMultipleDebuggers`, nhưng engine của nó không debug được qua CDP nên `Runtime.evaluate` trả `-32601`. Bridge bỏ qua lỗi này khi dò SDK, và sau 30 giây vẫn mở session "Expo Go … via Metro", kể cả khi app có SDK. UI và MCP lại chọn mặc định session mới nhất, rỗng này: không có log, Storage báo "Runtime.evaluate", Network lẫn request của app khác vì proxy inspector gửi event cho mọi target. Giờ gặp `-32601` thì bridge không mở session cho target đó và CLI in gợi ý (mỗi target một lần); lỗi tạm thời lúc app khởi động vẫn xử lý như cũ. Chạy lại `examples/expo` trên máy ảo (19/10/2026): có SDK thì hơn 30 giây sau server chỉ có session của SDK (xem qua viewer và `list_sessions` của MCP); không có SDK thì không có session nào, CLI in gợi ý đúng một lần, kể cả sau khi reload.
+    - CLI không chạy lại `adb reverse` khi thiết bị nối lại (`adb reconnect`, máy ảo khởi động lại), vì nhớ mọi serial đã làm suốt thời gian chạy, nên SDK nối qua localhost mất kết nối luôn. Giờ mỗi lần quét đọc `adb reverse --list` và đặt lại khi thiếu. Trên máy ảo, `adb reconnect` xoá rule, 6 giây sau rule có lại.
+    - MCP: câu giải thích khi không có store bỏ sót React Context. Key tên như thông tin đăng nhập che cả `null`, `undefined`, `false` và `''` (`"token": "[hidden]"` cả khi đã đăng xuất), nên AI không phân biệt được đã đăng nhập hay chưa; giờ giá trị rỗng hiện nguyên, chỉ che giá trị thật.
+    - UI: empty state của tab State gợi ý `watchSWR(SWRConfig)` cho cả React Native; phiên RN giờ thấy mẫu `<SWRConfig value={{ provider: () => new Map(), use: [swrMiddleware] }}>`.
+    - Tài liệu: mẫu gọi `init()` ngay trong `main.tsx` hay `index.ts`, mà import của file chạy trước code của nó (import hoisting) nên store bị bỏ sót không báo gì; giờ mẫu dùng file `capybara.ts` riêng, import ở dòng đầu. Điều kiện đổi thành "trước khi các module store nạp", vì `devtools()` của zustand đọc global lúc tạo store: store tạo trước `init()` cũng bị sót, `watchZustand()` lấy lại được nhưng không có tên action. Thêm `port` và `enabled` của `init()`, `anonymous` cả trên web (Vite pre-bundling làm zustand không đoán được tên), `displayName` cho context (context không tên lấy tên component render provider, cái thứ hai thành `#2`), Expo Go trên Android, và đặt tên cache SWR bằng `swrProvider`.
+  - Chưa thử: máy Android thật và iPhone thật, chưa đo Context trên Android (số đo mới có trên simulator iOS, Android tầm trung có thể chậm 2–4 lần); pages router của Next.js (mới đọc source); app React 18 thật (spike chỉ đo React 18.3.1 trong app tổng hợp); Windows; extension Redux DevTools thật (test dùng extension giả). RN không SDK: đang làm.
 - Báo bản mới (16/10/2026), sẽ có từ 0.2.0:
   - Server tra version mới nhất của CLI và hai SDK trên registry npm (registry npm đang dùng, nếu chạy qua npm) khi khởi động và mỗi 12 giờ, rồi gửi cho UI qua `ServerInfo.latest` và message `server`. Tắt bằng `--no-update-check` hoặc `CAPYBARA_NO_UPDATE_CHECK`.
   - CLI in một dòng khi npm có bản mới.
@@ -127,8 +150,8 @@ App (RN / web)                                 Máy dev
     - link tải đúng cho Mac (Safari, Chrome báo chip Intel), Windows, Linux arm64, iPhone;
     - đúng ở các trạng thái chưa có release, GitHub API lỗi và khi tắt JS;
     - không cuộn ngang ở bề rộng 390, 768, 1440px, cả sáng lẫn tối.
-- Monorepo gồm 6 package, app desktop và 3 app mẫu (web, Next.js, Expo). `npm run build`, `npm run typecheck` và `npm test` (127 test) đều pass.
-- Metro/CDP bridge chạy trong CLI và desktop: có 11 test tích hợp với Metro giả lập cho log object, request/response/body, lỗi mạng, reload, reconnect, bỏ qua app có SDK, target không hỗ trợ nhiều debugger và bắt/gỡ MMKV private. App Expo mẫu mặc định không nạp SDK. Đã chạy thử với app này trên Expo Go (iPhone 17 simulator), qua cả CLI lẫn app desktop: log có object, Date, Map/Set, Error, unhandled rejection; network `fetch` + XHR có status, header và body (cả 404); app có SDK thì bị bỏ qua đúng. Chưa thử trên máy thật.
+- Monorepo gồm 6 package, app desktop và 3 app mẫu (web, Next.js, Expo). `npm run build`, `npm run typecheck` và `npm test` (329 test) đều pass.
+- Metro/CDP bridge chạy trong CLI và desktop: có 15 test tích hợp với Metro giả lập cho log object, request/response/body, lỗi mạng, reload, reconnect, bỏ qua app có SDK, engine không debug được (Expo Go trên Android), target không hỗ trợ nhiều debugger và bắt/gỡ MMKV private. App Expo mẫu mặc định không nạp SDK. Đã chạy thử với app này trên Expo Go (iPhone 17 simulator), qua cả CLI lẫn app desktop: log có object, Date, Map/Set, Error, unhandled rejection; network `fetch` + XHR có status, header và body (cả 404); app có SDK thì bị bỏ qua đúng. Chưa thử trên máy thật.
 - Storage không SDK: đã thử trên app Expo/Hermes đang chạy trong iPhone 17 simulator, đọc được danh sách store, 2 key và giá trị được chọn. Reader hỗ trợ Metro lazy-loading của AsyncStorage và export getter ESM. Runtime hook MMKV có lease 15 giây, tự khôi phục method khi disconnect/lease hết hạn, hỗ trợ nhiều debugger cùng lúc và giữ tối đa 100 instance. V4 shadow method trên factory object vì Nitro khóa prototype; không thể bắt lại mọi instance cũ. Đọc dữ liệu qua instance gốc, không tạo store mới hay ghi key, không giữ encryption config. `test:mmkv-compat` kiểm tra source package 2.12.2/3.3.3/4.3.2 với native giả lập.
 - react-native-mmkv 4.3.2 native (Nitro 0.35.9, Expo SDK 57, RN 0.86.3, Hermes) trên simulator riêng `Capybara-MMKV-Test` (iPhone 17, iOS 26.5), với app mẫu riêng `dev.capybara.mmkvtest` chỉ có dữ liệu giả, không dùng app có sẵn của người dùng ([`packages/cli/test/native-fixture`](../packages/cli/test/native-fixture/README.md), runner `packages/cli/scripts/check-mmkv-native.mjs`). Đi qua đường thật CDP → bridge → server → lệnh Storage của viewer, 11 bước đều pass: store export, AsyncStorage, instance private tạo sau khi gắn hook (string, Unicode, JSON, số, boolean khớp với lệnh đọc có kiểu của native), key có emoji, store mã hoá, refresh thấy giá trị app vừa ghi, từ chối ghi, gỡ hook khi ngắt kết nối và app vẫn đọc/ghi bình thường. Giới hạn đã biết vẫn đúng: instance private v4 tạo trước khi gắn hook không tìm được.
 - react-native-mmkv 3.3.3 native (C++ TurboModule, MMKV lõi 2.0.0, không có Nitro) build được với Expo SDK 57 / RN 0.86.3, dù package được phát triển trên RN 0.77. Chạy trên cùng simulator với app mẫu riêng `dev.capybara.mmkv3test` ([`packages/cli/test/native-fixture-mmkv3`](../packages/cli/test/native-fixture-mmkv3/README.md)); lockfile chỉ khác fixture v4 ở MMKV và Nitro. Runner dùng chung, 12 bước đều pass, kể cả sau khi mở lại app và khi gắn lại trên cùng tiến trình JS. Các bước giống v4, thêm một bước riêng của v3: instance private tạo trước khi gắn hook chưa hiện cho tới khi app gọi một method của nó, sau đó đọc được. Ngắt kết nối thì `MMKV.prototype.getFunctionFromCache` trở về đúng hàm gốc. Sau khi sửa runner đã chạy lại fixture v4, 11 bước vẫn pass.
@@ -170,6 +193,7 @@ App (RN / web)                                 Máy dev
 - RN thuần trên iOS (mới chạy trên Android).
 - react-native-mmkv 3.x native trên Android (mới chạy 4.x).
 - Next.js phía server (log, request trong server component và route handler), nằm trong lộ trình M3.
+- State: máy Android thật (máy ảo đã chạy, xem tab State ở trên), pages router của Next.js (mới đọc source), app React 18 thật (spike chỉ đo app tổng hợp), Windows, extension Redux DevTools thật (test dùng extension giả).
 - App desktop: mở bản đóng gói trên máy Mac khác (Gatekeeper với app chưa notarize), bản Intel. Bản Windows chưa chạy trên Windows (SmartScreen, hộp hỏi của tường lửa, `adb.exe`). Bản Linux mới chạy trong Docker với Xvfb, chưa chạy trên desktop thật (GNOME/KDE, Wayland, AppArmor của Ubuntu 24.04+).
 
 **Rút ra từ lần chạy thật**: ban đầu SDK chỉ patch XHR trên RN, nên mọi request `fetch` trong app Expo đều bị bỏ sót. Đã sửa bằng cách tự nhận biết lúc `init()` (xem mục Quyết định kỹ thuật). Với app desktop, macOS cho server bind cổng 7357 dù chương trình khác đang giữ cổng đó trên loopback, nên phải kiểm tra trước (xem mục Quyết định kỹ thuật).
@@ -204,6 +228,7 @@ Khi thử web và Next.js:
 - React bản dev in "Download the React DevTools…" bằng `console.info` mỗi lần tải trang nếu chưa cài extension. SDK web không ghi câu này (tuỳ chọn `ignore` của `consolePlugin`), trình duyệt vẫn in.
 - Dev overlay của Next.js gửi `/__nextjs_original-stack-frames` mỗi khi có `console.error`, lẫn vào tab Network. SDK web giờ bỏ qua `/__nextjs_*`, như SDK React Native bỏ qua `/symbolicate`.
 - Ghi cookie trước đây không phát event nên tab Storage không tự refresh. Giờ dùng Cookie Store API ở trình duyệt có hỗ trợ (đã kiểm trên Chrome).
+- Tab State: thời gian của bản ghi là lúc SDK gửi (gom mỗi 100 ms), không phải lúc action chạy. Chrome làm chậm timer ở tab nền, nên bản ghi của tab nền đến trễ và mang giờ trễ.
 
 Khi thử lý do request lỗi:
 
@@ -211,9 +236,14 @@ Khi thử lý do request lỗi:
 - Chrome 155 vẫn cho `Access-Control-Allow-Headers: *` bao cả `Authorization`, chỉ phát DeprecationIssue; Firefox và Safari làm đúng chuẩn.
 - Từ trang https, Chrome 155 chỉ cảnh báo (vẫn gửi) request http tới IP literal nội bộ (10/8, 172.16/12, 192.168/16, 169.254/16, 100.64/10, fc00::/7, fe80::/10) và tên `.local`; host công khai, IP công khai và 198.18/15 thì chặn. Tên miền trỏ về IP nội bộ (như `*.nip.io`) vẫn bị chặn.
 
+Khi thử project mới (tab State):
+
+- Expo Go 57.0.9 trên iOS: sửa file xong, reload toàn bộ thì app hiện màn hình đỏ `Cannot find native module 'ExpoFetchModule'`, kể cả khi không có Capybara; mở nguội thì chạy bình thường. Giống lỗi reload đã gặp khi thử bridge Metro.
+- Expo Go 57.0.9 trên Android: gọi `Log.enable` thì React Native báo engine `HermesRuntime[RNBridgeless]` không hỗ trợ debug qua CDP. Mọi `Runtime.evaluate` trả `{"code":-32601,"message":"Runtime.evaluate"}` và không có event console, nên không có SDK thì không đọc được app trong Expo Go Android, dù target vẫn có `supportsMultipleDebuggers`.
+
 ## Câu hỏi còn mở
 
-- MCP: có nên thêm tool ghi (sửa storage, xoá phiên) sau cờ riêng không? Hiện chỉ đọc.
+- MCP: có nên thêm tool ghi (sửa storage, xoá phiên, refetch/invalidate query) sau cờ riêng không? Hiện chỉ đọc.
 - Gói deb/rpm cho Linux cần email người bảo trì (`author.email` hoặc `linux.maintainer`). Dùng email nào?
 - Ký code: cần Apple Developer ID (để notarize) và chứng chỉ ký cho Windows. Chưa ký thì macOS chặn lần mở đầu, còn Windows hiện cảnh báo SmartScreen.
 - License: MIT, Apache-2.0 hay đóng nguồn?

@@ -6,6 +6,7 @@ import {
   type ServerInfo,
   type ServerToViewer,
   type SessionMeta,
+  type StateCommands,
   type StorageCommands,
   type ViewerToServer,
 } from '@capybara-devtools/protocol';
@@ -60,6 +61,10 @@ export class ViewerConnection {
 
   storage<M extends keyof StorageCommands>(sessionId: string, method: M, params: StorageCommands[M]['params']): Promise<StorageCommands[M]['result']> {
     return this.request((id) => ({ t: 'command', id, sessionId, plugin: 'storage', method, params }), TIMEOUT_MS);
+  }
+
+  state<M extends keyof StateCommands>(sessionId: string, method: M, params: StateCommands[M]['params']): Promise<StateCommands[M]['result']> {
+    return this.request((id) => ({ t: 'command', id, sessionId, plugin: 'state', method, params }), TIMEOUT_MS);
   }
 
   diagnose(sessionId: string, requestId: string): Promise<NetworkDiagnosis> {

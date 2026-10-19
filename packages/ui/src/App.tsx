@@ -8,16 +8,18 @@ import type { ConnectionStatus } from './connection';
 import { statusTone } from './format';
 import { LogsPanel } from './panels/LogsPanel';
 import { NetworkPanel } from './panels/NetworkPanel';
+import { StatePanel } from './panels/StatePanel';
 import { StoragePanel } from './panels/StoragePanel';
+import { stateBadge } from './state';
 import { useStore, type SessionState } from './store';
 
-type Tab = 'logs' | 'network' | 'storage';
+type Tab = 'logs' | 'network' | 'storage' | 'state';
 const TAB_KEY = 'capybara:tab';
 
 function initialTab(): Tab {
   try {
     const saved = localStorage.getItem(TAB_KEY);
-    if (saved === 'logs' || saved === 'network' || saved === 'storage') return saved;
+    if (saved === 'logs' || saved === 'network' || saved === 'storage' || saved === 'state') return saved;
   } catch {
     // storage blocked: fall back to the default
   }
@@ -42,8 +44,10 @@ export function App() {
 
   const logs = session?.logs;
   const network = session?.network;
+  const stateSlice = session?.state;
   const errorCount = useMemo(() => logs?.filter((entry) => entry.level === 'error').length ?? 0, [logs]);
   const failedCount = useMemo(() => network?.filter((entry) => statusTone(entry) === 'error').length ?? 0, [network]);
+  const stateCount = useMemo(() => (stateSlice ? stateBadge(stateSlice) : { stores: 0, errors: 0 }), [stateSlice]);
 
   return (
     <div className="app">
@@ -64,6 +68,9 @@ export function App() {
             <TabButton active={tab === 'storage'} onClick={() => setTab('storage')}>
               Storage
             </TabButton>
+            <TabButton active={tab === 'state'} onClick={() => setTab('state')}>
+              State <Count total={stateCount.stores} alerts={stateCount.errors} />
+            </TabButton>
           </nav>
         )}
         <ConnectionBadge status={status} session={session} />
@@ -79,8 +86,10 @@ export function App() {
           <LogsPanel session={session} />
         ) : tab === 'network' ? (
           <NetworkPanel session={session} />
-        ) : (
+        ) : tab === 'storage' ? (
           <StoragePanel session={session} />
+        ) : (
+          <StatePanel session={session} />
         )}
       </main>
       <Toaster />

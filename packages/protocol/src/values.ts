@@ -1,4 +1,11 @@
-import type { SerializedValue, SpecialValue } from './index.js';
+import type {
+  SerializedValue,
+  SpecialValue,
+  StateChangePayload,
+  StateDiffOp,
+  StateLibrary,
+  StatePath,
+} from './index.js';
 
 // Reading captured values: shared by the UI and the MCP server, so both describe a value the same way.
 
@@ -217,4 +224,147 @@ export function formatBytes(bytes: number | undefined): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+// ---------------------------------------------------------------------------
+// State
+// ---------------------------------------------------------------------------
+
+const LIBRARY_TITLES: Record<string, string> = {
+  redux: 'Redux',
+  zustand: 'Zustand',
+  'tanstack-query': 'TanStack Query',
+  swr: 'SWR',
+  context: 'React Context',
+} satisfies Record<StateLibrary, string>;
+
+/** State libraries in the order stores are listed. */
+export const STATE_LIBRARIES = Object.keys(LIBRARY_TITLES) as StateLibrary[];
+
+export function libraryTitle(library: string): string {
+  return LIBRARY_TITLES[library] ?? library;
+}
+
+/** `cart.items[1]`, `byId["42"].name`; `state` for the whole state. */
+export function formatPath(path: StatePath): string {
+  let text = '';
+  for (const segment of path) {
+    if (typeof segment === 'number') {
+      text += `[${segment}]`;
+      continue;
+    }
+    const key = formatKey(segment);
+    text += key !== segment ? `[${key}]` : text ? `.${key}` : key;
+  }
+  return text || 'state';
+}
+
+/**
+ * Reads a path written the way `formatPath` writes it; `''` is the whole state. Also takes `['key']` and
+ * `[key]`. Undefined when the text is not a path.
+ */
+export function parsePath(text: string): StatePath | undefined {
+  const source = text.trim();
+  const path: StatePath = [];
+  // True where a bare name may start: at the beginning and after a dot.
+  let named = true;
+  let i = 0;
+  while (i < source.length) {
+    const char = source[i]!;
+    if (char === '[') {
+      const end = bracketEnd(source, i + 1);
+      const key = end < 0 ? undefined : bracketKey(source.slice(i + 1, end).trim());
+      if (key === undefined) return undefined;
+      path.push(key);
+      i = end + 1;
+      named = false;
+    } else if (char === '.') {
+      if (named && path.length > 0) return undefined;
+      named = true;
+      i++;
+    } else {
+      if (!named) return undefined;
+      let end = i;
+      while (end < source.length && source[end] !== '.' && source[end] !== '[') end++;
+      const name = source.slice(i, end);
+      if (name.includes(']')) return undefined;
+      path.push(name);
+      i = end;
+      named = false;
+    }
+  }
+  return named && path.length > 0 ? undefined : path;
+}
+
+/** Index of the `]` closing a bracket whose content starts at `start`, past any quoted key. */
+function bracketEnd(source: string, start: number): number {
+  let i = start;
+  while (source[i] === ' ') i++;
+  const quote = source[i];
+  if (quote === '"' || quote === "'") {
+    i++;
+    while (i < source.length && source[i] !== quote) i += source[i] === '\\' ? 2 : 1;
+    if (i >= source.length) return -1;
+  }
+  return source.indexOf(']', i);
+}
+
+function bracketKey(inner: string): string | number | undefined {
+  if (!inner) return undefined;
+  if (inner.startsWith('"')) {
+    try {
+      const key: unknown = JSON.parse(inner);
+      return typeof key === 'string' ? key : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+  if (inner.startsWith("'")) {
+    return inner.length > 1 && inner.endsWith("'") ? inner.slice(1, -1).replace(/\\(.)/g, '$1') : undefined;
+  }
+  return /^-?\d+(\.\d+)?$/.test(inner) ? Number(inner) : inner;
+}
+
+export interface OpText {
+  op: StateDiffOp['op'];
+  path: string;
+  prev?: string;
+  value?: string;
+}
+
+/** Characters kept before the first difference when both sides of a change share a long start. */
+const SHARED_CONTEXT = 7;
+
+export function formatOp(op: StateDiffOp): OpText {
+  const text: OpText = { op: op.op, path: formatPath(op.path) };
+  if (op.op === 'set' && typeof op.prev === 'string' && typeof op.value === 'string') {
+    // Long strings that differ near the end (timestamps, URLs) would otherwise show the same cut-off start twice.
+    let shared = 0;
+    while (shared < op.prev.length && op.prev[shared] === op.value[shared]) shared++;
+    const cut = shared - SHARED_CONTEXT;
+    if (cut >= 8) {
+      text.prev = preview(`…${op.prev.slice(cut)}`);
+      text.value = preview(`…${op.value.slice(cut)}`);
+      return text;
+    }
+  }
+  if (op.prev !== undefined) text.prev = preview(op.prev);
+  if (op.value !== undefined) text.value = preview(op.value);
+  return text;
+}
+
+/** The name of a change: its action, or for stores without action names, the paths it changed. */
+export function stateChangeLabel(change: Pick<StateChangePayload, 'action' | 'cause' | 'ops' | 'opCount'>): {
+  text: string;
+  system: boolean;
+} {
+  if (change.action) {
+    const type = String(change.action.type);
+    return { text: type, system: type.startsWith('@@') };
+  }
+  if (change.cause === 'init') return { text: 'initial state', system: true };
+  if (change.ops.length === 0) return { text: change.cause === 'external' ? 'external change' : 'no change', system: true };
+  const paths = change.ops.slice(0, 3).map((op) => formatPath(op.path));
+  const more = Math.max(change.opCount ?? 0, change.ops.length) - paths.length;
+  return { text: `${paths.join(', ')}${more > 0 ? ` +${more}` : ''}`, system: false };
 }

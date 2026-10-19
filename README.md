@@ -2,7 +2,7 @@
 
 # Capybara
 
-Debug React Native and web apps from one place: logs, network (including WebSockets) and storage, streamed live to a local UI.
+Debug React Native and web apps from one place: logs, network (including WebSockets), storage and state (Redux, Zustand, TanStack Query, SWR, React Context), streamed live to a local UI.
 
 **[Website](https://capybara-devtools.chanieshop.com)** · [Download](https://capybara-devtools.chanieshop.com/#download)
 
@@ -27,9 +27,10 @@ When a newer version is on npm, `npx capybara-devtools` says so when it starts, 
 
 ### React Native / Expo — no SDK needed
 
-Start Metro on the same computer, open your development app on a simulator or phone, then run `npm run desktop` or `npm start` here. Capybara discovers apps on Metro ports **8081 and 8082** and streams console logs, exceptions and network requests into the UI. The Storage tab also reads AsyncStorage and discoverable MMKV instances. No Capybara package installation or code changes in your app are needed.
+Start Metro on the same computer, open your development app on a simulator or phone, then run `npm run desktop` or `npm start` here. Capybara discovers apps on Metro ports **8081 and 8082** and streams console logs, exceptions and network requests into the UI. The Storage tab also reads AsyncStorage and discoverable MMKV instances. No Capybara package installation or code changes in your app are needed. The State tab still needs the [SDK](#state-redux-zustand-tanstack-query-swr-react-context).
 
 - Requires Hermes and **React Native 0.85 or later**, whose Metro inspector targets advertise `supportsMultipleDebuggers`. On older versions a new debugger disconnects the existing one, so Capybara skips those targets; use the SDK there. Release builds do not expose Metro's inspector.
+- **Expo Go on Android cannot be read through Metro**: its JavaScript engine does not support debugging, so Capybara opens no session for it and the CLI prints a hint once. Use the SDK or a development build there. Expo Go on iOS works.
 - Network headers, status and bodies depend on the events your React Native / Expo runtime exposes. React Native's built-in Network support starts at [0.83](https://reactnative.dev/docs/react-native-devtools#network); Expo also provides its own network interceptor. Some Expo versions do not report failed native requests, so those can remain pending. Expo's native `fetch` (`expo/fetch`) is reported only when `expo-dev-client` or Expo Go sets up Expo's network inspector; in other debug builds (seen on Android) those requests do not appear without the SDK, while XHR and axios requests still do. Missing or evicted response bodies cannot be recovered.
 - **WebSockets:** while connected, Capybara hooks the app's `WebSocket` (reporting through `Runtime.addBinding`) and records connections and messages: text up to 16 KiB per message, binary as its size. React Native dispatches socket events from JS, so sockets opened before Capybara attached, and sockets made through a constructor a library saved earlier (socket.io's engine.io does), are recorded from their next event on. Sockets of dev tools (Metro, React DevTools on 8097, Reactotron on 9090) are skipped. The hook is removed on disconnect or after an unrenewed 15-second lease.
 - Reloading creates a new session; Metro disconnects are rediscovered automatically. Requests made before the bridge connects are not replayed.
@@ -55,13 +56,25 @@ Native **react-native-mmkv 4.3.2** and **3.3.3** have been verified end to end o
 
 ### Web (React, Vite, Next.js client)
 
-Import this before the rest of your app so early logs and requests are captured:
+Call `init()` in a file of its own, and import that file on the first line of your entry file so early logs and requests are captured:
 
 ```ts
+// capybara.ts
 import { init } from '@capybara-devtools/web';
 
 if (import.meta.env.DEV) init({ appName: 'My web app' });
 ```
+
+```ts
+// main.tsx
+import './capybara';
+import { createRoot } from 'react-dom/client';
+import App from './App';
+```
+
+Called in `main.tsx` itself, `init()` would run too late: a file's imports all run before its own code, so your other modules, and the stores they create, would load first.
+
+If Capybara runs on another port (`--port`, or `CAPYBARA_PORT`), pass the same `port` to `init()`. `enabled: false` makes `init()` do nothing, to turn it off at run time; unlike the `if`, it leaves the SDK in production builds.
 
 In Next.js 15.3 or later, put it in `instrumentation-client.ts` at the project root. Next.js runs that file in the browser before your app's code, and production builds drop the call:
 
@@ -79,6 +92,86 @@ On older versions, call it at the top of a client component rendered from the ro
 - Cookie writes refresh the Storage tab automatically where the Cookie Store API exists (such as Chrome); elsewhere use Refresh.
 - `react-native-mmkv` on the web keeps values as text in localStorage under `<id>\<key>`, so they appear in **Local Storage** with their exact values. Edits made there are read by MMKV, but listeners from `addOnValueChangedListener` (and hooks built on them) are not notified. Instances that fall back to memory because localStorage is blocked are not visible.
 
+### State (Redux, Zustand, TanStack Query, SWR, React Context)
+
+With the web or React Native SDK, the **State** tab shows the app's stores, grouped by library. Redux, Zustand and React Context have a timeline of changes with their diffs, and the current state as a tree; Redux stores and zustand's `devtools()` stores also name the action behind each change. TanStack Query and SWR list their entries by status with each one's data, and buttons to refetch, invalidate, reset, cancel or remove a query, or to revalidate, clear or reset an SWR key. Apart from those buttons the tab only reads: no dispatching, editing or time travel yet. Update the CLI or the desktop app together with the SDK; an older one keeps state events in the same history as logs, which can push logs out.
+
+`init()` turns it on, and has to run before your store modules load: Redux Toolkit looks for the Redux DevTools extension once, when it is imported, and zustand's `devtools()` when it creates the store. Calling `init()` in a file of its own, imported on the first line of the entry file as shown for [the web](#web-react-vite-nextjs-client) and [React Native](#optional-react-native-sdk-storage-editing), does that. In Next.js, `instrumentation-client.ts` runs early enough (checked with the App Router of Next.js 16.4, on Turbopack and webpack). With Expo Router, give the app an entry file that imports it first:
+
+```ts
+// index.ts, with "main": "index.ts" in package.json
+import './capybara'; // the file that calls init()
+import 'expo-router/entry';
+```
+
+These show up on their own: Redux Toolkit's `configureStore()`, plain Redux stores created with `window.__REDUX_DEVTOOLS_EXTENSION__?.()`, zustand stores made with `devtools()`, and React Context providers. `init()` stands in for the Redux DevTools extension, or wraps it when it is installed, so the Redux and zustand stores report with action names; their `name` option (`devTools: { name }` in Redux Toolkit) labels them. Context is read through React DevTools' hook, from development builds of React. Contexts of libraries (react-redux, TanStack Query, React Navigation…) are hidden behind **Show library contexts**. A context is listed under its `displayName`; without one it takes the name of the component that renders its provider, and a second unnamed context there shows as `#2` (`AuthProvider #2`), so set `displayName` on your contexts (`AuthContext.displayName = 'Auth'`).
+
+The rest take one line each. These can run before or after `init()`, do nothing on the server, return a function that stops watching, and also come from `@capybara-devtools/react-native`:
+
+```ts
+import { watchQueryClient, watchSWR, watchZustand } from '@capybara-devtools/web';
+import { SWRConfig } from 'swr';
+
+if (import.meta.env.DEV) {
+  watchZustand(useCounterStore, { name: 'counter' }); // without devtools(): diffs, no action names
+  watchQueryClient(queryClient); // give each client a name when there are several
+  watchSWR(SWRConfig); // SWR's default cache
+}
+```
+
+Watch a `QueryClient` made in a component, as in Next.js, from an effect: StrictMode runs `useState` initializers twice, and the client it throws away would show up too.
+
+```tsx
+const [queryClient] = useState(() => new QueryClient());
+useEffect(() => {
+  if (process.env.NODE_ENV === 'development') return watchQueryClient(queryClient);
+}, [queryClient]);
+```
+
+An `SWRConfig` with a `provider` of its own, as React Native apps have, needs `swrMiddleware`. It also hands the State tab the `mutate` its buttons use, which `provider: swrProvider(...)` alone cannot. In Next.js, such an `SWRConfig` goes in a `'use client'` file.
+
+```tsx
+import { swrMiddleware } from '@capybara-devtools/react-native';
+
+<SWRConfig value={{ provider: () => new Map(), use: __DEV__ ? [swrMiddleware] : [] }}>
+  <App />
+</SWRConfig>
+```
+
+That cache shows as `cache #1`. To name it, make the provider with `swrProvider` as well, next to `use: [swrMiddleware]`: `provider: swrProvider(() => new Map(), { name: 'api' })`.
+
+A Redux store created before `init()`, by a Redux Toolkit imported before it, or with `devTools: false` needs the enhancer. For a store that exists already, `connectReduxStore(store)` is a best effort: actions dispatched by thunks and middleware show as "unknown action". A zustand store made with `devtools()` before `init()` is missed too; `watchZustand()` shows it, without action names.
+
+```ts
+import { capybaraReduxEnhancer } from '@capybara-devtools/web';
+
+export const store = configureStore({
+  reducer,
+  enhancers: (getDefaultEnhancers) =>
+    import.meta.env.DEV ? getDefaultEnhancers().concat(capybaraReduxEnhancer({ name: 'shop' })) : getDefaultEnhancers(),
+});
+```
+
+`init({ state: false })` turns state off. An object sets it up instead, e.g. `init({ state: { context: false } })`:
+
+- `redux: false` leaves the Redux DevTools globals alone. Redux Toolkit and `devtools()` stores then need the enhancer or `watchZustand`.
+- `context: false` turns React Context off.
+- `maxActionsPerSecond` (default 30): changes to a store beyond that are folded into its next record, marked as skipped.
+- `actionsDenylist`: action types kept off the timeline, as strings (the whole type) or regular expressions. Their changes show in the next record.
+- `sanitizeState(state, store)` and `sanitizeAction(action, store)`: only what they return leaves the app. `sanitizeState` does not apply to TanStack Query or SWR data.
+- `hideFunctions` (default true) leaves out keys that hold functions, such as zustand actions.
+
+The Redux DevTools options that hold data back (`stateSanitizer`, `actionSanitizer`, `actionsDenylist`, `actionsAllowlist`, `predicate`) apply too, given in Redux Toolkit's `devTools` or in the options of zustand's `devtools()`.
+
+Limits:
+
+- Changes are found by comparing references, so a change made in place, to the same object, is not recorded. The current state is read from the app, so it shows such a change.
+- Where the Redux DevTools extension is missing, always the case on React Native, `init()` turns zustand's `devtools()` on, and each `set` without an action name makes zustand build a stack trace to guess one. That costs time on Hermes for stores that change often, and the guess often fails, so such actions show as `anonymous`: Hermes stack traces do not name the caller, and on the web Vite's dependency pre-bundling breaks the guess (seen in Chrome). Name the actions on every platform (`set(fn, false, 'cart/add')`), set `anonymousActionType` in the `devtools()` options, or pass `state: { redux: false }`.
+- Other libraries that report through the Redux DevTools extension's `connect()`, such as Valtio's and Jotai's devtools, show under Zustand.
+- React Context: without the React DevTools extension or Fast Refresh, `init()` has to run before `react-dom` loads. At most 40 of the app's contexts and 20 of libraries' are shown. Providers of one context under one name are one store: with up to 20, its state holds each provider's value under its React key; past that, the value that changed last. Library contexts are recognized by name, and on the web also by coming from `node_modules`. React Native has no file paths, so there contexts of UI kits such as Tamagui or gluestack show as the app's own; `context: false` turns Context off.
+- SWR keys served only from `fallback` are not in the cache, so they show up once SWR fetches them.
+- React Native apps found through Metro without the SDK show no state.
+
 ### Why a request failed
 
 Browsers never tell a page why a request failed: `fetch` rejects with "Failed to fetch", and the reason (CORS, a refused connection, a blocked port) appears only in the browser's own console. Capybara explains failures in two steps:
@@ -92,7 +185,10 @@ React Native has no CORS. With the SDK, failed XHR and axios requests (and `fetc
 
 ### Optional React Native SDK (storage editing)
 
+As on [the web](#web-react-vite-nextjs-client), call `init()` in a file of its own and import it on the first line of the app's entry file:
+
 ```ts
+// capybara.ts
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { asyncStorage, init, mmkvStorage } from '@capybara-devtools/react-native';
 import { storage } from './storage'; // your react-native-mmkv instance
@@ -100,7 +196,16 @@ import { storage } from './storage'; // your react-native-mmkv instance
 if (__DEV__) init({ appName: 'My app', storage: [asyncStorage(AsyncStorage), mmkvStorage(storage)] });
 ```
 
-The SDK also works below React Native 0.85, where Metro discovery is not available. WebSockets are recorded by default; pass `network: { websocket: false }` to turn that off, or `maxMessageSize` to change the 16 KiB message preview. Socket URLs are shown as the app opened them, query string included, and some apps put an auth token there.
+```ts
+// index.ts
+import './capybara';
+import { registerRootComponent } from 'expo';
+import App from './App';
+
+registerRootComponent(App);
+```
+
+The SDK also works below React Native 0.85, where Metro discovery is not available, and it is what the [State tab](#state-redux-zustand-tanstack-query-swr-react-context) needs. WebSockets are recorded by default; pass `network: { websocket: false }` to turn that off, or `maxMessageSize` to change the 16 KiB message preview. Socket URLs are shown as the app opened them, query string included, and some apps put an auth token there.
 
 In the UI, WebSocket connections are **WS** rows in the Network tab. Select one to see its messages, filter them by text or direction, and inspect JSON payloads; socket.io frames are decoded into event names and arguments.
 
@@ -110,7 +215,7 @@ Drag the line between the request list and its details (or between the keys and 
 
 The **Appearance** button at the top right switches between System (the default, following your OS), Light and Dark. In the macOS desktop app the window's title bar follows it too.
 
-The SDK finds your machine from the Metro bundle URL, so simulators and phones on the same Wi-Fi connect without configuration. For Android devices over USB the CLI and the desktop app run `adb reverse` for you. Pass `host` to `init()` to override.
+The SDK finds your machine from the Metro bundle URL, so simulators and phones on the same Wi-Fi connect without configuration. For Android devices over USB the CLI and the desktop app run `adb reverse` for you, again whenever a device reconnects. Pass `host` to `init()` to override, and `port` when Capybara runs on another port (`--port`, or `CAPYBARA_PORT`).
 
 ## Desktop app
 
@@ -140,7 +245,7 @@ Packages land in `apps/desktop/release/`, named like `Capybara-0.1.0-win-x64.exe
 
 ## AI assistants (MCP)
 
-`capybara mcp` lets an AI assistant read and filter what Capybara records: logs, network requests, WebSocket messages and storage. It is an [MCP](https://modelcontextprotocol.io) server on stdin and stdout that reads the Capybara app or `npx capybara-devtools` already running on this computer.
+`capybara mcp` lets an AI assistant read and filter what Capybara records: logs, network requests, WebSocket messages, storage and state. It is an [MCP](https://modelcontextprotocol.io) server on stdin and stdout that reads the Capybara app or `npx capybara-devtools` already running on this computer.
 
 ```bash
 claude mcp add capybara -- npx capybara-devtools mcp    # Claude Code
@@ -161,9 +266,12 @@ For Claude Desktop, Cursor and other clients, add it to their MCP settings:
 | `diagnose_request` | Why a request from a web page failed, the same check as **Find out why** |
 | `get_websocket` | The messages of one WebSocket |
 | `get_storage` | The app's stores, their keys, or one value |
+| `get_state` | The app's state stores with their ids and latest change, or one store's current state, whole or at a `path` such as `cart.items[0]` |
+| `get_state_actions` | Changes to the stores, newest last: the action and the paths it changed, with skipped and missed changes marked; one change in full by `seq`. Works after the app disconnects |
+| `get_queries` | TanStack Query and SWR entries, filtered by status (`error`, `pending`, `success`, `fetching`, `stale`) or key; one entry's data by `key` |
 
 - The tools only read. `diagnose_request` sends the request's preflight and, for GET and HEAD, the request itself again from this computer, without the app's credentials.
-- What the tools return goes to the AI model. Values that look like credentials are replaced with `[hidden]`: Authorization and cookie headers, JSON keys and query parameters such as `token` or `password`, and storage keys such as `authToken`. Pass `--show-secrets` to turn that off.
+- What the tools return goes to the AI model. Values that look like credentials are replaced with `[hidden]`: Authorization and cookie headers, JSON keys and query parameters such as `token`, `password`, `jwt` or `privateKey`, and storage keys such as `authToken`. In state, so are values at a path through such a key, the rest of an action whose type names one (`auth/setToken`), and the data of a query or SWR key named like one. JWTs, `Bearer …` values and Stripe, GitHub, Slack and AWS keys are hidden in the keys and errors of queries and SWR entries. Empty values (`null`, `undefined`, `false`, `''`) are shown as they are, so a signed-out app reads differently from a signed-in one. A credential under an ordinary name still reaches the model, as in storage. Pass `--show-secrets` to turn that off.
 - Lists return the newest 50 entries by default; pass `after` with the last `seq` to get only newer ones. Without a session id, the tools read the newest connected app.
 - Pass `--port` when Capybara runs on another port.
 
@@ -172,10 +280,10 @@ For Claude Desktop, Cursor and other clients, add it to their MCP settings:
 ```bash
 npm run example:web     # Vite app with a mock API, http://localhost:5173
 npm run example:nextjs  # Next.js App Router with a route handler, http://localhost:3005
-npm run example:expo    # Expo Go; no Capybara SDK loaded, uses Metro discovery
+npm run example:expo    # Expo Go; no Capybara SDK unless EXPO_PUBLIC_CAPYBARA_SDK=1
 ```
 
-The Expo example's AsyncStorage can be read through Metro without loading the Capybara SDK. To test storage editing, add `import './capybara';` as the first import in `examples/expo/index.ts`, then reload the app.
+Each example has a store of each state library and a React Context, with buttons that change them. The Expo example loads no Capybara SDK by default, so it shows what Capybara reads through Metro, AsyncStorage included. Start it with `EXPO_PUBLIC_CAPYBARA_SDK=1 npm run example:expo` to load the SDK, for storage editing and the State tab.
 
 ## Packages
 
@@ -184,7 +292,7 @@ The Expo example's AsyncStorage can be read through Metro without loading the Ca
 | `capybara-devtools` | CLI: local server and UI (the command is `capybara`) |
 | `@capybara-devtools/web` | Browser SDK |
 | `@capybara-devtools/react-native` | React Native SDK |
-| `@capybara-devtools/core` | Client runtime and built-in plugins (console, network, storage) |
+| `@capybara-devtools/core` | Client runtime and built-in plugins (console, network, storage, state) |
 | `@capybara-devtools/protocol` | Wire protocol types |
 
 ## Development

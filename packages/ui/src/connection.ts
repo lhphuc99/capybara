@@ -4,6 +4,7 @@ import {
   type CommandResult,
   type NetworkDiagnosis,
   type ServerToViewer,
+  type StateCommands,
   type StorageCommands,
   type ViewerToServer,
 } from '@capybara-devtools/protocol';
@@ -102,6 +103,14 @@ export function storageCommand<M extends keyof StorageCommands>(
   params: StorageCommands[M]['params'],
 ): Promise<StorageCommands[M]['result']> {
   return command(sessionId, 'storage', method, params);
+}
+
+export function stateCommand<M extends keyof StateCommands>(
+  sessionId: string,
+  method: M,
+  params: StateCommands[M]['params'],
+): Promise<StateCommands[M]['result']> {
+  return command(sessionId, 'state', method, params);
 }
 
 function settle(result: CommandResult): void {

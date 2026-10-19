@@ -1,15 +1,37 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, useColorScheme, View } from 'react-native';
-
-const API = 'https://jsonplaceholder.typicode.com';
+import { useSelector } from 'react-redux';
+import useSWR, { useSWRConfig } from 'swr';
+import { Providers, useAuth } from './providers';
+import {
+  addItem,
+  API,
+  clearCart,
+  fetchUsers,
+  postJson,
+  store,
+  useCounterStore,
+  userKey,
+  userQuery,
+  usersQuery,
+  useUiStore,
+  type RootState,
+  type User,
+} from './state';
 
 interface Action {
   label: string;
   run: () => unknown;
 }
 
-const groups: Array<{ title: string; actions: Action[] }> = [
+interface Group {
+  title: string;
+  actions: Action[];
+}
+
+const groups: Group[] = [
   {
     title: 'Logs',
     actions: [
@@ -99,9 +121,18 @@ const groups: Array<{ title: string; actions: Action[] }> = [
 ];
 
 export default function App() {
+  return (
+    <Providers>
+      <Examples />
+    </Providers>
+  );
+}
+
+function Examples() {
   const dark = useColorScheme() === 'dark';
   const [status, setStatus] = useState('Tap a button and watch it show up in Capybara.');
   const colors = dark ? darkColors : lightColors;
+  const stateGroups = useStateGroups();
 
   const run = async (action: Action) => {
     try {
@@ -118,7 +149,7 @@ export default function App() {
       <Text style={[styles.subtitle, { color: colors.muted }]}>
         Run `npm start` in the repo, then open localhost:7357 on your computer.
       </Text>
-      {groups.map((group) => (
+      {[...groups, ...stateGroups].map((group) => (
         <View key={group.title} style={styles.group}>
           <Text style={[styles.groupTitle, { color: colors.muted }]}>{group.title.toUpperCase()}</Text>
           {group.actions.map((action) => (
@@ -136,8 +167,105 @@ export default function App() {
           ))}
         </View>
       ))}
+      <LiveState color={colors.muted} />
       <Text style={[styles.status, { color: colors.muted, borderColor: colors.border }]}>{status}</Text>
     </ScrollView>
+  );
+}
+
+/** Buttons that use the query client, SWR cache and context the providers hold. */
+function useStateGroups(): Group[] {
+  const queryClient = useQueryClient();
+  const { mutate } = useSWRConfig();
+  const auth = useAuth();
+  const createPost = useMutation({
+    mutationKey: ['createPost'],
+    mutationFn: (title: string) => postJson<{ id: number }>(`${API}/posts`, { title, body: 'From Capybara', userId: 1 }),
+  });
+
+  return [
+    {
+      title: 'State',
+      actions: [
+        {
+          label: 'Add tea to the cart (Redux)',
+          run: () => {
+            store.dispatch(addItem({ sku: 'tea-01', price: 4.5 }));
+            return `cart total ${store.getState().cart.total}`;
+          },
+        },
+        { label: 'Clear the cart (Redux)', run: () => void store.dispatch(clearCart()) },
+        {
+          label: 'Load users with a thunk (Redux)',
+          run: () =>
+            store
+              .dispatch(fetchUsers())
+              .unwrap()
+              .then((list) => `${list.length} users`),
+        },
+        {
+          label: 'Toggle the theme (zustand devtools)',
+          run: () => {
+            useUiStore.getState().toggleTheme();
+            return `theme ${useUiStore.getState().theme}`;
+          },
+        },
+        {
+          label: 'Count up (zustand + watchZustand)',
+          run: () => {
+            useCounterStore.getState().increment();
+            return `count ${useCounterStore.getState().count}`;
+          },
+        },
+        {
+          label: 'Refetch users (TanStack Query)',
+          run: () => queryClient.refetchQueries({ queryKey: usersQuery.queryKey, exact: true }).then(() => 'refetched'),
+        },
+        { label: 'Fetch a missing user (404)', run: () => queryClient.fetchQuery(userQuery(99)) },
+        {
+          label: 'Create a post (TanStack mutation)',
+          run: () => createPost.mutateAsync('Hello').then((post) => `post ${post.id}`),
+        },
+        { label: 'Revalidate user 1 (SWR)', run: () => mutate(userKey(1)).then(() => 'revalidated') },
+      ],
+    },
+    {
+      title: 'React Context',
+      actions: [
+        {
+          label: 'Sign in (AuthContext)',
+          run: () => {
+            auth.signIn();
+            return 'signed in as Ada Lovelace';
+          },
+        },
+        {
+          label: 'Sign out (AuthContext)',
+          run: () => {
+            auth.signOut();
+            return 'signed out';
+          },
+        },
+      ],
+    },
+  ];
+}
+
+/** What the stores hold now. Mounting the hooks also gives the users query an observer and SWR a hook to revalidate. */
+function LiveState({ color }: { color: string }) {
+  const cart = useSelector((state: RootState) => state.cart);
+  const theme = useUiStore((state) => state.theme);
+  const count = useCounterStore((state) => state.count);
+  const users = useQuery(usersQuery);
+  const user = useSWR<User>(userKey(1));
+  const { user: signedIn } = useAuth();
+
+  return (
+    <Text style={[styles.live, { color }]}>
+      cart: {cart.items.length} items, {cart.total} · theme: {theme} · count: {count} · users query:{' '}
+      {users.data ? users.data.length : users.status} · SWR user 1: {user.data?.name ?? (user.error ? 'error' : '…')} · auth:{' '}
+      {signedIn?.name ?? 'signed out'}
+    </Text>
   );
 }
 
@@ -152,5 +280,6 @@ const styles = StyleSheet.create({
   groupTitle: { fontSize: 12, fontWeight: '600', letterSpacing: 0.6 },
   button: { paddingVertical: 12, paddingHorizontal: 14, borderWidth: 1, borderRadius: 10 },
   buttonText: { fontSize: 15 },
-  status: { marginTop: 28, padding: 12, borderWidth: 1, borderStyle: 'dashed', borderRadius: 10, fontSize: 13 },
+  live: { marginTop: 28, fontSize: 13 },
+  status: { marginTop: 12, padding: 12, borderWidth: 1, borderStyle: 'dashed', borderRadius: 10, fontSize: 13 },
 });

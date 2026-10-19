@@ -3,10 +3,12 @@ import {
   createClient,
   getActiveClient,
   networkPlugin,
+  statePlugin,
   storagePlugin,
   type CapybaraClient,
   type NetworkPluginOptions,
   type Plugin,
+  type StatePluginOptions,
   type StorageAdapter,
 } from '@capybara-devtools/core';
 import { CLIENT_PATH, DEFAULT_PORT } from '@capybara-devtools/protocol';
@@ -25,6 +27,7 @@ export interface InitOptions {
   appName?: string;
   /** Machine running `capybara`. Defaults to the hostname the page was loaded from. */
   host?: string;
+  /** Port the Capybara server listens on, as set by `capybara --port` or `CAPYBARA_PORT`. Default 7357. */
   port?: number;
   /** Pass false to skip setup, e.g. `enabled: import.meta.env.DEV`. */
   enabled?: boolean;
@@ -33,6 +36,8 @@ export interface InitOptions {
   network?: boolean | NetworkPluginOptions;
   /** `false` turns storage off; an array adds adapters next to localStorage, sessionStorage and cookies. */
   storage?: boolean | StorageAdapter[];
+  /** Show the app's Redux, Zustand, TanStack Query and SWR stores, and its React Context values. Default true. */
+  state?: boolean | StatePluginOptions;
   plugins?: Plugin[];
 }
 
@@ -55,6 +60,7 @@ export function init(options: InitOptions = {}): CapybaraClient | undefined {
     const extra = Array.isArray(options.storage) ? options.storage : [];
     plugins.push(storagePlugin([...defaultStorages(), ...extra]));
   }
+  if (options.state !== false) plugins.push(statePlugin(typeof options.state === 'object' ? options.state : {}));
   plugins.push(...(options.plugins ?? []));
 
   const host = options.host ?? (window.location.hostname || 'localhost');
@@ -98,6 +104,31 @@ function formatHost(host: string): string {
   return host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
 }
 
-export { getActiveClient } from '@capybara-devtools/core';
-export type { CapybaraClient, NetworkPluginOptions, Plugin, StorageAdapter } from '@capybara-devtools/core';
+export {
+  capybaraReduxEnhancer,
+  connectReduxStore,
+  getActiveClient,
+  swrMiddleware,
+  swrProvider,
+  watchQueryClient,
+  watchSWR,
+  watchZustand,
+} from '@capybara-devtools/core';
+export type {
+  CapybaraClient,
+  NetworkPluginOptions,
+  Plugin,
+  QueryClientLike,
+  ReduxStoreEnhancer,
+  ReduxStoreLike,
+  ReduxStoreOptions,
+  StatePluginOptions,
+  StorageAdapter,
+  SWRCacheLike,
+  SWRHandle,
+  WatchQueryClientOptions,
+  WatchSWROptions,
+  WatchZustandOptions,
+  ZustandStoreLike,
+} from '@capybara-devtools/core';
 export { cookieStorage, webStorage } from './storage.js';

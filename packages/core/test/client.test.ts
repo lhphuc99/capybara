@@ -80,6 +80,12 @@ describe('createClient', () => {
     expect(client.connected).toBe(true);
   });
 
+  it('names its plugins in the hello', () => {
+    const { sockets } = setup([{ name: 'network' }, { name: 'state' }]);
+    sockets[0]!.open();
+    expect(sockets[0]!.sent[0]).toMatchObject({ t: 'hello', session: { plugins: ['network', 'state'] } });
+  });
+
   it('after a reconnect resends only what the server is missing', () => {
     const { client, sockets } = setup();
     sockets[0]!.open();
