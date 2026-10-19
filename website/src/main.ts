@@ -1,4 +1,5 @@
 import { NPM_PUBLISHED, REPO, REPO_URL } from './config';
+import { setUpLightbox } from './lightbox';
 import {
   archFromHints,
   detectPlatform,
@@ -152,6 +153,7 @@ function setUpCopyButtons() {
 
 showPlatform();
 setUpCopyButtons();
+setUpLightbox();
 const release = await loadRelease();
 if (release !== undefined) showRelease(release);
 
