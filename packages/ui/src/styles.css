@@ -293,6 +293,97 @@ code {
   flex: none;
 }
 
+.remote {
+  position: relative;
+  flex: none;
+}
+
+.remote-panel {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 6px);
+  right: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  width: min(380px, calc(100vw - 24px));
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+}
+
+.remote-title {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.remote-panel p {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.remote-panel p.remote-note {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.remote-note.centered {
+  text-align: center;
+}
+
+.remote-panel p code {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+
+.remote-urls {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.remote-urls li,
+.remote-command {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 4px 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-subtle);
+}
+
+/* Wrapped rather than cut: the whole address or command has to be typed or read. */
+.remote-urls code,
+.remote-command code {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  background: none;
+  font-size: 12px;
+  overflow-wrap: break-word;
+}
+
+.remote-qr {
+  justify-self: center;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.remote-qr svg {
+  display: block;
+}
+
 .appearance-menu {
   position: absolute;
   z-index: 20;

@@ -52,17 +52,21 @@ const lan = Object.values(networkInterfaces())
   .flat()
   .find((entry) => entry?.family === 'IPv4' && !entry.internal)?.address;
 
-/** Status of a plain HTTP request for the UI, `options` as for `http.get`. */
-function statusOf(options: http.RequestOptions = {}) {
-  return new Promise<number>((resolve, reject) => {
+/** Status and body of a plain HTTP request for the UI, `options` as for `http.get`. */
+function get(options: http.RequestOptions = {}) {
+  return new Promise<{ status: number; body: string }>((resolve, reject) => {
     http
       .get({ host: '127.0.0.1', port, path: '/', ...options }, (res) => {
-        res.resume();
-        resolve(res.statusCode ?? 0);
+        let body = '';
+        res.on('data', (chunk) => (body += chunk));
+        res.on('end', () => resolve({ status: res.statusCode ?? 0, body }));
       })
       .on('error', reject);
   });
 }
+
+const statusOf = async (options?: http.RequestOptions) => (await get(options)).status;
+const bodyOf = async (options?: http.RequestOptions) => (await get(options)).body;
 
 const session = (id = 'app-1') => ({
   id,
@@ -386,12 +390,18 @@ describe('access control', () => {
 
   // Another device, as the server sees it: a peer at this machine's LAN address, on loopback.
   it.skipIf(!lan)('shows the UI and what apps sent only to this machine, while apps connect from anywhere', async () => {
-    await start();
+    const hints: string[] = [];
+    await start({ onHint: (hint) => hints.push(hint) });
     const elsewhere = { localAddress: lan };
     await expect(connect('/viewer', { origin: `http://127.0.0.1:${port}` }, elsewhere).opened).rejects.toThrow('HTTP 403');
     expect(await statusOf(elsewhere)).toBe(403);
     await expect(connect('/client', {}, elsewhere).opened).resolves.toBeUndefined();
     expect(await statusOf()).toBe(200);
+
+    // The device is told how to get in, and the terminal once which device was turned away.
+    expect(await bodyOf(elsewhere)).toContain('--remote-ui');
+    expect(hints).toEqual([expect.stringContaining(`${lan} was turned away`)]);
+    expect(hints[0]).toContain('--remote-ui');
   });
 
   it.skipIf(!lan)('lets other devices open the UI with remoteUi', async () => {
@@ -421,8 +431,15 @@ describe('addresses for phones', () => {
     await start();
     const ui = viewer();
     await ui.opened;
-    expect((await ui.next((m) => m.t === 'init')).server.addresses).toEqual([]);
+    expect((await ui.next((m) => m.t === 'init')).server).toMatchObject({ addresses: [], remoteUi: false });
     expect(reachableAddresses('::1')).toEqual([]);
+  });
+
+  it('tells the UI whether other devices may open it, so it offers a QR code or the flag', async () => {
+    await start({ remoteUi: true });
+    const ui = viewer();
+    await ui.opened;
+    expect((await ui.next((m) => m.t === 'init')).server.remoteUi).toBe(true);
   });
 
   it('lists the LAN addresses on all interfaces, or the one address it listens on', () => {

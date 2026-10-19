@@ -19,8 +19,8 @@ import {
 } from '@capybara-devtools/protocol';
 import { WebSocket, WebSocketServer, type RawData } from 'ws';
 import { diagnoseRequest } from './diagnose.js';
-import { isAllowedHost, isAllowedViewerOrigin, isLocalConnection, isLoopbackAddress } from './security.js';
-import { serveStatic } from './static.js';
+import { isAllowedHost, isAllowedViewerOrigin, isLocalConnection, isLoopbackAddress, unmapped } from './security.js';
+import { refuseRemote, serveStatic } from './static.js';
 import { hasBundleFrames, symbolicateEvents } from './symbolicate.js';
 
 export { reverseAndroidPorts } from './adb.js';
@@ -41,6 +41,8 @@ export interface ServerOptions {
    * apps send, tokens included. Default false: only this machine; apps connect from anywhere either way.
    */
   remoteUi?: boolean;
+  /** Told once per device that was refused the UI, with how to let it in. */
+  onHint?: (message: string) => void;
   /** Disconnected sessions beyond this are dropped, oldest first. Default 20. */
   maxSessions?: number;
   /** Default 5000. `state.*` events are kept apart; see `maxStateEvents`. */
@@ -114,6 +116,17 @@ export function createServer(options: ServerOptions): CapybaraServer {
   const closing = new AbortController();
 
   const mayView = (req: http.IncomingMessage) => options.remoteUi === true || isLocalConnection(req.socket);
+  const hinted = new Set<string>();
+  // Whoever tried probably sits at this computer too, and may not know about --remote-ui.
+  const refused = (req: http.IncomingMessage) => {
+    const address = unmapped(req.socket.remoteAddress) ?? 'A device';
+    if (hinted.has(address)) return;
+    hinted.add(address);
+    options.onHint?.(
+      `${address} was turned away: only this computer can open the UI or read it with capybara mcp. ` +
+        'Restart with --remote-ui to let other devices in; they then see everything apps send, tokens included.',
+    );
+  };
 
   const httpServer = http.createServer((req, res) => {
     if (!isAllowedHost(req.headers.host)) {
@@ -121,9 +134,8 @@ export function createServer(options: ServerOptions): CapybaraServer {
       return;
     }
     if (!mayView(req)) {
-      res
-        .writeHead(403, { 'content-type': 'text/plain' })
-        .end('Capybara shows its UI only on the computer it runs on. Start it with --remote-ui to open it from other devices.');
+      refused(req);
+      refuseRemote(res);
       return;
     }
     serveStatic(req, res, options.uiDir);
@@ -143,6 +155,7 @@ export function createServer(options: ServerOptions): CapybaraServer {
     ) {
       wss.handleUpgrade(req, socket, head, acceptViewer);
     } else {
+      if (path === VIEWER_PATH && !mayView(req)) refused(req);
       socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
     }
   });
@@ -185,7 +198,13 @@ export function createServer(options: ServerOptions): CapybaraServer {
   const history = (s: Session): CapybaraEvent[] =>
     [...s.events, ...s.state.stores.values(), ...s.state.events].sort((a, b) => a.seq - b.seq);
 
-  const serverInfo = (): ServerInfo => ({ version: options.version ?? '0.0.0', port, addresses: reachableAddresses(bound), latest });
+  const serverInfo = (): ServerInfo => ({
+    version: options.version ?? '0.0.0',
+    port,
+    addresses: reachableAddresses(bound),
+    remoteUi: options.remoteUi === true,
+    latest,
+  });
 
   const refreshLatest = async () => {
     const found = await options.latestVersions?.().catch(() => undefined);

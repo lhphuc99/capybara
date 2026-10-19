@@ -23,7 +23,7 @@ npm start          # UI at http://localhost:7357
 npm run desktop    # or the same in a desktop app, see below
 ```
 
-The UI opens only on the computer Capybara runs on, while apps connect from any device on your network. To open it from another device, start Capybara with `--remote-ui`; that device then sees everything apps send, tokens included.
+The UI opens only on the computer Capybara runs on, while apps connect from any device on your network. To open it from another device, start Capybara with `--remote-ui`, or set `CAPYBARA_REMOTE_UI=1` (the desktop app reads it too); that device then sees everything apps send, tokens included. A device that is turned away gets a page saying so, and the CLI prints its address. The device button at the top right of the UI shows the address to copy and a QR code to scan with a phone or tablet, or the flag to restart with.
 
 An AI assistant can add the SDK to your app for you: see [Set up Capybara with an AI assistant](#set-up-capybara-with-an-ai-assistant).
 
@@ -238,7 +238,7 @@ npm run desktop:package:all      # all three
 
 Packages land in `apps/desktop/release/`, named like `Capybara-0.1.0-win-x64.exe`. A Mac builds all three without Wine or Docker; the macOS package can only be built on a Mac.
 
-- Apps connect exactly as they do to the CLI, on port 7357. Set `CAPYBARA_PORT` to use another port.
+- Apps connect exactly as they do to the CLI, on port 7357. Set `CAPYBARA_PORT` to use another port, and `CAPYBARA_REMOTE_UI=1` to let other devices open the UI.
 - If `npx capybara-devtools` is already running, the window shows that server, and the app takes over the port once the CLI stops. If another program holds the port, the app says so and lets you try again.
 - On macOS, closing the window keeps the server running in the Dock. Quit with ⌘Q. On Windows and Linux, closing the window quits.
 - No build is signed for distribution. On another Mac the first launch is blocked until you allow it in System Settings → Privacy & Security. On Windows, SmartScreen warns about an unknown publisher: choose More info → Run anyway.

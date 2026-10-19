@@ -16,7 +16,7 @@ const HELP = `Usage: capybara [options]
 Options:
   -p, --port <port>         Port for the UI and app connections (default ${DEFAULT_PORT}, or $CAPYBARA_PORT)
       --host <address>      Address to bind (default: all interfaces)
-      --remote-ui           Let other devices open the UI, which shows everything apps send, tokens included
+      --remote-ui           Let other devices open the UI, which shows everything apps send, tokens included (or set $CAPYBARA_REMOTE_UI=1)
       --no-open             Don't open the UI in a browser
       --allow-origin <url>  Extra origin allowed to open the UI socket, repeatable
       --metro-port <port>   Metro dev server to read React Native apps from, repeatable (default ${DEFAULT_METRO_PORTS.join(', ')})
@@ -95,13 +95,15 @@ const checkLatest = async () => {
   return latest;
 };
 
+const remoteUi = values['remote-ui'] || process.env.CAPYBARA_REMOTE_UI === '1';
 const uiDir = fileURLToPath(new URL('./ui/', import.meta.url));
 const server = createServer({
   port,
   host: values.host,
   uiDir: existsSync(uiDir) ? uiDir : undefined,
   allowedOrigins: values['allow-origin'] ?? [],
-  remoteUi: values['remote-ui'],
+  remoteUi,
+  onHint: (hint) => console.log(`  ${hint}\n`),
   version,
   latestVersions: values['update-check'] && !process.env.CAPYBARA_NO_UPDATE_CHECK ? checkLatest : undefined,
 });
@@ -162,8 +164,12 @@ function hostOf(address: string): string {
 
 function printBanner(actualPort: number, address: string) {
   const lines = ['', `  Capybara ${version}`, '', `  UI        http://${hostOf(address)}:${actualPort}`];
-  if (values['remote-ui']) {
-    for (const lan of reachableAddresses(address)) lines.push(`  Network   http://${lan}:${actualPort}`);
+  const reachable = reachableAddresses(address);
+  if (remoteUi) {
+    for (const lan of reachable) lines.push(`  Network   http://${lan}:${actualPort}`);
+  } else if (reachable.length > 0) {
+    // As Vite says "use --host to expose": the flag is easy to miss in --help.
+    lines.push('  Network   use --remote-ui to open the UI on other devices');
   }
   if (metroPorts.length > 0) {
     const ports = metroPorts.map((p) => `localhost:${p}`).join(', ');

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { AppearanceMenu } from './components/AppearanceMenu';
 import { EmptyState } from './components/EmptyState';
+import { RemoteAccess } from './components/RemoteAccess';
 import { SessionPicker } from './components/SessionPicker';
 import { Toaster } from './components/Toaster';
 import { UpdateBanner } from './components/UpdateBanner';
@@ -74,6 +75,7 @@ export function App() {
           </nav>
         )}
         <ConnectionBadge status={status} session={session} />
+        <RemoteAccess />
         <AppearanceMenu />
       </header>
       <main className="main">

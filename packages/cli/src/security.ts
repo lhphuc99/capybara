@@ -21,7 +21,7 @@ export function isAllowedHost(hostHeader: string | undefined): boolean {
 }
 
 /** A dual-stack server sees IPv4 peers as `::ffff:127.0.0.1`. */
-function unmapped(address: string | undefined): string | undefined {
+export function unmapped(address: string | undefined): string | undefined {
   return address?.startsWith('::ffff:') && isIPv4(address.slice(7)) ? address.slice(7) : address;
 }
 

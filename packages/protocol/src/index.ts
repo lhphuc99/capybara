@@ -382,8 +382,10 @@ export interface SessionMeta {
 export interface ServerInfo {
   version: string;
   port: number;
-  /** Non-internal IPv4 addresses of the machine running the server. */
+  /** Where phones on the network reach the server: its non-internal IPv4 addresses, none when it listens on loopback. */
   addresses: string[];
+  /** Other devices may open the UI at those addresses (`--remote-ui`). Missing from older servers. */
+  remoteUi?: boolean;
   /** Newest versions on npm, once the server has looked them up. Missing when the check is off or failed. */
   latest?: LatestVersions;
 }

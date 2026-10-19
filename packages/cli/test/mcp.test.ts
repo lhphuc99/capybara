@@ -560,6 +560,19 @@ describe('capybara mcp', () => {
     expect(result.text).toContain(`Capybara is not running on 127.0.0.1:${free}`);
   });
 
+  it('says that Capybara on another computer has to let it in, rather than that it is not running', async () => {
+    // As Capybara answers a viewer from another computer when it runs without --remote-ui.
+    const refusing = http.createServer();
+    refusing.on('upgrade', (_req, socket) => socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n'));
+    await new Promise<void>((resolve) => refusing.listen(0, '127.0.0.1', resolve));
+    closers.push(() => new Promise((resolve) => refusing.close(resolve)));
+    const { call } = await connect({ port: (refusing.address() as AddressInfo).port });
+    const result = await call('get_logs');
+    expect(result.isError).toBe(true);
+    expect(result.text).toContain('refused the connection');
+    expect(result.text).toContain('--remote-ui');
+  });
+
   it('says how to add Capybara to an app, without Capybara running', async () => {
     const closed = http.createServer();
     await new Promise<void>((resolve) => closed.listen(0, '127.0.0.1', resolve));
