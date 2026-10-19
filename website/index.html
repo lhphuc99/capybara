@@ -6,7 +6,7 @@
     <title>Capybara · Debug React Native and web apps from one place</title>
     <meta
       name="description"
-      content="Debug React Native and web apps from one place: logs, network (including WebSockets) and storage, streamed live to a local UI. Free and open source for macOS, Windows and Linux."
+      content="Debug React Native and web apps from one place: logs, network (including WebSockets), storage and state from Redux, Zustand, TanStack Query, SWR and React Context, streamed live to a local UI. Free and open source for macOS, Windows and Linux."
     />
     <meta name="color-scheme" content="light dark" />
     <link rel="icon" type="image/svg+xml" href="./src/assets/logo.svg" />
@@ -16,7 +16,7 @@
     <meta property="og:title" content="Capybara" />
     <meta
       property="og:description"
-      content="Debug React Native and web apps from one place: logs, network (including WebSockets) and storage, streamed live to a local UI."
+      content="Debug React Native and web apps from one place: logs, network (including WebSockets), storage and app state, streamed live to a local UI."
     />
     <meta property="og:image" content="https://capybara-devtools.chanieshop.com/og.png" />
     <meta name="twitter:card" content="summary_large_image" />
@@ -51,8 +51,8 @@
             <p class="eyebrow">Free and open source · macOS, Windows, Linux</p>
             <h1>Debug React Native and web apps from one place</h1>
             <p class="lead">
-              Logs, network (including WebSockets) and storage, streamed live from your app to a local UI. React Native 0.85 and
-              later needs no SDK.
+              Logs, network (including WebSockets), storage, and state from Redux, Zustand, TanStack Query, SWR and React Context,
+              streamed live from your app to a local UI. On React Native 0.85 and later, logs, network and storage need no SDK.
             </p>
             <div class="actions">
               <a class="button primary" id="hero-download" href="#download">Download</a>
@@ -113,6 +113,33 @@
                     height="620"
                     loading="lazy"
                     alt="A failed request explained: blocked by CORS because the response has no Access-Control-Allow-Origin header."
+                  />
+                </picture>
+              </figure>
+            </article>
+
+            <article class="showcase-row">
+              <div class="showcase-text">
+                <h3>See your app's state, change by change</h3>
+                <p>
+                  Redux, Zustand, TanStack Query, SWR and React Context in one tab: every action with what it changed, the current
+                  state, and query caches you can refetch or invalidate. Redux Toolkit, zustand's <code>devtools()</code> and
+                  Context need no extra code.
+                </p>
+              </div>
+              <figure class="window">
+                <picture>
+                  <source
+                    media="(prefers-color-scheme: dark)"
+                    srcset="./src/assets/screenshots/state-dark.webp 1x, ./src/assets/screenshots/state-dark@2x.webp 2x"
+                  />
+                  <img
+                    src="./src/assets/screenshots/state-light.webp"
+                    srcset="./src/assets/screenshots/state-light@2x.webp 2x"
+                    width="1280"
+                    height="620"
+                    loading="lazy"
+                    alt="The State tab: a Redux store's actions, and what the selected cart/addItem action changed."
                   />
                 </picture>
               </figure>
@@ -183,8 +210,8 @@
             <article class="feature">
               <h3>Ask your AI assistant</h3>
               <p>
-                Capybara's MCP server lets Claude Code, Cursor and other MCP clients read and filter what it recorded, with
-                credentials hidden.
+                Capybara's MCP server lets Claude Code, Cursor and other MCP clients read and filter logs, requests, storage and
+                state, with credentials hidden.
               </p>
             </article>
           </div>
@@ -226,7 +253,10 @@
                   <h3>Web apps</h3>
                   <span class="tag npm-soon">Coming to npm</span>
                 </div>
-                <p>Install the SDK and call <code>init()</code> before the rest of your app. In Next.js, put it in <code>instrumentation-client.ts</code>.</p>
+                <p>
+                  Install the SDK and call <code>init()</code> in a file your app imports first, so it runs before your stores load.
+                  In Next.js, put it in <code>instrumentation-client.ts</code>.
+                </p>
               </div>
               <div class="step-body">
                 <div class="code-block">
@@ -234,7 +264,8 @@
                   <button type="button" class="copy-button" data-copy>Copy</button>
                 </div>
                 <div class="code-block">
-                  <pre><code>import { init } from '@capybara-devtools/web';
+                  <pre><code>// src/capybara.ts, the first import of main.tsx
+import { init } from '@capybara-devtools/web';
 
 if (import.meta.env.DEV) init({ appName: 'My web app' });</code></pre>
                   <button type="button" class="copy-button" data-copy>Copy</button>
@@ -258,8 +289,8 @@ if (import.meta.env.DEV) init({ appName: 'My web app' });</code></pre>
             </article>
           </div>
           <p class="note centered">
-            Older React Native, or want to edit storage from Capybara? Add <code>@capybara-devtools/react-native</code>; the
-            <a href="https://github.com/lhphuc99/capybara#readme">README</a> shows how.
+            Older React Native, editing storage, or state in a React Native app? Add <code>@capybara-devtools/react-native</code>;
+            the <a href="https://github.com/lhphuc99/capybara#readme">README</a> shows how.
             <span class="npm-soon-note">Until the packages are on npm, <a href="https://github.com/lhphuc99/capybara#quick-start-from-this-repo">run Capybara from source</a>.</span>
           </p>
           <p class="sr-only" aria-live="polite" id="copy-status"></p>

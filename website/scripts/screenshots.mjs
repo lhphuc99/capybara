@@ -1,7 +1,7 @@
 // Captures the Capybara UI showing made-up apps, for the website. Needs the product built
 // (`npm run build`) and Google Chrome. Writes WebP files into src/assets/screenshots/, then
 // renders the link preview card (scripts/og.html) into public/og.png.
-//   node scripts/screenshots.mjs [scene ...]   scenes: network, why, logs, storage, og (default: all)
+//   node scripts/screenshots.mjs [scene ...]   scenes: network, why, logs, storage, state, og (default: all)
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
 import { fileURLToPath } from 'node:url';
@@ -66,6 +66,15 @@ const scenes = {
       await delay(300);
     },
   },
+  state: {
+    app: apps.web,
+    height: 620,
+    async show(page) {
+      await page.click('.tabs [role=tab]', 'State');
+      await page.click('.entry-row', '09:41:14.280');
+      await page.waitFor('.diff-op');
+    },
+  },
 };
 
 const requested = process.argv.slice(2);
@@ -88,7 +97,7 @@ async function connectApp(port, { session, events, answer }) {
       if (message.t === 'welcome') resolve();
       if (message.t !== 'command') return;
       try {
-        const result = answer ? answer(message.method, message.params) : null;
+        const result = answer ? answer(message.method, message.params, message.plugin) : null;
         socket.send(JSON.stringify({ t: 'result', id: message.id, ok: true, result }));
       } catch (error) {
         socket.send(JSON.stringify({ t: 'result', id: message.id, ok: false, error: error.message }));
