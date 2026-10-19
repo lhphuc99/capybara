@@ -21,6 +21,7 @@ import { WebSocket, WebSocketServer, type RawData } from 'ws';
 import { diagnoseRequest } from './diagnose.js';
 import { isAllowedHost, isAllowedViewerOrigin, isLocalConnection, isLoopbackAddress } from './security.js';
 import { serveStatic } from './static.js';
+import { hasBundleFrames, symbolicateEvents } from './symbolicate.js';
 
 export { reverseAndroidPorts } from './adb.js';
 export { DEFAULT_METRO_PORTS, startMetroBridge, type MetroBridge, type MetroBridgeOptions } from './metro.js';
@@ -78,6 +79,8 @@ interface Session {
   lastSeq: number;
   socket: WebSocket | null;
   lastSeen: number;
+  /** Set while a batch waits for Metro to map its stacks; later batches and clears wait behind it. */
+  queue?: Promise<void>;
 }
 
 interface PendingCommand {
@@ -108,6 +111,7 @@ export function createServer(options: ServerOptions): CapybaraServer {
   let latest: LatestVersions | undefined;
   let latestTimer: ReturnType<typeof setInterval> | undefined;
   let closed = false;
+  const closing = new AbortController();
 
   const mayView = (req: http.IncomingMessage) => options.remoteUi === true || isLocalConnection(req.socket);
 
@@ -269,12 +273,33 @@ export function createServer(options: ServerOptions): CapybaraServer {
       }
     }
     if (fresh.length === 0) return;
+    if (!session.queue && !hasBundleFrames(fresh)) {
+      store(session, fresh);
+      return;
+    }
+    inOrder(session, async () => {
+      await symbolicateEvents(fresh, { signal: closing.signal }).catch(() => {});
+      // The session may have been removed while Metro was answering.
+      if (sessions.get(session.info.id) === session && !closed) store(session, fresh);
+    });
+  };
+
+  const store = (session: Session, fresh: CapybaraEvent[]) => {
     for (const event of fresh) keep(session, event);
     if (session.events.length > maxEvents) session.events.splice(0, session.events.length - maxEvents);
     const timeline = session.state.events;
     if (timeline.length > maxStateEvents) timeline.splice(0, timeline.length - maxStateEvents);
     session.lastSeen = Date.now();
     broadcast({ t: 'events', sessionId: session.info.id, events: fresh });
+  };
+
+  /** Runs `task` once the batches still waiting for Metro are stored, so nothing overtakes them. */
+  const inOrder = (session: Session, task: () => void | Promise<void>) => {
+    const queued = (session.queue ?? Promise.resolve()).then(task).catch(() => {});
+    session.queue = queued;
+    void queued.then(() => {
+      if (session.queue === queued) session.queue = undefined;
+    });
   };
 
   const acceptClient = (ws: WebSocket) => {
@@ -390,11 +415,16 @@ export function createServer(options: ServerOptions): CapybaraServer {
           const session = sessions.get(message.sessionId);
           if (!session) break;
           const scope = message.scope === 'state' ? 'state' : undefined;
-          // lastSeq stays, so events the app replays later are still recognised as already seen.
-          if (!scope) session.events = [];
-          // Registered stores stay: the app still has them, and their current state can still be read.
-          session.state.events = [];
-          broadcast(scope ? { t: 'cleared', sessionId: message.sessionId, scope } : { t: 'cleared', sessionId: message.sessionId });
+          const clear = () => {
+            // lastSeq stays, so events the app replays later are still recognised as already seen.
+            if (!scope) session.events = [];
+            // Registered stores stay: the app still has them, and their current state can still be read.
+            session.state.events = [];
+            broadcast(scope ? { t: 'cleared', sessionId: message.sessionId, scope } : { t: 'cleared', sessionId: message.sessionId });
+          };
+          // Batches waiting for Metro arrived before the clear, so they are cleared too.
+          if (session.queue) inOrder(session, clear);
+          else clear();
           break;
         }
         case 'remove': {
@@ -447,6 +477,7 @@ export function createServer(options: ServerOptions): CapybaraServer {
     close: () =>
       new Promise((resolve) => {
         closed = true;
+        closing.abort();
         clearInterval(heartbeat);
         clearInterval(latestTimer);
         for (const command of pending.values()) clearTimeout(command.timer);
