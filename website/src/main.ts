@@ -1,4 +1,4 @@
-import { NPM_PUBLISHED, REPO, REPO_URL } from './config';
+import { FROM_SOURCE_URL, NPM_PUBLISHED, REPO, REPO_URL } from './config';
 import { setUpLightbox } from './lightbox';
 import {
   archFromHints,
@@ -98,11 +98,10 @@ function showRelease(release: ParsedRelease | null) {
       meta.textContent = 'The desktop app is on its way. Today, run npx capybara-devtools.';
       summary.replaceChildren('The first desktop release is on its way. Until then, run ', command, ' and use Capybara in your browser.');
     } else {
-      const fromSource = `${REPO_URL}#quick-start-from-this-repo`;
       hero.textContent = 'Run from source';
-      hero.href = fromSource;
+      hero.href = FROM_SOURCE_URL;
       meta.textContent = 'The first release is on its way.';
-      summary.replaceChildren('The first release is on its way. Until then, ', link(fromSource, 'run Capybara from source'), '.');
+      summary.replaceChildren('The first release is on its way. Until then, ', link(FROM_SOURCE_URL, 'run Capybara from source'), '.');
     }
     for (const list of document.querySelectorAll<HTMLElement>('[data-files]')) {
       list.replaceChildren(item(span('unavailable', 'Coming with the first release')));
@@ -133,18 +132,25 @@ function showRelease(release: ParsedRelease | null) {
   }
 }
 
+/** What copies the selected text; phones offer their own Copy for a selection. */
+function copyShortcut(): string {
+  if (platform.os === 'mac') return 'Press ⌘C';
+  return platform.os === 'mobile' ? 'Selected' : 'Press Ctrl+C';
+}
+
 function setUpCopyButtons() {
   const status = document.getElementById('copy-status')!;
   for (const button of document.querySelectorAll<HTMLButtonElement>('[data-copy]')) {
     button.addEventListener('click', async () => {
-      const text = button.parentElement?.querySelector('pre')?.textContent ?? '';
+      const pre = button.parentElement?.querySelector('pre');
       try {
-        await navigator.clipboard.writeText(text);
+        await navigator.clipboard.writeText(pre?.textContent ?? '');
         button.textContent = 'Copied';
         status.textContent = 'Copied to the clipboard';
       } catch {
-        button.textContent = 'Press ⌘C';
-        status.textContent = 'Copying is blocked; select the text and copy it yourself';
+        if (pre) window.getSelection()?.selectAllChildren(pre);
+        button.textContent = copyShortcut();
+        status.textContent = 'Copying is blocked; the text is selected for you to copy';
       }
       setTimeout(() => (button.textContent = 'Copy'), 1_500);
     });

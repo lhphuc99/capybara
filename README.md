@@ -226,7 +226,7 @@ The SDK finds your machine from the Metro bundle URL, so simulators and phones o
 
 The same server and UI in a window of their own, with a Dock or taskbar icon and no terminal to keep open. The code is in `apps/desktop` (Electron).
 
-Download it from the [website](https://capybara-devtools.chanieshop.com/#download) or [GitHub Releases](https://github.com/lhphuc99/capybara/releases), or build it yourself:
+Download it from the [website](https://capybara-devtools.chanieshop.com/#download) or [GitHub Releases](https://github.com/lhphuc99/capybara/releases), or build it yourself from a clone of this repo, after `npm install`:
 
 ```bash
 npm run desktop                  # build it and open the window; run `npm run build` once before
