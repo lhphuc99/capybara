@@ -304,7 +304,6 @@ const queries = [
 
 function stateEvents() {
   const { events, add: emit } = timeline();
-  emit(0, 'log', { level: 'info', source: 'console', args: ['Yuzu Market 2.3.0 · development build'] });
   for (const store of stateStores) emit(0, 'state.store', { store });
   shopChanges.forEach(([afterMs, change], index) => emit(afterMs, 'state.change', { store: 'redux:1', rev: index + 1, cause: 'action', ...change }));
   emit(800, 'state.entries', { store: 'tanstack-query:1', upserts: queries, removed: [], reset: true });
@@ -333,21 +332,20 @@ function answerState(method, params) {
 }
 
 export const apps = {
-  web: { session: webApp, events: webEvents() },
+  // One web app across the screenshots, so its State tab is filled in on every one of them.
+  web: {
+    session: {
+      ...webApp,
+      sdk: { name: '@capybara-devtools/web', version: '0.3.0' },
+      plugins: ['console', 'errors', 'network', 'websocket', 'storage', 'state'],
+    },
+    events: [...webEvents(), ...stateEvents()].sort((a, b) => a.ts - b.ts).map((event, index) => ({ ...event, seq: index + 1 })),
+    answer: (method, params, plugin) => (plugin === 'state' ? answerState(method, params) : null),
+  },
   native: { session: nativeApp, events: nativeEvents() },
   nativeWithSdk: {
     session: { ...nativeApp, id: 'demo-native-sdk', sdk: { name: '@capybara-devtools/react-native', version: '0.1.0' } },
     events: nativeEvents(),
     answer: answerStorage,
-  },
-  webWithState: {
-    session: {
-      ...webApp,
-      id: 'demo-web-state',
-      sdk: { name: '@capybara-devtools/web', version: '0.3.0' },
-      plugins: ['console', 'errors', 'network', 'websocket', 'storage', 'state'],
-    },
-    events: stateEvents(),
-    answer: (method, params, plugin) => (plugin === 'state' ? answerState(method, params) : null),
   },
 };

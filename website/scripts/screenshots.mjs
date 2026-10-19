@@ -67,7 +67,7 @@ const scenes = {
     },
   },
   state: {
-    app: apps.webWithState,
+    app: apps.web,
     height: 620,
     async show(page) {
       await page.click('.tabs [role=tab]', 'State');
