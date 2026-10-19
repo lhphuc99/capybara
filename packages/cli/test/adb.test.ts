@@ -1,8 +1,9 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { closeSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { reverseAndroidPorts } from '../src/adb.js';
+import { adbCommand, reverseAndroidPorts } from '../src/adb.js';
 
 /** Stands in for adb: devices and their reverse rules are read from state.json, and each call is logged. */
 const FAKE_ADB = `#!/usr/bin/env node
@@ -48,7 +49,8 @@ describe('adb reverse', () => {
     setDevices([['emulator-5554', 'device'], ['R5CT1234', 'unauthorized']]);
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     reverseAndroidPorts(7357, adb);
-    await vi.waitFor(() => expect(reversed()).toEqual(['-s emulator-5554 reverse tcp:7357 tcp:7357']));
+    // Each call to the fake adb starts Node, which can take most of a second on a busy machine.
+    await vi.waitFor(() => expect(reversed()).toEqual(['-s emulator-5554 reverse tcp:7357 tcp:7357']), { timeout: 4_000, interval: 50 });
 
     // Later polls leave the rule in place alone.
     await polling(() => expect(calls().filter((call) => call === 'devices').length).toBeGreaterThanOrEqual(3));
@@ -58,5 +60,20 @@ describe('adb reverse', () => {
     // `adb reconnect`: the device is back before the next poll, without its rules.
     setDevices([['emulator-5554', 'device']]);
     await polling(() => expect(reversed()).toHaveLength(2));
+  });
+
+  // The adb server outlives Capybara with whatever it inherited; an AppImage cannot exit while it holds the app's files.
+  it.runIf(process.platform === 'linux')('starts adb without the descriptors Capybara inherited', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'capybara-adb-'));
+    cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+    const adb = join(dir, 'adb');
+    writeFileSync(adb, '#!/bin/sh\nls -l /proc/$$/fd/\n', { mode: 0o755 });
+    // Handed over as fd 3, like a file Electron opened without O_CLOEXEC.
+    const held = openSync(join(dir, 'app.asar'), 'w');
+    cleanups.push(() => closeSync(held));
+    const descriptors = (file: string, args: string[]) => execFileSync(file, args, { stdio: ['ignore', 'pipe', 'ignore', held] }).toString();
+
+    expect(descriptors(adb, ['devices'])).toContain('app.asar');
+    expect(descriptors(...adbCommand(adb, ['devices']))).not.toContain('app.asar');
   });
 });
