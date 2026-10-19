@@ -58,7 +58,7 @@ Serves the data of a running Capybara (the app or \`npx capybara-devtools\`) to 
 
 Options:
   -p, --port <port>   Port of the Capybara server (default ${DEFAULT_PORT}, or $CAPYBARA_PORT)
-      --host <host>   Its address (default 127.0.0.1)
+      --host <host>   Its address (default 127.0.0.1); Capybara on another computer needs --remote-ui
       --show-secrets  Don't hide values that look like credentials
   -h, --help          Show this help
 

@@ -6,7 +6,7 @@ import { parseArgs } from 'node:util';
 import { CLI_PACKAGE, DEFAULT_PORT, isNewerVersion } from '@capybara-devtools/protocol';
 import { reverseAndroidPorts } from './adb.js';
 import { DEFAULT_METRO_PORTS, startMetroBridge, type MetroBridge } from './metro.js';
-import { createServer, lanAddresses } from './server.js';
+import { createServer, reachableAddresses } from './server.js';
 import { fetchLatestVersions } from './updates.js';
 
 const HELP = `Usage: capybara [options]
@@ -16,6 +16,7 @@ const HELP = `Usage: capybara [options]
 Options:
   -p, --port <port>         Port for the UI and app connections (default ${DEFAULT_PORT}, or $CAPYBARA_PORT)
       --host <address>      Address to bind (default: all interfaces)
+      --remote-ui           Let other devices open the UI, which shows everything apps send, tokens included
       --no-open             Don't open the UI in a browser
       --allow-origin <url>  Extra origin allowed to open the UI socket, repeatable
       --metro-port <port>   Metro dev server to read React Native apps from, repeatable (default ${DEFAULT_METRO_PORTS.join(', ')})
@@ -100,6 +101,7 @@ const server = createServer({
   host: values.host,
   uiDir: existsSync(uiDir) ? uiDir : undefined,
   allowedOrigins: values['allow-origin'] ?? [],
+  remoteUi: values['remote-ui'],
   version,
   latestVersions: values['update-check'] && !process.env.CAPYBARA_NO_UPDATE_CHECK ? checkLatest : undefined,
 });
@@ -107,13 +109,13 @@ const server = createServer({
 let metroBridge: MetroBridge | undefined;
 
 try {
-  const { port: actual } = await server.start();
-  printBanner(actual);
+  const { port: actual, address } = await server.start();
+  printBanner(actual, address);
   reverseAndroidPorts(actual);
   if (metroPorts.length > 0) {
     metroBridge = startMetroBridge({ port: actual, metroPorts, version, onHint: (hint) => console.log(`  ${hint}\n`) });
   }
-  if (values.open) openBrowser(`http://localhost:${actual}`);
+  if (values.open) openBrowser(`http://${hostOf(address)}:${actual}`);
 } catch (error) {
   if ((error as NodeJS.ErrnoException).code === 'EADDRINUSE') {
     console.error(`Port ${port} is already in use. Is Capybara already running? Choose another port with --port.`);
@@ -138,6 +140,7 @@ function parseCli() {
       host: { type: 'string' },
       open: { type: 'boolean', default: true },
       'allow-origin': { type: 'string', multiple: true },
+      'remote-ui': { type: 'boolean', default: false },
       metro: { type: 'boolean', default: true },
       'metro-port': { type: 'string', multiple: true },
       'update-check': { type: 'boolean', default: true },
@@ -147,14 +150,27 @@ function parseCli() {
   }).values;
 }
 
-function printBanner(actualPort: number) {
-  const lines = ['', `  Capybara ${version}`, '', `  UI        http://localhost:${actualPort}`];
-  for (const address of lanAddresses()) lines.push(`  Network   http://${address}:${actualPort}`);
+function listensEverywhere(address: string): boolean {
+  return address === '::' || address === '0.0.0.0';
+}
+
+/** How this machine reaches the server: through localhost, unless --host bound one address only. */
+function hostOf(address: string): string {
+  if (listensEverywhere(address)) return 'localhost';
+  return address.includes(':') ? `[${address}]` : address;
+}
+
+function printBanner(actualPort: number, address: string) {
+  const lines = ['', `  Capybara ${version}`, '', `  UI        http://${hostOf(address)}:${actualPort}`];
+  if (values['remote-ui']) {
+    for (const lan of reachableAddresses(address)) lines.push(`  Network   http://${lan}:${actualPort}`);
+  }
   if (metroPorts.length > 0) {
     const ports = metroPorts.map((p) => `localhost:${p}`).join(', ');
     lines.push(`  Metro     ${ports} (React Native apps show up without the SDK)`);
   }
-  lines.push('', `  Apps connect to ws://<this machine>:${actualPort}/client (React Native finds it through Metro).`, '');
+  const machine = listensEverywhere(address) ? '<this machine>' : hostOf(address);
+  lines.push('', `  Apps connect to ws://${machine}:${actualPort}/client (React Native finds it through Metro).`, '');
   console.log(lines.join('\n'));
 }
 

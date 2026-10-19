@@ -1,11 +1,12 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { tmpdir } from 'node:os';
+import { networkInterfaces, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
-import { createServer, type CapybaraServer, type ServerOptions } from '../src/server.js';
+import { isLocalConnection } from '../src/security.js';
+import { createServer, lanAddresses, reachableAddresses, type CapybaraServer, type ServerOptions } from '../src/server.js';
 
 let server: CapybaraServer | undefined;
 let port = 0;
@@ -22,8 +23,8 @@ afterEach(async () => {
   server = undefined;
 });
 
-function connect(path: string, headers: Record<string, string> = {}) {
-  const ws = new WebSocket(`ws://127.0.0.1:${port}${path}`, { headers });
+function connect(path: string, headers: Record<string, string> = {}, { host = '127.0.0.1', ...options }: WebSocket.ClientOptions & { host?: string } = {}) {
+  const ws = new WebSocket(`ws://${host}:${port}${path}`, { headers, ...options });
   sockets.push(ws);
   const messages: any[] = [];
   ws.on('message', (data) => messages.push(JSON.parse(data.toString())));
@@ -46,6 +47,22 @@ function connect(path: string, headers: Record<string, string> = {}) {
 }
 
 const viewer = () => connect('/viewer', { origin: `http://127.0.0.1:${port}` });
+
+const lan = Object.values(networkInterfaces())
+  .flat()
+  .find((entry) => entry?.family === 'IPv4' && !entry.internal)?.address;
+
+/** Status of a plain HTTP request for the UI, `options` as for `http.get`. */
+function statusOf(options: http.RequestOptions = {}) {
+  return new Promise<number>((resolve, reject) => {
+    http
+      .get({ host: '127.0.0.1', port, path: '/', ...options }, (res) => {
+        res.resume();
+        resolve(res.statusCode ?? 0);
+      })
+      .on('error', reject);
+  });
+}
 
 const session = (id = 'app-1') => ({
   id,
@@ -364,15 +381,54 @@ describe('access control', () => {
 
   it('refuses plain HTTP requests addressed to other hosts', async () => {
     await start();
-    const status = await new Promise<number>((resolve, reject) => {
-      http
-        .get({ host: '127.0.0.1', port, path: '/', headers: { host: 'evil.test' } }, (res) => {
-          res.resume();
-          resolve(res.statusCode ?? 0);
-        })
-        .on('error', reject);
-    });
-    expect(status).toBe(403);
+    expect(await statusOf({ headers: { host: 'evil.test' } })).toBe(403);
+  });
+
+  // Another device, as the server sees it: a peer at this machine's LAN address, on loopback.
+  it.skipIf(!lan)('shows the UI and what apps sent only to this machine, while apps connect from anywhere', async () => {
+    await start();
+    const elsewhere = { localAddress: lan };
+    await expect(connect('/viewer', { origin: `http://127.0.0.1:${port}` }, elsewhere).opened).rejects.toThrow('HTTP 403');
+    expect(await statusOf(elsewhere)).toBe(403);
+    await expect(connect('/client', {}, elsewhere).opened).resolves.toBeUndefined();
+    expect(await statusOf()).toBe(200);
+  });
+
+  it.skipIf(!lan)('lets other devices open the UI with remoteUi', async () => {
+    await start({ remoteUi: true });
+    const elsewhere = { localAddress: lan };
+    await expect(connect('/viewer', { origin: `http://127.0.0.1:${port}` }, elsewhere).opened).resolves.toBeUndefined();
+    expect(await statusOf(elsewhere)).toBe(200);
+  });
+
+  it.skipIf(!lan)('opens the UI at its LAN address on this machine', async () => {
+    await start({ host: lan });
+    await expect(connect('/viewer', { origin: `http://${lan}:${port}` }, { host: lan }).opened).resolves.toBeUndefined();
+  });
+
+  it('tells local connections from others, IPv4 peers of a dual-stack server included', () => {
+    expect(isLocalConnection({ remoteAddress: '127.0.0.1', localAddress: '127.0.0.1' })).toBe(true);
+    expect(isLocalConnection({ remoteAddress: '::ffff:127.0.0.1', localAddress: '::ffff:127.0.0.1' })).toBe(true);
+    expect(isLocalConnection({ remoteAddress: '::1', localAddress: '::1' })).toBe(true);
+    expect(isLocalConnection({ remoteAddress: '::ffff:192.168.1.5', localAddress: '::ffff:192.168.1.5' })).toBe(true);
+    expect(isLocalConnection({ remoteAddress: '::ffff:192.168.1.7', localAddress: '::ffff:192.168.1.5' })).toBe(false);
+    expect(isLocalConnection({ remoteAddress: undefined, localAddress: undefined })).toBe(false);
+  });
+});
+
+describe('addresses for phones', () => {
+  it('lists none when the server listens on loopback only', async () => {
+    await start();
+    const ui = viewer();
+    await ui.opened;
+    expect((await ui.next((m) => m.t === 'init')).server.addresses).toEqual([]);
+    expect(reachableAddresses('::1')).toEqual([]);
+  });
+
+  it('lists the LAN addresses on all interfaces, or the one address it listens on', () => {
+    expect(reachableAddresses('::')).toEqual(lanAddresses());
+    expect(reachableAddresses('0.0.0.0')).toEqual(lanAddresses());
+    expect(reachableAddresses('192.168.1.5')).toEqual(['192.168.1.5']);
   });
 });
 

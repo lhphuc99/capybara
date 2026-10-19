@@ -23,6 +23,8 @@ npm start          # UI at http://localhost:7357
 npm run desktop    # or the same in a desktop app, see below
 ```
 
+The UI opens only on the computer Capybara runs on, while apps connect from any device on your network. To open it from another device, start Capybara with `--remote-ui`; that device then sees everything apps send, tokens included.
+
 An AI assistant can add the SDK to your app for you: see [Set up Capybara with an AI assistant](#set-up-capybara-with-an-ai-assistant).
 
 When a newer version is on npm, `npx capybara-devtools` says so when it starts, and the UI shows a notice when a connected app uses an older SDK, with the command that updates it. The server asks the npm registry (the one npm is set up with) when it starts and twice a day; `--no-update-check` or `CAPYBARA_NO_UPDATE_CHECK=1` turns that off.
@@ -286,7 +288,7 @@ npx capybara-devtools setup-guide            # the app in this folder, or pass i
 - The tools only read. `diagnose_request` sends the request's preflight and, for GET and HEAD, the request itself again from this computer, without the app's credentials.
 - What the tools return goes to the AI model. Values that look like credentials are replaced with `[hidden]`: Authorization and cookie headers, JSON keys and query parameters such as `token`, `password`, `jwt` or `privateKey`, and storage keys such as `authToken`. In state, so are values at a path through such a key, the rest of an action whose type names one (`auth/setToken`), and the data of a query or SWR key named like one. JWTs, `Bearer …` values and Stripe, GitHub, Slack and AWS keys are hidden in the keys and errors of queries and SWR entries. Empty values (`null`, `undefined`, `false`, `''`) are shown as they are, so a signed-out app reads differently from a signed-in one. A credential under an ordinary name still reaches the model, as in storage. Pass `--show-secrets` to turn that off.
 - Lists return the newest 50 entries by default; pass `after` with the last `seq` to get only newer ones. Without a session id, the tools read the newest connected app.
-- Pass `--port` when Capybara runs on another port.
+- Pass `--port` when Capybara runs on another port, and `--host` to read Capybara on another computer, which must run with `--remote-ui`.
 
 ## Examples
 

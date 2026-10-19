@@ -1,4 +1,4 @@
-import { isIP } from 'node:net';
+import { isIP, isIPv4 } from 'node:net';
 
 /** Hostname from a Host header, without the port or IPv6 brackets. */
 export function hostnameOf(hostHeader: string): string {
@@ -18,6 +18,26 @@ export function isAllowedHost(hostHeader: string | undefined): boolean {
   if (!hostHeader) return false;
   const name = hostnameOf(hostHeader).toLowerCase();
   return name === 'localhost' || name.endsWith('.localhost') || isIP(name) !== 0;
+}
+
+/** A dual-stack server sees IPv4 peers as `::ffff:127.0.0.1`. */
+function unmapped(address: string | undefined): string | undefined {
+  return address?.startsWith('::ffff:') && isIPv4(address.slice(7)) ? address.slice(7) : address;
+}
+
+export function isLoopbackAddress(address: string | undefined): boolean {
+  const ip = unmapped(address);
+  return ip === '::1' || (!!ip && isIPv4(ip) && ip.startsWith('127.'));
+}
+
+/**
+ * The server listens on every interface so phones can send events, but what it has recorded is only
+ * for this machine. A peer using one of this machine's own addresses (the UI opened at its LAN IP)
+ * is local too: another host could not complete a TCP handshake from that address.
+ */
+export function isLocalConnection(socket: { remoteAddress?: string; localAddress?: string }): boolean {
+  const remote = unmapped(socket.remoteAddress);
+  return isLoopbackAddress(remote) || (!!remote && remote === unmapped(socket.localAddress));
 }
 
 /**

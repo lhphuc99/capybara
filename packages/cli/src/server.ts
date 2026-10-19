@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { isIPv4 } from 'node:net';
 import { networkInterfaces } from 'node:os';
 import {
   CLIENT_PATH,
@@ -18,7 +19,7 @@ import {
 } from '@capybara-devtools/protocol';
 import { WebSocket, WebSocketServer, type RawData } from 'ws';
 import { diagnoseRequest } from './diagnose.js';
-import { isAllowedHost, isAllowedViewerOrigin } from './security.js';
+import { isAllowedHost, isAllowedViewerOrigin, isLocalConnection, isLoopbackAddress } from './security.js';
 import { serveStatic } from './static.js';
 
 export { reverseAndroidPorts } from './adb.js';
@@ -34,6 +35,11 @@ export interface ServerOptions {
   uiDir?: string;
   /** Extra origins allowed to open the viewer socket, e.g. the Vite dev server for the UI. */
   allowedOrigins?: string[];
+  /**
+   * Let other devices open the UI and the viewer socket (`capybara mcp --host`), which show everything
+   * apps send, tokens included. Default false: only this machine; apps connect from anywhere either way.
+   */
+  remoteUi?: boolean;
   /** Disconnected sessions beyond this are dropped, oldest first. Default 20. */
   maxSessions?: number;
   /** Default 5000. `state.*` events are kept apart; see `maxStateEvents`. */
@@ -54,7 +60,8 @@ export interface ServerOptions {
 }
 
 export interface CapybaraServer {
-  start(): Promise<{ port: number }>;
+  /** `address` is the one the server listens on, `::` or `0.0.0.0` for all interfaces. */
+  start(): Promise<{ port: number; address: string }>;
   close(): Promise<void>;
 }
 
@@ -97,13 +104,22 @@ export function createServer(options: ServerOptions): CapybaraServer {
   const alive = new WeakMap<WebSocket, boolean>();
   let commandCounter = 0;
   let port = options.port;
+  let bound = '';
   let latest: LatestVersions | undefined;
   let latestTimer: ReturnType<typeof setInterval> | undefined;
   let closed = false;
 
+  const mayView = (req: http.IncomingMessage) => options.remoteUi === true || isLocalConnection(req.socket);
+
   const httpServer = http.createServer((req, res) => {
     if (!isAllowedHost(req.headers.host)) {
       res.writeHead(403, { 'content-type': 'text/plain' }).end('Forbidden host');
+      return;
+    }
+    if (!mayView(req)) {
+      res
+        .writeHead(403, { 'content-type': 'text/plain' })
+        .end('Capybara shows its UI only on the computer it runs on. Start it with --remote-ui to open it from other devices.');
       return;
     }
     serveStatic(req, res, options.uiDir);
@@ -117,6 +133,7 @@ export function createServer(options: ServerOptions): CapybaraServer {
       wss.handleUpgrade(req, socket, head, acceptClient);
     } else if (
       path === VIEWER_PATH &&
+      mayView(req) &&
       isAllowedHost(req.headers.host) &&
       isAllowedViewerOrigin(req.headers.origin, req.headers.host, allowedOrigins)
     ) {
@@ -164,7 +181,7 @@ export function createServer(options: ServerOptions): CapybaraServer {
   const history = (s: Session): CapybaraEvent[] =>
     [...s.events, ...s.state.stores.values(), ...s.state.events].sort((a, b) => a.seq - b.seq);
 
-  const serverInfo = (): ServerInfo => ({ version: options.version ?? '0.0.0', port, addresses: lanAddresses(), latest });
+  const serverInfo = (): ServerInfo => ({ version: options.version ?? '0.0.0', port, addresses: reachableAddresses(bound), latest });
 
   const refreshLatest = async () => {
     const found = await options.latestVersions?.().catch(() => undefined);
@@ -410,13 +427,16 @@ export function createServer(options: ServerOptions): CapybaraServer {
         const onListening = () => {
           httpServer.off('error', onError);
           const address = httpServer.address();
-          if (address && typeof address === 'object') port = address.port;
+          if (address && typeof address === 'object') {
+            port = address.port;
+            bound = address.address;
+          }
           if (options.latestVersions) {
             void refreshLatest();
             latestTimer = setInterval(() => void refreshLatest(), LATEST_REFRESH_MS);
             latestTimer.unref();
           }
-          resolve({ port });
+          resolve({ port, address: bound });
         };
         httpServer.once('error', onError);
         httpServer.once('listening', onListening);
@@ -437,6 +457,12 @@ export function createServer(options: ServerOptions): CapybaraServer {
         httpServer.closeAllConnections();
       }),
   };
+}
+
+/** Where phones on the network reach a server listening on `bound`: nowhere when that is loopback. */
+export function reachableAddresses(bound: string): string[] {
+  if (bound === '::' || bound === '0.0.0.0') return lanAddresses();
+  return isIPv4(bound) && !isLoopbackAddress(bound) ? [bound] : [];
 }
 
 export function lanAddresses(): string[] {
