@@ -353,6 +353,147 @@ h3 {
   width: 100%;
 }
 
+.zoom {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: zoom-in;
+}
+
+/* The window clips its content, so the ring goes inside. */
+.zoom:focus-visible {
+  outline-offset: -4px;
+}
+
+.zoom-icon {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(58, 36, 23, 0.78);
+  color: #fff8ee;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.zoom:hover .zoom-icon,
+.zoom:focus-visible .zoom-icon {
+  opacity: 1;
+}
+
+/* Without hover nothing would hint that the picture opens. */
+@media (hover: none) {
+  .zoom-icon {
+    opacity: 1;
+  }
+}
+
+.lightbox {
+  width: 100vw;
+  max-width: none;
+  height: 100vh;
+  max-height: none;
+  margin: 0;
+  padding: 64px 24px 24px;
+  overflow: auto;
+  border: 0;
+  background: transparent;
+}
+
+.lightbox[open] {
+  display: grid;
+  place-items: center;
+}
+
+.lightbox::backdrop {
+  background: rgba(27, 18, 11, 0.88);
+  backdrop-filter: blur(4px);
+}
+
+.lightbox-frame {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  margin: 0;
+  animation: lightbox-in 0.18s ease-out;
+}
+
+.lightbox-view {
+  max-width: 100%;
+  overflow: auto;
+  border-radius: 12px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5);
+}
+
+.lightbox-frame img {
+  display: block;
+  width: auto;
+  max-width: min(100%, 1600px);
+  height: auto;
+  max-height: calc(100vh - 150px);
+  background: var(--surface);
+  cursor: zoom-out;
+}
+
+.lightbox-hint {
+  display: none;
+  flex-basis: 100%;
+  color: #c9a98a;
+}
+
+.lightbox-frame figcaption {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 18px;
+  max-width: 720px;
+  color: #fbead6;
+  font-size: 14px;
+  text-align: center;
+}
+
+.lightbox-frame figcaption a {
+  color: #ffb860;
+  font-weight: 600;
+}
+
+.lightbox-close {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(251, 234, 214, 0.28);
+  border-radius: 50%;
+  background: rgba(38, 25, 15, 0.82);
+  color: #fbead6;
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.lightbox-close:hover {
+  background: rgba(58, 36, 23, 0.95);
+}
+
+html.lightbox-open {
+  overflow: hidden;
+}
+
+@keyframes lightbox-in {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+}
+
 /* Sections */
 
 .section {
@@ -388,6 +529,11 @@ h3 {
 
 .showcase-row:nth-child(even) .showcase-text {
   order: 2;
+}
+
+/* The screenshot takes the wide column on both sides, so every row shows it at the same size. */
+.showcase-row:nth-child(even) {
+  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
 }
 
 .showcase-text p {
@@ -739,6 +885,7 @@ h3 {
 @media (max-width: 860px) {
   .hero-inner,
   .showcase-row,
+  .showcase-row:nth-child(even),
   .feature-grid {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -753,6 +900,26 @@ h3 {
 
   .showcase-row:nth-child(even) .showcase-text {
     order: 0;
+  }
+
+  .lightbox {
+    padding: 64px 12px 16px;
+  }
+
+  .lightbox-frame,
+  .lightbox-view {
+    width: 100%;
+  }
+
+  /* Fitted to a phone the UI is too small to read, so it keeps a readable width and scrolls sideways. */
+  .lightbox-frame img {
+    width: 1000px;
+    max-width: none;
+    max-height: none;
+  }
+
+  .lightbox-hint {
+    display: block;
   }
 }
 
@@ -797,5 +964,13 @@ h3 {
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
+  }
+
+  .lightbox-frame {
+    animation: none;
+  }
+
+  .zoom-icon {
+    transition: none;
   }
 }
