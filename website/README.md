@@ -20,7 +20,7 @@ Until the packages are on npm, commands that need them carry a "Coming to npm" t
 The screenshots show the real Capybara UI with made-up apps (`scripts/demo-data.mjs`). After changing the UI, build the product from the repo root (`npm run build`), then run this here on a Mac with Google Chrome:
 
 ```bash
-npm run screenshots    # all scenes and public/og.png; or name scenes: network why logs storage og
+npm run screenshots    # all scenes and public/og.png; or name scenes: network why logs storage state remote remote-phone og
 ```
 
 The "why" scene needs port 4000 free for its demo API.

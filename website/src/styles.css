@@ -27,6 +27,7 @@
   --soon-bg: #ffe6b8;
   --soon-text: #7a4a00;
   --window-bar: #fff3e2;
+  --phone-bezel: #2a1d14;
   --shadow: 0 30px 60px -24px rgba(122, 72, 20, 0.38), 0 8px 20px -10px rgba(122, 72, 20, 0.2);
   --mascot-shadow: rgba(122, 72, 20, 0.32);
   --button-radius: 999px;
@@ -56,6 +57,7 @@
     --soon-bg: #3a2810;
     --soon-text: #ffcf87;
     --window-bar: #2b1c11;
+    --phone-bezel: #5a4130;
     --shadow: 0 30px 60px -24px rgba(0, 0, 0, 0.7);
     --mascot-shadow: rgba(0, 0, 0, 0.55);
   }
@@ -351,6 +353,30 @@ h3 {
 
 .window img {
   width: 100%;
+}
+
+/* The phone shows what the QR code in the window opens; it overlaps the window's corner. */
+.device-pair {
+  position: relative;
+}
+
+.phone {
+  position: absolute;
+  bottom: -40px;
+  left: -30px;
+  width: 24%;
+  margin: 0;
+  overflow: hidden;
+  border: 5px solid var(--phone-bezel);
+  border-radius: 22px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.phone img {
+  display: block;
+  width: 100%;
+  height: auto;
 }
 
 .zoom {
@@ -896,6 +922,13 @@ html.lightbox-open {
 
   .showcase-row {
     gap: 24px;
+  }
+
+  /* Inside the page's side margin, so it never scrolls the page sideways. */
+  .phone {
+    bottom: -24px;
+    left: -8px;
+    width: 26%;
   }
 
   .showcase-row:nth-child(even) .showcase-text {
