@@ -1,0 +1,13 @@
+{
+  // `tsc -b` builds and checks every package, each after the ones it imports.
+  "files": [],
+  "references": [
+    { "path": "packages/protocol" },
+    { "path": "packages/core" },
+    { "path": "packages/web" },
+    { "path": "packages/react-native" },
+    { "path": "packages/cli" },
+    { "path": "packages/ui" },
+    { "path": "apps/desktop" }
+  ]
+}

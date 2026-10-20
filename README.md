@@ -320,7 +320,7 @@ npm run typecheck
 npm run lint
 ```
 
-`npm run lint` runs [Biome](https://biomejs.dev)'s linter (formatting is left as it is); `biome.jsonc` says why the rules it turns off are off.
+`npm run lint` runs [Biome](https://biomejs.dev)'s linter (formatting is left as it is); `biome.jsonc` says why the rules it turns off are off. `npm run build` and `npm run typecheck` run `tsc -b`, which only redoes the packages that changed and the ones that import them; `npm run clean` deletes the build output, as `npm run release` does first so that files of deleted sources are not published.
 
 To work on the UI with hot reload, run the server with the Vite origin allowed, then start Vite:
 

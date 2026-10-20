@@ -9,7 +9,8 @@
     "examples/*"
   ],
   "scripts": {
-    "build": "npm run build -w @capybara-devtools/protocol && npm run build -w @capybara-devtools/core && npm run build -w @capybara-devtools/web && npm run build -w @capybara-devtools/react-native && npm run build -w @capybara-devtools/ui && npm run build -w capybara-devtools && npm run build -w @capybara-devtools/desktop",
+    "build": "tsc -b && npm run build -w @capybara-devtools/ui && npm run build -w capybara-devtools && npm run build -w @capybara-devtools/desktop",
+    "clean": "node scripts/clean.mjs",
     "start": "node packages/cli/dist/bin.js",
     "desktop": "npm run start -w @capybara-devtools/desktop",
     "desktop:package": "npm run build && npm run package -w @capybara-devtools/desktop",
@@ -19,11 +20,11 @@
     "desktop:release": "npm run build && npm run release -w @capybara-devtools/desktop",
     "dev:ui": "npm run dev -w @capybara-devtools/ui",
     "test": "npm run test --workspaces --if-present",
-    "typecheck": "npm run typecheck --workspaces --if-present",
+    "typecheck": "tsc -b",
     "lint": "biome lint --error-on-warnings .",
     "changeset": "changeset",
     "version-packages": "changeset version && node scripts/sync-versions.mjs",
-    "release": "npm run build && changeset publish && git push --tags",
+    "release": "npm run clean && npm run build && changeset publish && git push --tags",
     "example:web": "npm run dev -w example-web",
     "example:expo": "npm run start -w example-expo",
     "example:nextjs": "npm run dev -w example-nextjs"

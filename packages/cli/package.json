@@ -42,13 +42,13 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json && node scripts/copy-ui.mjs",
+    "build": "tsc -b && node scripts/copy-ui.mjs",
     "prepack": "node scripts/check-package.mjs",
-    "dev": "tsc -p tsconfig.json --watch",
+    "dev": "tsc -b --watch",
     "start": "node dist/bin.js",
     "test": "vitest run",
     "test:mmkv-compat": "node scripts/check-mmkv-compat.mjs",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -b"
   },
   "dependencies": {
     "@capybara-devtools/core": "0.5.0",
