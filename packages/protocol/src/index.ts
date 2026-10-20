@@ -434,5 +434,7 @@ export type ServerToViewer =
   | CommandResult;
 
 export * from './limits.js';
+export * from './session-model.js';
+export * from './state-model.js';
 export * from './values.js';
 export * from './versions.js';

@@ -1,5 +1,5 @@
 import { parseArgs } from 'node:util';
-import { DEFAULT_PORT, libraryTitle, parsePath, type SessionMeta, type StatePath } from '@capybara-devtools/protocol';
+import { DEFAULT_PORT, libraryTitle, parsePath, type NetworkEntry, type SessionMeta, type StatePath } from '@capybara-devtools/protocol';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
@@ -43,7 +43,6 @@ import {
   storeTitle,
   unknownStore,
   type EntryQuery,
-  type RequestEntry,
   type StateHistory,
   type StoreEntry,
 } from './mcp-data.js';
@@ -102,7 +101,7 @@ export function createMcpServer(connection: ViewerConnection, options: McpOption
     const meta = pickSession(sessions, id);
     return { meta, ...readEvents(await connection.history(meta.info.id)) };
   };
-  const findRequest = (requests: RequestEntry[], id: string) => {
+  const findRequest = (requests: NetworkEntry[], id: string) => {
     const entry = requests.find((request) => request.id === id);
     if (!entry) throw new Error(`There is no request ${id} in this session. get_network lists the ids.`);
     return entry;

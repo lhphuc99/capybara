@@ -1,4 +1,7 @@
 import {
+  applySessionEvents,
+  currentStores,
+  emptySessionModel,
   formatBytes,
   formatLogMessage,
   formatOp,
@@ -15,157 +18,35 @@ import {
   valueText,
   type BodyPreview,
   type CapybaraEvent,
+  type LogEntry,
   type LogLevel,
   type LogSource,
   type NetworkDiagnosis,
-  type NetworkFailureCause,
-  type NetworkInitiator,
+  type NetworkEntry,
   type SerializedValue,
+  type SessionLimits,
   type SessionInfo,
   type SessionMeta,
-  type StateChangePayload,
+  type SocketMessage,
   type StateCommands,
   type StateDiffOp,
   type StateEntrySummary,
   type StateLibrary,
   type StatePath,
+  type StateRecord,
   type StateStoreInfo,
   type StorageAdapterInfo,
   type StorageEntries,
   type StorageEntry,
 } from '@capybara-devtools/protocol';
 
-export interface LogEntry {
-  seq: number;
-  ts: number;
-  level: LogLevel;
-  source: LogSource;
-  args: SerializedValue[];
-}
+/** The server keeps a bounded history already; the UI's own limits would hide part of it. */
+const EVERYTHING: SessionLimits = { logs: Infinity, requests: Infinity, socketMessages: Infinity, records: Infinity };
 
-export interface SocketMessage {
-  seq: number;
-  ts: number;
-  direction: 'sent' | 'received';
-  data: BodyPreview;
-}
-
-export interface RequestEntry {
-  id: string;
-  seq: number;
-  ts: number;
-  initiator: NetworkInitiator | 'websocket';
-  method: string;
-  url: string;
-  requestHeaders: Record<string, string>;
-  requestBody?: BodyPreview;
-  status?: number;
-  statusText?: string;
-  responseHeaders?: Record<string, string>;
-  responseBody?: BodyPreview;
-  /** For WebSockets, how long the connection lasted. */
-  duration?: number;
-  failure?: { message: string; cause?: NetworkFailureCause; credentials?: boolean; aborted?: boolean; timeout?: boolean };
-  socket?: {
-    state: 'connecting' | 'open' | 'closed' | 'failed';
-    protocol?: string;
-    closeCode?: number;
-    closeReason?: string;
-    error?: string;
-    existing?: boolean;
-    messages: SocketMessage[];
-  };
-}
-
-/** Rebuilds logs, requests and sockets from a session's events, as the UI's store does. */
-export function readEvents(events: CapybaraEvent[]): { logs: LogEntry[]; requests: RequestEntry[] } {
-  const logs: LogEntry[] = [];
-  const requests = new Map<string, RequestEntry>();
-  for (const event of events) {
-    switch (event.kind) {
-      case 'log':
-        logs.push({ seq: event.seq, ts: event.ts, ...event.payload });
-        break;
-      case 'network.request': {
-        const p = event.payload;
-        requests.set(p.id, {
-          id: p.id,
-          seq: event.seq,
-          ts: event.ts,
-          initiator: p.initiator,
-          method: p.method,
-          url: p.url,
-          requestHeaders: p.headers,
-          requestBody: p.body,
-        });
-        break;
-      }
-      case 'network.response': {
-        const entry = requests.get(event.payload.id);
-        if (!entry) break;
-        const p = event.payload;
-        entry.status = p.status;
-        entry.statusText = p.statusText;
-        entry.responseHeaders = p.headers;
-        entry.responseBody = p.body;
-        entry.duration = p.duration;
-        break;
-      }
-      case 'network.error': {
-        const entry = requests.get(event.payload.id);
-        if (!entry) break;
-        const p = event.payload;
-        entry.failure = { message: p.message, cause: p.cause, credentials: p.credentials, aborted: p.aborted, timeout: p.timeout };
-        entry.duration = p.duration;
-        break;
-      }
-      case 'ws.connect': {
-        const p = event.payload;
-        requests.set(p.id, {
-          id: p.id,
-          seq: event.seq,
-          ts: event.ts,
-          initiator: 'websocket',
-          method: 'WS',
-          url: p.url,
-          requestHeaders: {},
-          socket: { state: 'connecting', existing: p.existing, messages: [] },
-        });
-        break;
-      }
-      case 'ws.open': {
-        const socket = requests.get(event.payload.id)?.socket;
-        if (!socket) break;
-        socket.state = 'open';
-        socket.protocol = event.payload.protocol || undefined;
-        break;
-      }
-      case 'ws.message':
-        requests.get(event.payload.id)?.socket?.messages.push({
-          seq: event.seq,
-          ts: event.ts,
-          direction: event.payload.direction,
-          data: event.payload.data,
-        });
-        break;
-      case 'ws.error': {
-        const socket = requests.get(event.payload.id)?.socket;
-        if (socket) socket.error = event.payload.message;
-        break;
-      }
-      case 'ws.close': {
-        const entry = requests.get(event.payload.id);
-        if (!entry?.socket) break;
-        const p = event.payload;
-        entry.socket.state = entry.socket.state === 'open' && p.code !== 1006 && !entry.socket.error ? 'closed' : 'failed';
-        entry.socket.closeCode = p.code;
-        entry.socket.closeReason = p.reason || undefined;
-        entry.duration = p.duration;
-        break;
-      }
-    }
-  }
-  return { logs, requests: [...requests.values()] };
+/** Rebuilds logs, requests and sockets from a session's events, with the UI's reducer. */
+export function readEvents(events: CapybaraEvent[]): { logs: LogEntry[]; requests: NetworkEntry[] } {
+  const { logs, network } = applySessionEvents(emptySessionModel(), events, EVERYTHING);
+  return { logs, requests: network };
 }
 
 // ---------------------------------------------------------------------------
@@ -383,13 +264,13 @@ export interface NetworkQuery {
   method?: string;
   status?: string;
   errors?: boolean;
-  type?: RequestEntry['initiator'];
+  type?: NetworkEntry['initiator'];
   minDuration?: number;
   after?: number;
   before?: number;
 }
 
-export function filterRequests(requests: RequestEntry[], query: NetworkQuery, redact: Redactor): RequestEntry[] {
+export function filterRequests(requests: NetworkEntry[], query: NetworkQuery, redact: Redactor): NetworkEntry[] {
   const matcher = searchMatcher(query.search);
   const status = statusFilter(query.status);
   return requests.filter((entry) => {
@@ -404,22 +285,23 @@ export function filterRequests(requests: RequestEntry[], query: NetworkQuery, re
   });
 }
 
-function isError(entry: RequestEntry): boolean {
-  return !!entry.failure || (entry.status ?? 0) >= 400 || entry.socket?.state === 'failed';
+function isError(entry: NetworkEntry): boolean {
+  return entry.state === 'failed' || (!entry.socket && (entry.status ?? 0) >= 400);
 }
 
-function statusFilter(spec: string | undefined): ((entry: RequestEntry) => boolean) | undefined {
+function statusFilter(spec: string | undefined): ((entry: NetworkEntry) => boolean) | undefined {
   const value = spec?.trim().toLowerCase();
   if (!value) return undefined;
-  if (value === 'failed') return (entry) => !!entry.failure || entry.socket?.state === 'failed';
-  if (value === 'pending') return (entry) => entry.status === undefined && !entry.failure && (!entry.socket || entry.socket.state === 'connecting');
+  if (value === 'failed') return (entry) => entry.state === 'failed';
+  if (value === 'pending') return (entry) => entry.state === 'pending';
   const range = /^([1-5])xx$/.exec(value);
-  if (range) return (entry) => Math.floor((entry.status ?? 0) / 100) === Number(range[1]);
-  if (/^\d{3}$/.test(value)) return (entry) => entry.status === Number(value);
+  // A socket's 101 is not a response status anyone filters for.
+  if (range) return (entry) => !entry.socket && Math.floor((entry.status ?? 0) / 100) === Number(range[1]);
+  if (/^\d{3}$/.test(value)) return (entry) => !entry.socket && entry.status === Number(value);
   throw new Error(`Unknown status filter "${spec}". Use a status such as 404, a class such as 4xx or 5xx, "failed" or "pending".`);
 }
 
-export function requestLine(entry: RequestEntry, redact: Redactor): string {
+export function requestLine(entry: NetworkEntry, redact: Redactor): string {
   const columns = [
     entry.id,
     clock(entry.ts),
@@ -432,43 +314,49 @@ export function requestLine(entry: RequestEntry, redact: Redactor): string {
   return columns.join('  ') + requestNote(entry);
 }
 
-function statusLabel(entry: RequestEntry): string {
-  if (entry.socket) return entry.socket.closeCode !== undefined ? `${entry.socket.state} ${entry.socket.closeCode}` : entry.socket.state;
-  if (entry.failure) return entry.failure.aborted ? 'aborted' : entry.failure.timeout ? 'timeout' : 'failed';
+const SOCKET_STATES: Record<NetworkEntry['state'], string> = { pending: 'connecting', open: 'open', done: 'closed', failed: 'failed' };
+
+function statusLabel(entry: NetworkEntry): string {
+  if (entry.socket) {
+    const state = SOCKET_STATES[entry.state];
+    return entry.socket.closeCode !== undefined ? `${state} ${entry.socket.closeCode}` : state;
+  }
+  if (entry.state === 'failed') return entry.failure?.aborted ? 'aborted' : entry.failure?.timeout ? 'timeout' : 'failed';
   return entry.status === undefined ? 'pending' : String(entry.status);
 }
 
-function requestNote(entry: RequestEntry): string {
-  if (entry.failure) return `  ← ${entry.failure.message}${entry.failure.cause ? ` [${entry.failure.cause}]` : ''}`;
+function requestNote(entry: NetworkEntry): string {
   if (entry.socket) {
-    const parts = [`${entry.socket.messages.length} messages`, entry.socket.error, entry.socket.closeReason].filter(Boolean);
-    return `  ← ${parts.join(', ')}`;
+    const { closeReason } = entry.socket;
+    const parts = [`${entry.socket.messages.length} messages`, entry.error, closeReason === entry.error ? undefined : closeReason];
+    return `  ← ${parts.filter(Boolean).join(', ')}`;
   }
+  if (entry.state === 'failed') return `  ← ${entry.error}${entry.failure?.cause ? ` [${entry.failure.cause}]` : ''}`;
   return '';
 }
 
 export type BodyMode = 'none' | 'preview' | 'full';
 const BODY_PREVIEW = 4_000;
 
-export function requestDetail(entry: RequestEntry, redact: Redactor, body: BodyMode): string {
+export function requestDetail(entry: NetworkEntry, redact: Redactor, body: BodyMode): string {
   const lines = [`${entry.method} ${redact.url(entry.url)}`];
   const status = entry.socket
     ? statusLabel(entry)
-    : entry.failure
+    : entry.state === 'failed'
       ? statusLabel(entry)
       : entry.status === undefined
         ? 'pending'
         : `${entry.status}${entry.statusText ? ` ${entry.statusText}` : ''}`;
   lines.push(`Status: ${status} · ${duration(entry.duration)} · ${entry.initiator} · started ${clock(entry.ts)} · request id ${entry.id}`);
-  if (entry.failure) {
-    const cause = entry.failure.cause ? ` (${entry.failure.cause})` : '';
-    lines.push(`Failed: ${entry.failure.message}${cause}${entry.failure.credentials ? '; the request sent cookies' : ''}.`);
-    if (entry.failure.cause === 'cross-origin') lines.push('Call diagnose_request with this id to find out why.');
+  if (!entry.socket && entry.state === 'failed') {
+    const cause = entry.failure?.cause ? ` (${entry.failure.cause})` : '';
+    lines.push(`Failed: ${entry.error}${cause}${entry.failure?.credentials ? '; the request sent cookies' : ''}.`);
+    if (entry.failure?.cause === 'cross-origin') lines.push('Call diagnose_request with this id to find out why.');
   }
   if (entry.socket) {
     const socket = entry.socket;
     if (socket.protocol) lines.push(`Subprotocol: ${socket.protocol}`);
-    if (socket.error) lines.push(`Error: ${socket.error}`);
+    if (entry.error) lines.push(`Error: ${entry.error}`);
     if (socket.existing) lines.push('Already open when Capybara attached, so earlier messages are missing.');
     lines.push(`${socket.messages.length} messages; call get_websocket with this id to read them.`);
     return lines.join('\n');
@@ -571,22 +459,8 @@ export function storageEntryText(entry: StorageEntry, redact: Redactor): string 
 // State
 // ---------------------------------------------------------------------------
 
-/** One `state.change`: what an action (or a direct set) changed in a store. */
-export interface ChangeEntry {
-  seq: number;
-  ts: number;
-  store: string;
-  rev: number;
-  cause: StateChangePayload['cause'];
-  action?: StateChangePayload['action'];
-  ops: StateDiffOp[];
-  /** Changes in the record, counting those the app cut from `ops`. */
-  opCount: number;
-  /** Changes the app folded into this one, by its rate limit or while it was offline. */
-  skipped: number;
-  /** Changes lost just before this one, seen as a jump in `rev`. */
-  missed: number;
-}
+/** One `state.change`, tagged with its store. */
+export type ChangeEntry = StateRecord;
 
 export interface StoreEntry {
   info: StateStoreInfo;
@@ -598,56 +472,17 @@ export interface StoreEntry {
 export interface StateHistory {
   /** By id, in the order the history first names them. */
   stores: Map<string, StoreEntry>;
-  /** Oldest first. */
+  /** Oldest first, across stores. */
   changes: ChangeEntry[];
 }
 
-/** Rebuilds the stores and their changes from a session's events, counting skipped and missed changes as the UI does. */
+/** Rebuilds the stores and their changes from a session's events, with the UI's reducer. */
 export function readStateEvents(events: CapybaraEvent[]): StateHistory {
-  const stores = new Map<string, StoreEntry>();
-  const changes: ChangeEntry[] = [];
-  for (const event of events) {
-    if (event.kind === 'state.store') {
-      const info = event.payload?.store;
-      if (typeof info?.id !== 'string') continue;
-      // The server keeps each store's latest registration at its own seq, often after the store's changes.
-      const known = stores.get(info.id);
-      if (known) known.info = info;
-      else stores.set(info.id, { info, changes: 0 });
-    } else if (event.kind === 'state.change') {
-      const p = event.payload;
-      if (typeof p?.store !== 'string' || typeof p.rev !== 'number') continue;
-      let store = stores.get(p.store);
-      if (!store) {
-        store = { info: standIn(p.store, Boolean(p.action)), changes: 0 };
-        stores.set(p.store, store);
-      }
-      const ops = Array.isArray(p.ops) ? p.ops.filter((op) => Array.isArray(op?.path)) : [];
-      const previous = store.last?.rev ?? 0;
-      const entry: ChangeEntry = {
-        seq: event.seq,
-        ts: event.ts,
-        store: p.store,
-        rev: p.rev,
-        cause: p.cause,
-        action: p.action,
-        ops,
-        opCount: Math.max(typeof p.opCount === 'number' ? p.opCount : 0, ops.length),
-        skipped: typeof p.skipped === 'number' && p.skipped > 0 ? p.skipped : 0,
-        // A lower rev means the app started counting again, not that changes were lost.
-        missed: previous > 0 && p.rev > previous + 1 ? p.rev - previous - 1 : 0,
-      };
-      changes.push(entry);
-      store.changes++;
-      store.last = entry;
-    }
-  }
-  return { stores, changes };
-}
-
-/** A store only seen in changes, e.g. when the server restarted while the app kept running. */
-function standIn(id: string, actions: boolean): StateStoreInfo {
-  return { id, library: id.split(':')[0] as StateLibrary, label: id, via: 'subscribe', actions };
+  const views = Object.values(applySessionEvents(emptySessionModel(), events, EVERYTHING).state.stores);
+  return {
+    stores: new Map(views.map((view) => [view.info.id, { info: view.info, changes: view.records.length, last: view.records.at(-1) }])),
+    changes: views.flatMap((view) => view.records).sort((a, b) => a.seq - b.seq),
+  };
 }
 
 /** The history's stores with the ones the app has now laid over them. */
@@ -661,23 +496,11 @@ export function mergeStores(history: StateHistory, current: StateStoreInfo[]): S
 }
 
 /**
- * Stores grouped by library in the UI's order, by the UI's rules. Of stores sharing a name only the newest live one
- * is listed: hot reloading leaves the old instances behind, disposed or not (the browser keeps old modules alive).
- * Context providers may share a label legitimately, so they are not thinned. Contexts that belong to a library
- * (`vendor`) are left out as the UI hides them; `findStore` still finds them.
+ * The stores the UI lists, grouped by library in its order. Contexts that belong to a library (`vendor`) are left out
+ * as the UI hides them; `findStore` still finds them.
  */
 export function listStores(stores: StoreEntry[]): { shown: StoreEntry[]; replaced: number; vendored: number } {
-  const nameOf = (info: StateStoreInfo) => `${info.library}\n${info.label}`;
-  const number = (info: StateStoreInfo) => Number(info.id.slice(info.id.lastIndexOf(':') + 1)) || 0;
-  const newest = new Map<string, number>();
-  for (const { info } of stores) {
-    if (info.disposed || info.library === 'context') continue;
-    newest.set(nameOf(info), Math.max(newest.get(nameOf(info)) ?? 0, number(info)));
-  }
-  const live = new Set(stores.filter((store) => !store.info.disposed).map((store) => nameOf(store.info)));
-  const current = stores.filter(({ info }) =>
-    info.disposed ? !live.has(nameOf(info)) : info.library === 'context' || number(info) === newest.get(nameOf(info)),
-  );
+  const current = currentStores(stores);
   const kept = current.filter(({ info }) => !info.vendor);
   const rank = (library: string) => {
     const index = STATE_LIBRARIES.indexOf(library as StateLibrary);
@@ -1098,7 +921,7 @@ export function entryDetail(result: NonNullable<StateCommands['entry']['result']
 // Diagnosis
 // ---------------------------------------------------------------------------
 
-export function diagnosisText(entry: RequestEntry, diagnosis: NetworkDiagnosis, redact: Redactor): string {
+export function diagnosisText(entry: NetworkEntry, diagnosis: NetworkDiagnosis, redact: Redactor): string {
   const marks = { pass: '✓', fail: '✗', info: '•' } as const;
   const lines = [
     `${entry.method} ${redact.url(entry.url)}`,
