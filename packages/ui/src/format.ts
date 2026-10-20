@@ -86,14 +86,66 @@ export function findHeader(headers: Record<string, string> | undefined, name: st
   return undefined;
 }
 
-export function toCurl(entry: NetworkEntry): string {
+/** The request as a cURL command, with a short note when the command cannot send it as the app did. */
+export function toCurl(entry: NetworkEntry): { command: string; note?: string } {
   const quote = (text: string) => `'${text.replace(/'/g, `'\\''`)}'`;
   const parts = [`curl ${quote(entry.url)}`];
-  if (entry.method !== 'GET') parts.push(`-X ${entry.method}`);
-  for (const [name, value] of Object.entries(entry.requestHeaders)) parts.push(`-H ${quote(`${name}: ${value}`)}`);
+  // With -X HEAD, curl waits for a body that never comes.
+  if (entry.method === 'HEAD') parts.push('--head');
+  else if (entry.method !== 'GET') parts.push(`-X ${entry.method}`);
   const body = entry.requestBody;
-  if (body?.text !== undefined && body.kind === 'text') parts.push(`--data-raw ${quote(body.text)}`);
-  return parts.join(' \\\n  ');
+  const form = body?.kind === 'form' && body.text !== undefined ? formFields(body.text) : undefined;
+  for (const [name, value] of Object.entries(entry.requestHeaders)) {
+    // curl sets multipart's Content-Type itself, with the boundary it picks.
+    if (form && name.toLowerCase() === 'content-type') continue;
+    parts.push(`-H ${quote(`${name}: ${value}`)}`);
+  }
+  let note: string | undefined;
+  if (form) {
+    for (const field of form) {
+      if (!field.file) {
+        // Unlike -F, it sends a value starting with @ or < as it is.
+        parts.push(`--form-string ${quote(`${field.name}=${field.value}`)}`);
+        continue;
+      }
+      const type = field.file.type ? `;type=${field.file.type}` : '';
+      parts.push(`-F ${quote(`${field.name}=@"${field.file.name.replace(/["\\]/g, '\\$&')}"${type}`)}`);
+      note = 'Copied. Files upload from the current folder';
+    }
+  } else if (body?.text !== undefined) {
+    parts.push(`--data-raw ${quote(body.text)}`);
+  } else if (body) {
+    note = 'Copied without the body, not captured as text';
+  }
+  if (body?.truncated) note = 'Copied with only the beginning of the body';
+  return { command: parts.join(' \\\n  '), note };
+}
+
+interface FormField {
+  name: string;
+  value: string;
+  file?: { name: string; type?: string };
+}
+
+/** The SDK writes a form as `name=value` lines, a file as `name=[file photo.jpg, image/jpeg, 1200 B]`. */
+function formFields(text: string): FormField[] {
+  const fields: FormField[] = [];
+  for (const line of text.split('\n')) {
+    const at = line.indexOf('=');
+    const last = fields[fields.length - 1];
+    // The rest of a value that has line breaks.
+    if (at < 0 && last) {
+      last.value += `\n${line}`;
+      continue;
+    }
+    fields.push(at < 0 ? { name: line, value: '' } : { name: line.slice(0, at), value: line.slice(at + 1) });
+  }
+  for (const field of fields) {
+    const file = /^\[file (.*?)(?:, ([\w.+-]+\/[\w.+-]+))?(?:, \d+ B)?\]$/.exec(field.value);
+    // React Native names a file by its URI when it has no name.
+    if (file) field.file = { name: file[1]!.split('/').pop() || 'file', type: file[2] };
+  }
+  return fields;
 }
 
 const ENGINE_IO_PACKETS = ['open', 'close', 'ping', 'pong', 'message', 'upgrade', 'noop'];

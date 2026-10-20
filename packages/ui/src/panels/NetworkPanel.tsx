@@ -452,9 +452,9 @@ function RequestDetail({
   const [tab, setTab] = useState<DetailTab>('response');
   const [copied, setCopied] = useState<string | null>(null);
 
-  const copy = (label: string, text: string) => {
+  const copy = (label: string, text: string, note?: string) => {
     void copyText(text).then((ok) => {
-      showToast(ok ? 'Copied to clipboard' : 'Could not copy to the clipboard', ok ? 'ok' : 'error');
+      showToast(ok ? (note ?? 'Copied to clipboard') : 'Could not copy to the clipboard', ok ? 'ok' : 'error');
       if (!ok) return;
       setCopied(label);
       window.setTimeout(() => setCopied(null), 1_200);
@@ -473,7 +473,14 @@ function RequestDetail({
           ))}
         </div>
         <div className="pane-actions">
-          <button type="button" className="btn small" onClick={() => copy('curl', toCurl(entry))}>
+          <button
+            type="button"
+            className="btn small"
+            onClick={() => {
+              const curl = toCurl(entry);
+              copy('curl', curl.command, curl.note);
+            }}
+          >
             {copied === 'curl' ? 'Copied' : 'Copy cURL'}
           </button>
           <button type="button" className="btn small icon" onClick={onClose} aria-label="Close details">

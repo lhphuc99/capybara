@@ -20,10 +20,14 @@ export function showToast(text: string, tone: Toast['tone'] = 'ok'): void {
   current = { id: ++counter, text, tone };
   emit();
   window.clearTimeout(timer);
-  timer = window.setTimeout(() => {
-    current = null;
-    emit();
-  }, 1_800);
+  // Long enough to read a note, not only "Copied".
+  timer = window.setTimeout(
+    () => {
+      current = null;
+      emit();
+    },
+    Math.max(1_800, text.length * 60),
+  );
 }
 
 export function useToast(): Toast | null {
