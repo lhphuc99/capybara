@@ -1,6 +1,6 @@
 import type { LogLevel } from '@capybara-devtools/protocol';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { memo, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
+import { memo, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
 import { CopyButton } from '../components/CopyButton';
 import { EmptyMessage } from '../components/EmptyMessage';
 import { JsonTree } from '../components/JsonTree';
@@ -105,6 +105,36 @@ export function LogsPanel({ session }: { session: SessionState }) {
     setToggledGroups(next);
   };
 
+  // Following keeps the newest entry in view as it opens, but would scroll any other one away until its first line
+  // left the list. Opening those stops following and scrolls only as far as the entry needs.
+  const [revealSeq, setRevealSeq] = useState<number | null>(null);
+  const revealing = useRef(false);
+  const toggleEntry = (entry: LogEntry) => {
+    if (!follow || entry.seq !== visible[visible.length - 1]?.seq) {
+      setFollow(false);
+      setRevealSeq(entry.seq);
+    }
+    if (isGroup(entry)) toggleGroup(entry.seq);
+    else toggleRow(entry.seq);
+  };
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    if (revealSeq === null || !list) return;
+    setRevealSeq(null);
+    const row = list.querySelector(`[data-row="${revealSeq}"]`)?.closest('.log-row');
+    if (!row) return;
+    const view = list.getBoundingClientRect();
+    const box = row.getBoundingClientRect();
+    const by = box.top < view.top ? box.top - view.top : Math.min(Math.max(0, box.bottom - view.bottom), box.top - view.top);
+    if (by === 0) return;
+    // The rows below have not moved down yet, so this scroll may reach the bottom without being there.
+    revealing.current = true;
+    list.scrollTop += by;
+    requestAnimationFrame(() => {
+      revealing.current = false;
+    });
+  }, [revealSeq]);
+
   const onLineKey = useListKeys({
     listRef,
     keys: openableSeqs,
@@ -112,8 +142,7 @@ export function LogsPanel({ session }: { session: SessionState }) {
     onMove: setActiveSeq,
     onActivate: (seq) => {
       const entry = visible.find((candidate) => candidate.seq === seq);
-      if (entry && isGroup(entry)) toggleGroup(seq);
-      else toggleRow(seq);
+      if (entry) toggleEntry(entry);
     },
   });
   const tabbable = activeSeq !== null && openableIndex.has(activeSeq) ? activeSeq : openableSeqs[0];
@@ -159,7 +188,14 @@ export function LogsPanel({ session }: { session: SessionState }) {
             <p>Anything the app writes with console.log, console.warn or console.error shows up here.</p>
           </EmptyMessage>
         ) : (
-          <div className="log-list" ref={listRef} onScroll={onScroll} onWheel={onWheel}>
+          <div
+            className="log-list"
+            ref={listRef}
+            onScroll={() => {
+              if (!revealing.current) onScroll();
+            }}
+            onWheel={onWheel}
+          >
             <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
               {virtualizer.getVirtualItems().map((item) => {
                 const entry = visible[item.index]!;
@@ -185,8 +221,7 @@ export function LogsPanel({ session }: { session: SessionState }) {
                       tabbable={entry.seq === tabbable}
                       onToggle={(seq) => {
                         setActiveSeq(seq);
-                        if (isGroup(entry)) toggleGroup(seq);
-                        else toggleRow(seq);
+                        toggleEntry(entry);
                       }}
                       onKey={onLineKey}
                     />
