@@ -47,11 +47,12 @@ export function logText(entry: LogEntry, redact: Redactor, full: boolean): strin
   const head = `#${entry.seq} ${clock(entry.ts)} ${entry.level.toUpperCase().padEnd(5)} ${lead}${source ? `(${source}) ` : ''}${formatLogMessage(args)}`;
   const details = full
     ? args.filter((arg) => isExpandable(arg) || (isSpecial(arg) && arg.$t === 'string')).map((arg) => valueText(arg))
-    : args.flatMap((arg) => (isSpecial(arg) && arg.$t === 'error' && arg.stack ? [stackTop(arg.stack, arg.message)] : []));
+    : args.flatMap((arg) => (isSpecial(arg) && arg.$t === 'error' && arg.stack ? [stackTop(arg.stack, arg.message, arg.name)] : []));
   return [head, ...details.filter(Boolean).map((detail) => indent(detail, '    '))].join('\n');
 }
 
-function stackTop(stack: string, message: string): string {
-  const frames = stack.split('\n').filter((line) => line.trim() && !line.includes(message));
+function stackTop(stack: string, message: string, name: string): string {
+  // Errors without a message, such as console.trace()'s, start their stack with just the name.
+  const frames = stack.split('\n').filter((line) => line.trim() && (message ? !line.includes(message) : line.trim() !== name));
   return frames.slice(0, 3).map((line) => line.trim()).join('\n');
 }

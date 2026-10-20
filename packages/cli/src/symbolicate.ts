@@ -12,6 +12,8 @@ interface MappedFrame {
   lineNumber?: unknown;
   column?: unknown;
   methodName?: unknown;
+  /** Set on React Native's own frames, which LogBox hides. */
+  collapse?: unknown;
 }
 
 /** React Native's source URLs are jsc-safe: the query comes after `//&` instead of `?`. */
@@ -62,8 +64,10 @@ export async function symbolicateEvents(
 async function symbolicateBundles(stacks: ErrorValue[], signal: AbortSignal): Promise<void> {
   const local = localHosts();
   const byPort = new Map<number, Frame[]>();
+  const collapsed = new Map<string[], Set<number>>();
   const rewritten = stacks.map((error) => {
     const lines = error.stack.split('\n');
+    collapsed.set(lines, new Set());
     lines.forEach((text, index) => {
       const frame = parseFrame(text, lines, index);
       const port = frame && BUNDLE.test(frame.url) ? metroPort(frame.url, local) : undefined;
@@ -81,10 +85,23 @@ async function symbolicateBundles(stacks: ErrorValue[], signal: AbortSignal): Pr
       frames.forEach((frame, i) => {
         const text = formatMapped(frame, mapped[i]);
         if (text) frame.lines[frame.index] = text;
+        if (mapped[i]?.collapse === true) collapsed.get(frame.lines)?.add(frame.index);
       });
     }),
   );
-  for (const { error, lines } of rewritten) error.stack = lines.join('\n');
+  for (const { error, lines } of rewritten) {
+    error.stack = (error.name === 'Trace' ? withoutConsoleFrames(lines, collapsed.get(lines) ?? new Set()) : lines).join('\n');
+  }
+}
+
+/**
+ * Hermes starts a console.trace() stack inside the console wrappers of React Native and React DevTools, which
+ * Metro marks to collapse. They go, as LogBox hides them, unless nothing else is left.
+ */
+function withoutConsoleFrames(lines: string[], collapsed: Set<number>): string[] {
+  let first = 1;
+  while (collapsed.has(first)) first++;
+  return first > 1 && first < lines.length ? [lines[0]!, ...lines.slice(first)] : lines;
 }
 
 function errorStacks(events: readonly CapybaraEvent[], test: (stack: string) => boolean): ErrorValue[] {

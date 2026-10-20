@@ -105,6 +105,9 @@ describe('copied text', () => {
     const error = (stack: string): SerializedValue => ({ $t: 'error', name: 'TypeError', message: 'boom', stack });
     expect(valueText(error('TypeError: boom\n    at f (app.js:1:1)'))).toBe('TypeError: boom\n    at f (app.js:1:1)');
     expect(valueText(error('f@app.js:1:1'))).toBe('TypeError: boom\nf@app.js:1:1');
+    const trace: SerializedValue = { $t: 'error', name: 'Trace', message: '', stack: 'Trace\n    at where (app.js:2:3)' };
+    expect(valueText(trace)).toBe('Trace\n    at where (app.js:2:3)');
+    expect(valueText({ $t: 'error', name: 'Error', message: '', stack: 'ErrorBoundary@app.js:1:1' })).toBe('Error\nErrorBoundary@app.js:1:1');
   });
 
   it('writes a log entry as its line, then its objects and errors in full', () => {

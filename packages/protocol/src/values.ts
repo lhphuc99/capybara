@@ -151,9 +151,9 @@ export function plainValue(value: SerializedValue, raw = false): unknown {
 export function valueText(value: SerializedValue, raw = false): string {
   if (typeof value === 'string') return value;
   if (!raw && isSpecial(value) && value.$t === 'error') {
-    const head = `${value.name}: ${value.message}`;
+    const head = value.message ? `${value.name}: ${value.message}` : value.name;
     if (!value.stack) return head;
-    return value.stack.startsWith(head) ? value.stack : `${head}\n${value.stack}`;
+    return value.stack === head || value.stack.startsWith(`${head}\n`) ? value.stack : `${head}\n${value.stack}`;
   }
   const plain = plainValue(value, raw);
   return typeof plain === 'string' ? plain : (JSON.stringify(plain, null, 2) ?? String(plain));

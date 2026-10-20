@@ -12,4 +12,18 @@ describe('logText', () => {
     expect(logText(entry(2, { args: ['inside'], depth: 1 }), redact, false)).toMatch(/^#2 \S+ LOG {5}inside$/);
     expect(logText(entry(3, { args: [[{ a: 1 }]], depth: 1, method: 'table' }), redact, true)).toMatch(/^#3 \S+ LOG {5}\[\{…\}\]\n {4}\[\n/);
   });
+
+  it('lists the top of the stack of console.trace(), whose error has no message', () => {
+    const trace = { $t: 'error' as const, name: 'Trace', message: '', stack: 'Trace\n    at where (/app/App.tsx:2:3)\n    at onPress (/app/App.tsx:9:1)' };
+    expect(logText(entry(1, { args: ['here', trace], method: 'trace' }), redact, false).split('\n')).toEqual([
+      expect.stringMatching(/^#1 \S+ LOG {3}here Trace$/),
+      '    at where (/app/App.tsx:2:3)',
+      '    at onPress (/app/App.tsx:9:1)',
+    ]);
+    expect(logText(entry(2, { args: ['here', trace], method: 'trace' }), redact, true).split('\n').slice(1)).toEqual([
+      '    Trace',
+      '        at where (/app/App.tsx:2:3)',
+      '        at onPress (/app/App.tsx:9:1)',
+    ]);
+  });
 });

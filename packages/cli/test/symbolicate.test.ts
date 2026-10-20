@@ -16,6 +16,7 @@ interface MetroFrame {
   lineNumber: number;
   column: number;
   methodName?: string;
+  collapse?: boolean;
 }
 
 /** Answers `/symbolicate` the way Metro does: mapped frames get a source file, the rest come back as sent. */
@@ -78,6 +79,30 @@ describe('symbolicateEvents', () => {
       { file: url, lineNumber: 86171, column: 27, methodName: 'onPress' },
       { file: url, lineNumber: 500, column: 2, methodName: 'anonymous' },
     ]]);
+  });
+
+  it("drops the console wrappers Metro collapses from the top of console.trace() stacks, as LogBox does", async () => {
+    const polyfill = '/Users/dev/app/node_modules/@react-native/js-polyfills/console.js';
+    const metro = await fakeMetro({
+      ...APP,
+      667: { file: polyfill, lineNumber: 667, column: 37, methodName: 'methodName', collapse: true },
+      17416: { file: '/Users/dev/app/node_modules/react-devtools-core/dist/backend.js', lineNumber: 17416, column: 30, collapse: true },
+    });
+    const url = bundle(metro.port);
+    const trace = (stack: string[]) => ({ $t: 'error', name: 'Trace', message: '', stack: ['Trace', ...stack].join('\n') });
+    const event = logOf(
+      1,
+      trace([`    at anonymous (${url}:667:38)`, `    at overrideMethod (${url}:17416:31)`, `    at onPress (${url}:86171:28)`]),
+      trace([`    at anonymous (${url}:667:38)`]),
+      { ...error(`Error: boom\n    at anonymous (${url}:667:38)\n    at onPress (${url}:86171:28)`) },
+    );
+
+    await symbolicateEvents([event]);
+
+    expect(stackOf(event)).toBe('Trace\n    at onPress (/Users/dev/app/App.tsx:42:13)');
+    // A stack of collapsed frames only, and the stacks of errors, keep every frame.
+    expect(stackOf(event, (args) => args[1])).toBe(`Trace\n    at methodName (${polyfill}:667:38)`);
+    expect(stackOf(event, (args) => args[2])).toBe(`Error: boom\n    at methodName (${polyfill}:667:38)\n    at onPress (/Users/dev/app/App.tsx:42:13)`);
   });
 
   it('finds errors anywhere in the arguments and reads V8 and JSC frames, in one request per Metro', async () => {
