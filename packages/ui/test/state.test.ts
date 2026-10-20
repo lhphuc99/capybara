@@ -333,6 +333,7 @@ describe('changes', () => {
   const record = (ops: StateDiffOp[], extra: Partial<StateRecord> = {}): StateRecord => ({
     seq: 1,
     ts: 0,
+    store: 'redux:1',
     rev: 1,
     cause: 'set',
     ops,

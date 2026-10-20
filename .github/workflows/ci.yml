@@ -35,3 +35,22 @@ jobs:
       - run: npm run build
       - run: npm run typecheck
       - run: npm test
+
+  # The website keeps its own lockfile for Vercel, outside the workspaces, so `npm test` above skips it.
+  website:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: website
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test

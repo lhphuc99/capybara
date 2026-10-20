@@ -27,4 +27,4 @@ The "why" scene needs port 4000 free for its demo API.
 
 ## Deploying
 
-Vercel project `capybara-devtools`, connected to this repository with its Root Directory set to `website`. Pushes to `main` deploy to production and pull requests get a preview. Settings are in `vercel.json`: Vercel runs the tests before building and skips commits that don't touch this folder.
+Vercel project `capybara-devtools`, connected to this repository with its Root Directory set to `website`. Pushes to `main` deploy to production and pull requests get a preview. Settings are in `vercel.json`: Vercel runs the tests before building and skips commits that don't touch this folder. CI also typechecks the site and runs its tests on every pull request, including ones that only change the repo's README, which the tests read.
