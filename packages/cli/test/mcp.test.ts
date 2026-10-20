@@ -17,6 +17,9 @@ let apiUrl = '';
 let port = 0;
 let app: WebSocket;
 const closers: Array<() => Promise<unknown> | void> = [];
+/** Storage writes and query actions the app was asked for. */
+const storageWrites: Array<{ method: string; params: unknown }> = [];
+const queryActions: unknown[] = [];
 
 const STORAGE = [
   { key: 'user', value: '{"id":1,"name":"Ada","token":"abc123"}', size: 38, truncated: false },
@@ -60,7 +63,7 @@ function at(root: unknown, path: Array<string | number>): { found: boolean; valu
 }
 
 /** What the SDK's state plugin answers, with the same errors. */
-function answerState(method: string, params: { store?: string; key?: string; path?: Array<string | number> } | undefined): unknown {
+function answerState(method: string, params: { store?: string; key?: string; op?: string; path?: Array<string | number> } | undefined): unknown {
   const path = params?.path ?? [];
   switch (method) {
     case 'stores':
@@ -84,6 +87,9 @@ function answerState(method: string, params: { store?: string; key?: string; pat
       if (!found.found) throw new Error(`Nothing at ${JSON.stringify(path)}`);
       return { summary, data: found.value, truncated: false };
     }
+    case 'act':
+      queryActions.push(params);
+      return params?.key === '["feed"]' ? { done: false, note: 'It is already fetching' } : { done: true };
     default:
       throw new Error(`Unknown command state.${method}`);
   }
@@ -111,12 +117,19 @@ beforeAll(async () => {
       }
       return;
     }
-    const result =
-      method === 'list'
-        ? [{ id: 'localStorage', label: 'Local Storage', readOnly: false, canClear: true }]
-        : method === 'entries'
-          ? { entries: STORAGE, total: STORAGE.length }
-          : (STORAGE.find((entry) => entry.key === params.key) ?? null);
+    let result: unknown = null;
+    if (method === 'list') {
+      result = [
+        { id: 'localStorage', label: 'Local Storage', readOnly: false, canClear: true },
+        { id: 'readings', label: 'Readings', readOnly: true, canClear: false, note: 'Read through Metro.' },
+      ];
+    } else if (method === 'entries') {
+      result = { entries: STORAGE, total: STORAGE.length };
+    } else if (method === 'get') {
+      result = STORAGE.find((entry) => entry.key === params.key) ?? null;
+    } else {
+      storageWrites.push({ method, params });
+    }
     app.send(JSON.stringify({ t: 'result', id: message.id, ok: true, result }));
   });
   app.send(JSON.stringify({
@@ -224,9 +237,9 @@ afterAll(async () => {
   await new Promise((resolve) => api.close(resolve));
 });
 
-async function connect(options: { showSecrets?: boolean; port?: number } = {}) {
+async function connect(options: { showSecrets?: boolean; readOnly?: boolean; port?: number } = {}) {
   const connection = new ViewerConnection(options.port ?? port);
-  const mcp = createMcpServer(connection, { version: 'test', showSecrets: options.showSecrets });
+  const mcp = createMcpServer(connection, { version: 'test', showSecrets: options.showSecrets, readOnly: options.readOnly });
   const client = new Client({ name: 'test', version: '0' });
   const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
   await Promise.all([client.connect(clientSide), mcp.connect(serverSide)]);
@@ -270,7 +283,7 @@ describe('capybara mcp', () => {
   it('describes its tools and the session it reads', async () => {
     const { client, call } = await ready();
     const { tools } = await client.listTools();
-    expect(tools.map((tool) => tool.name).sort()).toEqual([
+    const reads = [
       'diagnose_request',
       'get_logs',
       'get_network',
@@ -282,8 +295,14 @@ describe('capybara mcp', () => {
       'get_storage',
       'get_websocket',
       'list_sessions',
-    ]);
-    expect(tools.every((tool) => tool.annotations?.readOnlyHint)).toBe(true);
+    ];
+    const writes = ['act_on_query', 'clear_session', 'clear_storage', 'remove_session', 'remove_storage', 'set_storage'];
+    expect(tools.map((tool) => tool.name).sort()).toEqual([...reads, ...writes].sort());
+    for (const tool of tools) {
+      expect(tool.annotations?.readOnlyHint).toBe(reads.includes(tool.name));
+      expect(tool.annotations?.destructiveHint ?? false).toBe(writes.includes(tool.name));
+    }
+    expect(client.getInstructions()).toContain('Use them only when the user asks');
     expect(client.getInstructions()).toContain('get_state_actions');
     expect(client.getInstructions()).toContain('get_setup_guide');
     const sessions = await call('list_sessions');
@@ -597,6 +616,79 @@ describe('capybara mcp', () => {
     expect(result.isError).toBe(true);
     expect(result.text).toContain('refused the connection');
     expect(result.text).toContain('--remote-ui');
+  });
+
+  it('leaves out the tools that change things when read-only', async () => {
+    const { client } = await connect({ readOnly: true });
+    const { tools } = await client.listTools();
+    expect(tools.map((tool) => tool.name)).not.toContain('set_storage');
+    expect(tools.every((tool) => tool.annotations?.readOnlyHint)).toBe(true);
+    expect(client.getInstructions()).not.toContain('set_storage');
+  });
+
+  it('sets, removes and clears storage keys through the app, but not in a store it can only read', async () => {
+    const { call } = await ready();
+    storageWrites.length = 0;
+    expect(await call('set_storage', { adapter: 'localStorage', key: 'theme', value: 'light' })).toEqual({
+      isError: false,
+      text: 'Shop (session web-1) · localStorage: set theme (5 B).',
+    });
+    expect((await call('remove_storage', { adapter: 'localStorage', key: 'nope' })).text).toBe(
+      'Shop (session web-1) · localStorage has no key nope; nothing was removed.',
+    );
+    expect((await call('remove_storage', { adapter: 'localStorage', key: 'theme' })).text).toBe('Shop (session web-1) · localStorage: removed theme.');
+    expect((await call('clear_storage', { adapter: 'localStorage' })).text).toBe('Shop (session web-1) · localStorage: cleared 3 keys.');
+    expect(await call('set_storage', { adapter: 'readings', key: 'a', value: 'b' })).toEqual({ isError: true, text: 'Readings is read-only. Read through Metro.' });
+    expect((await call('clear_storage', { adapter: 'cookies' })).text).toBe('Shop (session web-1) has no store cookies. Its stores: localStorage, readings.');
+    expect(storageWrites).toEqual([
+      { method: 'set', params: { adapter: 'localStorage', key: 'theme', value: 'light' } },
+      { method: 'remove', params: { adapter: 'localStorage', key: 'theme' } },
+      { method: 'clear', params: { adapter: 'localStorage' } },
+    ]);
+  });
+
+  it('acts on a query as the State tab does', async () => {
+    const { call } = await ready();
+    queryActions.length = 0;
+    const where = 'Shop (session web-1) · queries (TanStack Query, tanstack-query:1)';
+    expect((await call('act_on_query', { key: '["todos"]', op: 'refetch' })).text).toBe(`${where}: refetched ["todos"].`);
+    expect((await call('act_on_query', { key: '["feed"]', op: 'invalidate' })).text).toBe(`${where}: It is already fetching.`);
+    expect(await call('act_on_query', { key: '["todos"]', op: 'reset' })).toEqual({
+      isError: true,
+      text: 'queries (TanStack Query, tanstack-query:1) cannot reset an entry; it can refetch, invalidate.',
+    });
+    expect(await call('act_on_query', { key: 'addTodo', op: 'refetch' })).toEqual({ isError: true, text: 'addTodo is a mutation, which has nothing to refetch.' });
+    expect((await call('act_on_query', { key: '["todos"]', op: 'refetch', store: 'shop' })).text).toBe('shop (Redux, redux:1) is not a TanStack Query or SWR cache.');
+    expect(queryActions).toEqual([
+      { store: 'tanstack-query:1', key: '["todos"]', op: 'refetch' },
+      { store: 'tanstack-query:1', key: '["feed"]', op: 'invalidate' },
+    ]);
+  });
+
+  it('clears what Capybara recorded for an app, and removes the app once it is gone', async () => {
+    // Started before web-1, so the other tests keep reading web-1 by default.
+    const temp = await otherApp({ id: 'web-4', appName: 'Temp', platform: 'web', sdk: { name: 'test', version: '0' }, startedAt: 0, plugins: ['console', 'state'] }, [
+      { seq: 1, ts: 1_700_000_000_000, kind: 'log', payload: { level: 'log', source: 'console', args: ['hello'] } },
+      { seq: 2, ts: 1_700_000_000_001, kind: 'state.store', payload: { store: { id: 'zustand:1', library: 'zustand', label: 'tabs', via: 'subscribe', actions: false } } },
+      { seq: 3, ts: 1_700_000_000_002, kind: 'state.change', payload: { store: 'zustand:1', rev: 1, cause: 'set', ops: [{ op: 'set', path: ['tab'], prev: 'a', value: 'b' }] } },
+    ]);
+    const { call } = await connect();
+    await until(() => call('get_state_actions', { session: 'web-4' }), ({ text }) => text.includes('1 of 1 changes match'));
+    expect((await call('clear_session', { session: 'web-4', scope: 'state' })).text).toBe('Cleared the state changes recorded for Temp (session web-4).');
+    expect((await call('get_state_actions', { session: 'web-4' })).text).toBe('Temp (session web-4): no state changes recorded.');
+    expect((await call('get_logs', { session: 'web-4' })).text).toContain('1 of 1 log entries match.');
+    expect((await call('clear_session', { session: 'web-4' })).text).toBe(
+      'Cleared the logs, requests, WebSocket messages and state changes recorded for Temp (session web-4).',
+    );
+    expect((await call('get_logs', { session: 'web-4' })).text).toContain('0 of 0 log entries match.');
+    expect(await call('remove_session', { session: 'web-4' })).toEqual({
+      isError: true,
+      text: 'Temp (session web-4) is connected, and only disconnected sessions can be removed. clear_session clears what it recorded.',
+    });
+    temp.close();
+    await until(() => call('get_logs', { session: 'web-4' }), ({ text }) => text.includes('disconnected'));
+    expect((await call('remove_session', { session: 'web-4' })).text).toBe('Removed Temp (session web-4, disconnected).');
+    expect((await call('get_logs', { session: 'web-4' })).text).toMatch(/^There is no session web-4\./);
   });
 
   it('says how to add Capybara to an app, without Capybara running', async () => {

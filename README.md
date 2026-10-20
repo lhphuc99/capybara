@@ -251,7 +251,7 @@ Packages land in `apps/desktop/release/`, named like `Capybara-0.1.0-win-x64.exe
 
 ## AI assistants (MCP)
 
-`capybara mcp` lets an AI assistant read and filter what Capybara records: logs, network requests, WebSocket messages, storage and state. It is an [MCP](https://modelcontextprotocol.io) server on stdin and stdout that reads the Capybara app or `npx capybara-devtools` already running on this computer.
+`capybara mcp` lets an AI assistant read and filter what Capybara records: logs, network requests, WebSocket messages, storage and state. When you ask it to, the assistant can also change the app's storage, refetch or reset its queries, and clear what Capybara recorded. It is an [MCP](https://modelcontextprotocol.io) server on stdin and stdout that reads the Capybara app or `npx capybara-devtools` already running on this computer.
 
 ```bash
 claude mcp add capybara -- npx capybara-devtools mcp    # Claude Code
@@ -273,7 +273,7 @@ An assistant without the MCP server gets the same guide from a command, followed
 npx capybara-devtools setup-guide            # the app in this folder, or pass its folder
 ```
 
-| Tool | What it reads |
+| Tool | What it does |
 | --- | --- |
 | `get_setup_guide` | How to add Capybara to an app, worked out from its package.json. Works before Capybara runs |
 | `list_sessions` | Connected apps and their session ids |
@@ -286,8 +286,11 @@ npx capybara-devtools setup-guide            # the app in this folder, or pass i
 | `get_state` | The app's state stores with their ids and latest change, or one store's current state, whole or at a `path` such as `cart.items[0]` |
 | `get_state_actions` | Changes to the stores, newest last: the action and the paths it changed, with skipped and missed changes marked; one change in full by `seq`. Works after the app disconnects |
 | `get_queries` | TanStack Query and SWR entries, filtered by status (`error`, `pending`, `success`, `fetching`, `stale`) or key; one entry's data by `key` |
+| `set_storage`, `remove_storage`, `clear_storage` | Set or remove a key in one of the app's stores, or empty the store, e.g. to try the app with a made-up user or a feature flag turned on |
+| `act_on_query` | Refetch, invalidate, reset, cancel or remove a TanStack Query query, or revalidate, clear or reset an SWR key, as the State tab's buttons do |
+| `clear_session`, `remove_session` | Clear what Capybara recorded for an app (all of it, or only its state changes), or remove a disconnected app from the list |
 
-- The tools only read. `diagnose_request` sends the request's preflight and, for GET and HEAD, the request itself again from this computer, without the app's credentials.
+- The tools that change things are marked as such, so clients that confirm such tools ask you first, and the server tells the assistant to use them only when you ask. `capybara mcp --read-only` leaves them out. The others only read; `diagnose_request` sends the request's preflight and, for GET and HEAD, the request itself again from this computer, without the app's credentials.
 - What the tools return goes to the AI model. Values that look like credentials are replaced with `[hidden]`: Authorization and cookie headers, JSON keys and query parameters such as `token`, `password`, `jwt` or `privateKey`, and storage keys such as `authToken`. In state, so are values at a path through such a key, the rest of an action whose type names one (`auth/setToken`), and the data of a query or SWR key named like one. JWTs, `Bearer …` values and Stripe, GitHub, Slack and AWS keys are hidden in the keys and errors of queries and SWR entries. Empty values (`null`, `undefined`, `false`, `''`) are shown as they are, so a signed-out app reads differently from a signed-in one. A credential under an ordinary name still reaches the model, as in storage. Pass `--show-secrets` to turn that off.
 - Lists return the newest 50 entries by default; pass `after` with the last `seq` to get only newer ones. Without a session id, the tools read the newest connected app.
 - Pass `--port` when Capybara runs on another port, and `--host` to read Capybara on another computer, which must run with `--remote-ui`.

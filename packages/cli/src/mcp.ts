@@ -36,6 +36,7 @@ import {
 } from './mcp-state.js';
 import { adapterLine, storageEntryLines, storageEntryText } from './mcp-storage.js';
 import { newest, pickSession, sessionHeader, sessionLine } from './mcp-text.js';
+import { registerWriteTools, WRITE_INSTRUCTIONS } from './mcp-writes.js';
 import { resolveProjectDir, setupGuide } from './setup-guide.js';
 
 const INSTRUCTIONS = `Capybara records what a React Native or web app in development is doing: console logs, network requests (fetch, XHR, WebSocket), storage (localStorage, sessionStorage, cookies, AsyncStorage, MMKV) and state (Redux, Zustand, TanStack Query, SWR, React Context). These tools read the Capybara server running on this computer. To add Capybara to an app, call get_setup_guide, which works before Capybara runs, and make the changes it lists.
@@ -50,6 +51,7 @@ Options:
   -p, --port <port>   Port of the Capybara server (default ${DEFAULT_PORT}, or $CAPYBARA_PORT)
       --host <host>   Its address (default 127.0.0.1); Capybara on another computer needs --remote-ui
       --show-secrets  Don't hide values that look like credentials
+      --read-only     Leave out the tools that change the app's storage and queries or Capybara's sessions
   -h, --help          Show this help
 
 Claude Code:  claude mcp add capybara -- npx capybara-devtools mcp
@@ -59,6 +61,8 @@ export interface McpOptions {
   version: string;
   /** Hand credentials to the assistant as they are; off by default. */
   showSecrets?: boolean;
+  /** Leave out the tools that change things. */
+  readOnly?: boolean;
 }
 
 const session = z.string().optional().describe('Session id from list_sessions. Defaults to the newest connected app.');
@@ -77,7 +81,8 @@ const maxChars = z.number().int().min(1_000).max(200_000).optional().describe('C
 const STATE_CHARS = 20_000;
 
 export function createMcpServer(connection: ViewerConnection, options: McpOptions): McpServer {
-  const server = new McpServer({ name: 'capybara', version: options.version }, { instructions: INSTRUCTIONS });
+  const instructions = options.readOnly ? INSTRUCTIONS : `${INSTRUCTIONS}\n\n${WRITE_INSTRUCTIONS}`;
+  const server = new McpServer({ name: 'capybara', version: options.version }, { instructions });
   const redact = redactor(!options.showSecrets);
   const reads = { readOnlyHint: true, openWorldHint: false } as const;
 
@@ -567,6 +572,8 @@ export function createMcpServer(connection: ViewerConnection, options: McpOption
     (args) => run(async () => setupGuide(resolveProjectDir(args.projectDir ?? '.'), { version: options.version, via: 'mcp' })),
   );
 
+  if (!options.readOnly) registerWriteTools(server, { connection, run, openState, currentStores, pickStore, findEntry });
+
   server.registerPrompt(
     'setup',
     {
@@ -598,6 +605,7 @@ export async function runMcp(argv: string[], version: string): Promise<void> {
       port: { type: 'string', short: 'p' },
       host: { type: 'string' },
       'show-secrets': { type: 'boolean' },
+      'read-only': { type: 'boolean' },
       help: { type: 'boolean', short: 'h' },
     },
   });
@@ -609,7 +617,7 @@ export async function runMcp(argv: string[], version: string): Promise<void> {
   if (port === undefined) throw new Error(`Invalid port: ${values.port ?? process.env.CAPYBARA_PORT}`);
   const host = values.host ?? '127.0.0.1';
   const connection = new ViewerConnection(port, host);
-  const server = createMcpServer(connection, { version, showSecrets: values['show-secrets'] });
+  const server = createMcpServer(connection, { version, showSecrets: values['show-secrets'], readOnly: values['read-only'] });
   // stdout carries the protocol, so anything for people goes to stderr.
   console.error(`Capybara MCP server, reading http://${host}:${port}`);
   await server.connect(new StdioServerTransport());

@@ -32,6 +32,8 @@ export class ViewerConnection {
   private readonly histories = new Map<string, Array<{ resolve: (events: CapybaraEvent[]) => void; reject: (error: Error) => void }>>();
   /** Parts of histories that have more to come. */
   private readonly parts = new Map<string, CapybaraEvent[]>();
+  /** Told when the server reports a session cleared or removed, keyed by the message and session. */
+  private readonly done = new Map<string, Array<{ resolve: () => void; reject: (error: Error) => void }>>();
   private counter = 0;
 
   constructor(
@@ -75,6 +77,41 @@ export class ViewerConnection {
 
   diagnose(sessionId: string, requestId: string): Promise<NetworkDiagnosis> {
     return this.request((id) => ({ t: 'diagnose', id, sessionId, requestId }), DIAGNOSE_TIMEOUT_MS);
+  }
+
+  /** Clears what the server recorded of the session, or only its state changes, as the UI's Clear does. */
+  clear(sessionId: string, scope?: 'state'): Promise<void> {
+    return this.confirmed(`cleared ${sessionId}`, scope ? { t: 'clear', sessionId, scope } : { t: 'clear', sessionId });
+  }
+
+  /** The server removes only disconnected sessions and says nothing otherwise, so this then times out. */
+  remove(sessionId: string): Promise<void> {
+    return this.confirmed(`session.removed ${sessionId}`, { t: 'remove', sessionId });
+  }
+
+  /** Sends a message the server answers by broadcasting what changed, and waits for that broadcast. */
+  private async confirmed(key: string, message: ViewerToServer): Promise<void> {
+    await this.open();
+    return new Promise((resolve, reject) => {
+      const waiter = {
+        resolve: () => {
+          clearTimeout(timer);
+          resolve();
+        },
+        reject: (error: Error) => {
+          clearTimeout(timer);
+          reject(error);
+        },
+      };
+      const timer = setTimeout(() => {
+        const left = (this.done.get(key) ?? []).filter((other) => other !== waiter);
+        if (left.length > 0) this.done.set(key, left);
+        else this.done.delete(key);
+        reject(new Error('Capybara did not answer in time'));
+      }, TIMEOUT_MS);
+      this.done.set(key, [...(this.done.get(key) ?? []), waiter]);
+      this.send(message);
+    });
   }
 
   close(): void {
@@ -142,8 +179,9 @@ export class ViewerConnection {
         const error = 'The connection to Capybara closed';
         for (const [id, settle] of this.results) settle({ t: 'result', id, ok: false, error });
         this.results.clear();
-        for (const waiting of this.histories.values()) for (const { reject } of waiting) reject(new Error(error));
+        for (const waiting of [...this.histories.values(), ...this.done.values()]) for (const { reject } of waiting) reject(new Error(error));
         this.histories.clear();
+        this.done.clear();
         this.parts.clear();
       });
     });
@@ -167,6 +205,10 @@ export class ViewerConnection {
         break;
       case 'session.removed':
         this.sessions.delete(message.sessionId);
+        this.notify(`session.removed ${message.sessionId}`);
+        break;
+      case 'cleared':
+        this.notify(`cleared ${message.sessionId}`);
         break;
       case 'history': {
         const events = this.parts.get(message.sessionId) ?? [];
@@ -188,6 +230,12 @@ export class ViewerConnection {
         break;
       }
     }
+  }
+
+  private notify(key: string): void {
+    const waiting = this.done.get(key);
+    this.done.delete(key);
+    for (const { resolve } of waiting ?? []) resolve();
   }
 
   private send(message: ViewerToServer): void {
