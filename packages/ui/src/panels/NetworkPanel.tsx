@@ -1,13 +1,14 @@
 import type { BodyPreview, NetworkDiagnosis } from '@capybara-devtools/protocol';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { CopyButton } from '../components/CopyButton';
+import { EmptyMessage } from '../components/EmptyMessage';
 import { JsonTree } from '../components/JsonTree';
 import { ColumnHandle, ResizeHandle, useColumnWidth, usePaneWidth } from '../components/ResizeHandle';
+import { SearchInput } from '../components/SearchInput';
 import { diagnose } from '../connection';
 import { useFollow } from '../follow';
-import { showToast } from '../toast';
 import {
-  copyText,
   decodeSocketIo,
   formatBytes,
   formatDuration,
@@ -97,13 +98,7 @@ export function NetworkPanel({ session }: { session: SessionState }) {
   return (
     <section className="panel">
       <div className="toolbar">
-        <input
-          className={`search${matcher?.invalid ? ' invalid' : ''}`}
-          placeholder="Filter by URL, method or status"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          spellCheck={false}
-        />
+        <SearchInput value={query} onChange={setQuery} placeholder="Filter by URL, method or status" invalid={matcher?.invalid} />
         <div className="chips">
           {FILTERS.map(({ id, label }) => (
             <button key={id} type="button" className="chip" aria-pressed={filter === id} onClick={() => setFilter(id)}>
@@ -159,10 +154,9 @@ export function NetworkPanel({ session }: { session: SessionState }) {
             <span className="num">Time</span>
           </div>
           {network.length === 0 ? (
-            <div className="empty">
-              <strong>No requests yet</strong>
+            <EmptyMessage title="No requests yet">
               <p>Requests made with fetch, XMLHttpRequest or axios, and WebSocket connections, show up here.</p>
-            </div>
+            </EmptyMessage>
           ) : (
             <div className="net-body" ref={bodyRef} onScroll={onScroll} onWheel={onWheel}>
               <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
@@ -290,13 +284,7 @@ function SocketMessages({ entry }: { entry: SocketEntry }) {
   return (
     <div className="ws-pane">
       <div className="ws-toolbar">
-        <input
-          className={`search${matcher?.invalid ? ' invalid' : ''}`}
-          placeholder="Filter messages"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          spellCheck={false}
-        />
+        <SearchInput value={query} onChange={setQuery} placeholder="Filter messages" invalid={matcher?.invalid} />
         <div className="chips">
           {(['all', 'sent', 'received'] as const).map((id) => (
             <button key={id} type="button" className="chip" aria-pressed={direction === id} onClick={() => setDirection(id)}>
@@ -382,7 +370,6 @@ function MessageRow({
 }
 
 function MessageView({ message, socketIo }: { message: SocketMessage; socketIo: boolean }) {
-  const [copied, setCopied] = useState(false);
   const { data } = message;
   const decoded = socketIo && data.text !== undefined ? decodeSocketIo(data.text) : undefined;
   const body = decoded ? { ...data, text: decoded.payload ?? '', contentType: `socket.io ${decoded.label}` } : data;
@@ -391,19 +378,7 @@ function MessageView({ message, socketIo }: { message: SocketMessage; socketIo: 
       <p className="note">
         {message.direction === 'sent' ? 'Sent' : 'Received'} at {formatTime(message.ts)}
       </p>
-      <BodyView
-        body={body}
-        empty="Empty message"
-        onCopy={(text) =>
-          void copyText(text).then((ok) => {
-            showToast(ok ? 'Copied to clipboard' : 'Could not copy to the clipboard', ok ? 'ok' : 'error');
-            if (!ok) return;
-            setCopied(true);
-            window.setTimeout(() => setCopied(false), 1_200);
-          })
-        }
-        copied={copied}
-      />
+      <BodyView body={body} empty="Empty message" copyable />
     </div>
   );
 }
@@ -450,16 +425,6 @@ function RequestDetail({
   resize: ReactNode;
 }) {
   const [tab, setTab] = useState<DetailTab>('response');
-  const [copied, setCopied] = useState<string | null>(null);
-
-  const copy = (label: string, text: string, note?: string) => {
-    void copyText(text).then((ok) => {
-      showToast(ok ? (note ?? 'Copied to clipboard') : 'Could not copy to the clipboard', ok ? 'ok' : 'error');
-      if (!ok) return;
-      setCopied(label);
-      window.setTimeout(() => setCopied(null), 1_200);
-    });
-  };
 
   return (
     <aside className="detail">
@@ -473,16 +438,14 @@ function RequestDetail({
           ))}
         </div>
         <div className="pane-actions">
-          <button
-            type="button"
+          <CopyButton
             className="btn small"
-            onClick={() => {
-              const curl = toCurl(entry);
-              copy('curl', curl.command, curl.note);
-            }}
+            label="Copy as a cURL command"
+            text={() => toCurl(entry).command}
+            toast={() => toCurl(entry).note ?? 'Copied to clipboard'}
           >
-            {copied === 'curl' ? 'Copied' : 'Copy cURL'}
-          </button>
+            Copy cURL
+          </CopyButton>
           <button type="button" className="btn small icon" onClick={onClose} aria-label="Close details">
             ✕
           </button>
@@ -497,7 +460,7 @@ function RequestDetail({
           ) : entry.state === 'pending' ? (
             <p className="note">Waiting for the response…</p>
           ) : (
-            <BodyView body={entry.responseBody} empty="No response body" onCopy={(text) => copy('body', text)} copied={copied === 'body'} />
+            <BodyView body={entry.responseBody} empty="No response body" copyable />
           ))}
       </div>
     </aside>
@@ -679,17 +642,7 @@ function KeyValues({ title, rows, empty }: { title: string; rows: Array<[string,
   );
 }
 
-function BodyView({
-  body,
-  empty,
-  onCopy,
-  copied,
-}: {
-  body?: BodyPreview;
-  empty: string;
-  onCopy?: (text: string) => void;
-  copied?: boolean;
-}) {
+function BodyView({ body, empty, copyable }: { body?: BodyPreview; empty: string; copyable?: boolean }) {
   const [raw, setRaw] = useState(false);
   const parsed = useMemo(() => (body?.text !== undefined ? parseJson(body.text) : { ok: false as const }), [body]);
 
@@ -716,10 +669,10 @@ function BodyView({
             {raw ? 'Tree' : 'Raw'}
           </button>
         )}
-        {onCopy && (
-          <button type="button" className="btn small" onClick={() => onCopy(body.text!)}>
-            {copied ? 'Copied' : 'Copy'}
-          </button>
+        {copyable && (
+          <CopyButton className="btn small" label="Copy the body" text={() => body.text!}>
+            Copy
+          </CopyButton>
         )}
       </div>
       {body.truncated && <p className="callout">Truncated by the SDK; only the beginning was captured.</p>}

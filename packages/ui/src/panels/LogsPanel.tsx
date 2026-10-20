@@ -2,7 +2,9 @@ import type { LogLevel } from '@capybara-devtools/protocol';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { memo, useMemo, useRef, useState } from 'react';
 import { CopyButton } from '../components/CopyButton';
+import { EmptyMessage } from '../components/EmptyMessage';
 import { JsonTree } from '../components/JsonTree';
+import { SearchInput } from '../components/SearchInput';
 import { useFollow } from '../follow';
 import { formatLogMessage, formatTime, isExpandable, LOG_SOURCE_LABELS, logEntryText, makeMatcher } from '../format';
 import { clearSession, type LogEntry, type SessionState } from '../store';
@@ -73,13 +75,7 @@ export function LogsPanel({ session }: { session: SessionState }) {
   return (
     <section className="panel">
       <div className="toolbar">
-        <input
-          className={`search${matcher?.invalid ? ' invalid' : ''}`}
-          placeholder="Filter logs (text or /regex/)"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          spellCheck={false}
-        />
+        <SearchInput value={query} onChange={setQuery} placeholder="Filter logs (text or /regex/)" invalid={matcher?.invalid} />
         <div className="chips">
           {LEVELS.map(({ level, label }) => (
             <button
@@ -113,10 +109,9 @@ export function LogsPanel({ session }: { session: SessionState }) {
 
       <div className="list-wrap">
         {logs.length === 0 ? (
-          <div className="empty">
-            <strong>No logs yet</strong>
+          <EmptyMessage title="No logs yet">
             <p>Anything the app writes with console.log, console.warn or console.error shows up here.</p>
-          </div>
+          </EmptyMessage>
         ) : (
           <div className="log-list" ref={listRef} onScroll={onScroll} onWheel={onWheel}>
             <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>

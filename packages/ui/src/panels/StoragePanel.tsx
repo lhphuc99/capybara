@@ -1,8 +1,10 @@
 import { METRO_SDK, type StorageAdapterInfo, type StorageEntries, type StorageEntry } from '@capybara-devtools/protocol';
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { CopyButton } from '../components/CopyButton';
+import { EmptyPanel } from '../components/EmptyMessage';
 import { JsonTree } from '../components/JsonTree';
 import { ColumnHandle, ResizeHandle, useColumnWidth, usePaneWidth } from '../components/ResizeHandle';
+import { SearchInput } from '../components/SearchInput';
 import { storageCommand } from '../connection';
 import { formatBytes, makeMatcher, parseJson } from '../format';
 import type { SessionState } from '../store';
@@ -135,52 +137,37 @@ function StorageBrowser({ session }: { session: SessionState }) {
 
   if (!connected) {
     return (
-      <section className="panel">
-        <div className="empty">
-          <strong>The app is offline</strong>
-          <p>Storage is read live from the app. Reconnect it to browse and edit values.</p>
-        </div>
-      </section>
+      <EmptyPanel title="The app is offline">
+        <p>Storage is read live from the app. Reconnect it to browse and edit values.</p>
+      </EmptyPanel>
     );
   }
 
   if (adapters && adapters.length === 0) {
     if (viaMetro) {
       return (
-        <section className="panel">
-          <div className="empty">
-            <strong>No storage found yet</strong>
-            <p>Open the app screen that uses AsyncStorage or MMKV, then scan again.</p>
-            <p>MMKV v2/v3: use the store again after connecting. MMKV v4: new instances can be detected after connecting; existing private instances may remain unavailable.</p>
-            <button type="button" className="btn" onClick={() => setScanToken((n) => n + 1)}>Find stores</button>
-          </div>
-        </section>
+        <EmptyPanel title="No storage found yet">
+          <p>Open the app screen that uses AsyncStorage or MMKV, then scan again.</p>
+          <p>MMKV v2/v3: use the store again after connecting. MMKV v4: new instances can be detected after connecting; existing private instances may remain unavailable.</p>
+          <button type="button" className="btn" onClick={() => setScanToken((n) => n + 1)}>Find stores</button>
+        </EmptyPanel>
       );
     }
     return (
-      <section className="panel">
-        <div className="empty">
-          <strong>No storage configured</strong>
-          <p>Pass the storages your app uses to init():</p>
-          <pre className="code left">{`import AsyncStorage from '@react-native-async-storage/async-storage';
+      <EmptyPanel title="No storage configured">
+        <p>Pass the storages your app uses to init():</p>
+        <pre className="code left">{`import AsyncStorage from '@react-native-async-storage/async-storage';
 import { asyncStorage, mmkvStorage } from '@capybara-devtools/react-native';
 
 init({ storage: [asyncStorage(AsyncStorage), mmkvStorage(storage)] });`}</pre>
-        </div>
-      </section>
+      </EmptyPanel>
     );
   }
 
   return (
     <section className="panel">
       <div className="toolbar">
-        <input
-          className={`search${matcher?.invalid ? ' invalid' : ''}`}
-          placeholder="Filter keys and values"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          spellCheck={false}
-        />
+        <SearchInput value={query} onChange={setQuery} placeholder="Filter keys and values" invalid={matcher?.invalid} />
         <span className="spacer" />
         {viaMetro && (
           <>

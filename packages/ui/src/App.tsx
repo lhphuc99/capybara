@@ -13,19 +13,15 @@ import { NetworkPanel } from './panels/NetworkPanel';
 import { StatePanel } from './panels/StatePanel';
 import { StoragePanel } from './panels/StoragePanel';
 import { stateBadge } from './state';
+import { readPref, writePref } from './prefs';
 import { useStore, type SessionState } from './store';
 
 type Tab = 'logs' | 'network' | 'storage' | 'state';
 const TAB_KEY = 'capybara:tab';
 
 function initialTab(): Tab {
-  try {
-    const saved = localStorage.getItem(TAB_KEY);
-    if (saved === 'logs' || saved === 'network' || saved === 'storage' || saved === 'state') return saved;
-  } catch {
-    // storage blocked: fall back to the default
-  }
-  return 'logs';
+  const saved = readPref(TAB_KEY);
+  return saved === 'network' || saved === 'storage' || saved === 'state' ? saved : 'logs';
 }
 
 export function App() {
@@ -36,13 +32,7 @@ export function App() {
   const [tab, setTab] = useState<Tab>(initialTab);
   const session = selectedId ? sessions[selectedId] : undefined;
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(TAB_KEY, tab);
-    } catch {
-      // not essential
-    }
-  }, [tab]);
+  useEffect(() => writePref(TAB_KEY, tab), [tab]);
 
   const logs = session?.logs;
   const network = session?.network;

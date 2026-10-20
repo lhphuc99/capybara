@@ -9,9 +9,11 @@ import {
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { CopyButton } from '../components/CopyButton';
 import { DiffView } from '../components/DiffView';
+import { EmptyPanel } from '../components/EmptyMessage';
 import { EntryTable, Pills } from '../components/EntryTable';
 import { JsonTree } from '../components/JsonTree';
 import { ColumnHandle, ResizeHandle, useColumnWidth, usePaneWidth } from '../components/ResizeHandle';
+import { SearchInput } from '../components/SearchInput';
 import { StateTimeline } from '../components/StateTimeline';
 import { stateCommand } from '../connection';
 import { formatTime, isSpecial, makeMatcher, valueText } from '../format';
@@ -38,6 +40,7 @@ import {
   type StoreView,
 } from '../state';
 import { clearStateTimeline, loadStateEntries, mergeStateStores, type SessionState } from '../store';
+import { readJsonPref, readPref, writePref } from '../prefs';
 import { showToast } from '../toast';
 
 type RecordTab = 'diff' | 'action' | 'state';
@@ -217,8 +220,9 @@ function StateBrowser({ session }: { session: SessionState }) {
   const shownRecord = (selectedSeq !== null && visibleRecords.find((record) => record.seq === selectedSeq)) || visibleRecords.at(-1);
   const selectedEntry = selectedKey === null ? undefined : store.entries.get(selectedKey);
   const search = (
-    <input
-      className={`search${matcher?.invalid ? ' invalid' : ''}`}
+    <SearchInput
+      value={query}
+      onChange={setQuery}
       placeholder={
         entryStore
           ? store.info.library === 'tanstack-query'
@@ -228,9 +232,7 @@ function StateBrowser({ session }: { session: SessionState }) {
             ? 'Filter actions and paths'
             : 'Filter paths'
       }
-      value={query}
-      onChange={(event) => setQuery(event.target.value)}
-      spellCheck={false}
+      invalid={matcher?.invalid}
     />
   );
 
@@ -903,54 +905,43 @@ function NoStores({
   if (!info.plugins?.includes('state')) {
     if (info.sdk.name === METRO_SDK) {
       return (
-        <Empty title="State needs the SDK">
+        <EmptyPanel title="State needs the SDK">
           <p>
             Without the SDK, Capybara reads logs, network and storage through Metro, but not Redux, Zustand, TanStack Query, SWR or
             React Context state. Add it to the app to see its stores:
           </p>
           <Code>{`import { init } from '@capybara-devtools/react-native';\n\nif (__DEV__) init();`}</Code>
-        </Empty>
+        </EmptyPanel>
       );
     }
     if (!info.plugins) {
       return (
-        <Empty title="Update the SDK to see state">
+        <EmptyPanel title="Update the SDK to see state">
           <p>
             {info.appName} uses {info.sdk.name} {info.sdk.version}, which does not report Redux, Zustand, TanStack Query, SWR or React
             Context state.
           </p>
           <pre className="code">npm install {info.sdk.name}@latest</pre>
-        </Empty>
+        </EmptyPanel>
       );
     }
     return (
-      <Empty title="State is turned off">
+      <EmptyPanel title="State is turned off">
         <p>
           The app runs {info.sdk.name} {info.sdk.version} without its state plugin. Remove <code>state: false</code> from the
           options passed to <code>init()</code>, or update the SDK if this version came before state.
         </p>
-      </Empty>
+      </EmptyPanel>
     );
   }
   if (!connected) {
     return (
-      <Empty title="The app is offline">
+      <EmptyPanel title="The app is offline">
         <p>State is read live from the app. Its stores show up here once it reconnects.</p>
-      </Empty>
+      </EmptyPanel>
     );
   }
   return <Setup platform={info.platform} libraryContexts={libraryContexts} onShowLibraryContexts={onShowLibraryContexts} />;
-}
-
-function Empty({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className="panel">
-      <div className="empty">
-        <strong>{title}</strong>
-        {children}
-      </div>
-    </section>
-  );
 }
 
 function Setup({
@@ -984,29 +975,27 @@ watchZustand(useCartStore, { name: 'cart' });
 <SWRConfig value={{ provider: () => new Map(),
   use: [swrMiddleware] }}>`;
   return (
-    <section className="panel">
-      <div className="empty state-empty">
-        <strong>No state stores yet</strong>
+    <EmptyPanel title="No state stores yet" className="state-empty">
+      <p>
+        Redux, Zustand, TanStack Query, SWR and React Context show up here once the app registers them.
+        <br />
+        Keep <code>init()</code> in the first file your app imports,{' '}
+        {web ? 'before your store modules and react-dom load.' : 'before your store modules load.'}
+      </p>
+      {libraryContexts > 0 && (
         <p>
-          Redux, Zustand, TanStack Query, SWR and React Context show up here once the app registers them.
-          <br />
-          Keep <code>init()</code> in the first file your app imports,{' '}
-          {web ? 'before your store modules and react-dom load.' : 'before your store modules load.'}
+          {libraryContexts === 1 ? 'One React Context comes from a library and is' : `${libraryContexts} React Contexts come from libraries and are`}{' '}
+          hidden.{' '}
+          <button type="button" className="btn small" onClick={onShowLibraryContexts}>
+            Show library contexts
+          </button>
         </p>
-        {libraryContexts > 0 && (
-          <p>
-            {libraryContexts === 1 ? 'One React Context comes from a library and is' : `${libraryContexts} React Contexts come from libraries and are`}{' '}
-            hidden.{' '}
-            <button type="button" className="btn small" onClick={onShowLibraryContexts}>
-              Show library contexts
-            </button>
-          </p>
-        )}
-        <div className="state-snippets">
-          <div>
-            <h4>Picked up on their own</h4>
-            <Code>
-              {`// capybara.ts, the first import of ${web ? 'main.tsx' : 'index.ts'}
+      )}
+      <div className="state-snippets">
+        <div>
+          <h4>Picked up on their own</h4>
+          <Code>
+            {`// capybara.ts, the first import of ${web ? 'main.tsx' : 'index.ts'}
 import { init } from ${sdk};
 
 if (${web ? 'import.meta.env.DEV' : '__DEV__'}) init();
@@ -1014,15 +1003,14 @@ if (${web ? 'import.meta.env.DEV' : '__DEV__'}) init();
 // Redux Toolkit configureStore(), zustand
 // devtools() and React Context providers
 // need nothing else.`}
-            </Code>
-          </div>
-          <div>
-            <h4>One line each</h4>
-            <Code>{watches}</Code>
-          </div>
+          </Code>
+        </div>
+        <div>
+          <h4>One line each</h4>
+          <Code>{watches}</Code>
         </div>
       </div>
-    </section>
+    </EmptyPanel>
   );
 }
 
@@ -1056,37 +1044,22 @@ function count(n: number, one: string, many = `${one}s`): string {
 }
 
 function readLibraryContexts(): boolean {
-  try {
-    return localStorage.getItem(LIBRARY_CONTEXTS_KEY) === '1';
-  } catch {
-    return false;
-  }
+  return readPref(LIBRARY_CONTEXTS_KEY) === '1';
 }
 
 function saveLibraryContexts(show: boolean): void {
-  try {
-    localStorage.setItem(LIBRARY_CONTEXTS_KEY, show ? '1' : '0');
-  } catch {
-    // not essential
-  }
+  writePref(LIBRARY_CONTEXTS_KEY, show ? '1' : '0');
 }
 
+/** None saved, or not one: start from the first store. */
 function readChoice(): StoreChoice | null {
-  try {
-    const saved = JSON.parse(localStorage.getItem(CHOICE_KEY) ?? 'null') as Partial<StoreChoice> | null;
-    if (typeof saved?.id === 'string' && typeof saved.library === 'string' && typeof saved.label === 'string') {
-      return { sessionId: String(saved.sessionId), id: saved.id, library: saved.library, label: saved.label };
-    }
-  } catch {
-    // storage blocked or not JSON: start from the first store
+  const saved = readJsonPref(CHOICE_KEY) as Partial<StoreChoice> | null | undefined;
+  if (typeof saved?.id === 'string' && typeof saved.library === 'string' && typeof saved.label === 'string') {
+    return { sessionId: String(saved.sessionId), id: saved.id, library: saved.library, label: saved.label };
   }
   return null;
 }
 
 function saveChoice(choice: StoreChoice): void {
-  try {
-    localStorage.setItem(CHOICE_KEY, JSON.stringify(choice));
-  } catch {
-    // not essential
-  }
+  writePref(CHOICE_KEY, JSON.stringify(choice));
 }

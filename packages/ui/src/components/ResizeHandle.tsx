@@ -1,29 +1,16 @@
 import { useState, type RefObject } from 'react';
+import { readPref, writePref } from '../prefs';
 
 /** Width of a side pane in percent of its container, remembered across launches. */
 export function usePaneWidth(key: string, fallback: number) {
   const [width, setWidth] = useState(() => {
-    try {
-      const saved = Number(localStorage.getItem(key));
-      return saved > 0 ? saved : fallback;
-    } catch {
-      return fallback;
-    }
+    const saved = Number(readPref(key));
+    return saved > 0 ? saved : fallback;
   });
-  const save = (value: number) => {
-    try {
-      localStorage.setItem(key, value.toFixed(1));
-    } catch {
-      // not essential
-    }
-  };
+  const save = (value: number) => writePref(key, value.toFixed(1));
   const reset = () => {
     setWidth(fallback);
-    try {
-      localStorage.removeItem(key);
-    } catch {
-      // not essential
-    }
+    writePref(key, null);
   };
   return { width, setWidth, save, reset };
 }
@@ -102,27 +89,13 @@ export function ResizeHandle({ container, width, min, max, onChange, onCommit, o
 /** Width in pixels of a column the user dragged, remembered across launches; undefined keeps the layout's own. */
 export function useColumnWidth(key: string) {
   const [width, setWidth] = useState<number | undefined>(() => {
-    try {
-      const saved = Number(localStorage.getItem(key));
-      return saved > 0 ? saved : undefined;
-    } catch {
-      return undefined;
-    }
+    const saved = Number(readPref(key));
+    return saved > 0 ? saved : undefined;
   });
-  const save = (value: number) => {
-    try {
-      localStorage.setItem(key, String(Math.round(value)));
-    } catch {
-      // not essential
-    }
-  };
+  const save = (value: number) => writePref(key, String(Math.round(value)));
   const reset = () => {
     setWidth(undefined);
-    try {
-      localStorage.removeItem(key);
-    } catch {
-      // not essential
-    }
+    writePref(key, null);
   };
   return { width, setWidth, save, reset };
 }
