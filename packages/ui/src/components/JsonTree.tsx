@@ -33,11 +33,24 @@ interface Tree {
 
 export function JsonTree({ value, raw = false, expandDepth = 1, path, onLoad, highlight }: Props) {
   const above = useMemo(() => highlight && ancestorKeys(highlight), [highlight]);
-  // Up, Down, Home and End move between the rows shown; each row opens and closes itself.
+  // Up, Down, Home and End move between the rows shown; each row opens and closes itself, and the keys it
+  // leaves move as in other trees: Right from an open branch to its first child, Left to the parent.
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.isDefaultPrevented()) return;
     const rows = [...event.currentTarget.querySelectorAll<HTMLElement>('[role="treeitem"]')];
     const index = rows.indexOf(document.activeElement as HTMLElement);
-    const next = index < 0 ? undefined : movedIndex(event.key, index, rows.length);
+    if (index < 0) return;
+    const level = (row: HTMLElement | undefined) => Number(row?.getAttribute('aria-level') ?? 0);
+    let next = movedIndex(event.key, index, rows.length);
+    if (event.key === 'ArrowRight' && level(rows[index + 1]) > level(rows[index])) next = index + 1;
+    if (event.key === 'ArrowLeft') {
+      for (let i = index - 1; i >= 0; i--) {
+        if (level(rows[i]) < level(rows[index])) {
+          next = i;
+          break;
+        }
+      }
+    }
     if (next === undefined) return;
     event.preventDefault();
     rows[next]?.focus();

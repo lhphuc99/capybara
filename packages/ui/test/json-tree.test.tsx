@@ -55,7 +55,14 @@ describe('JsonTree', () => {
     await press(items()[1]!, 'ArrowRight');
     expect(items()[1]!.getAttribute('aria-expanded')).toBe('true');
     expect(items()).toHaveLength(4);
+    // Right again goes into the open branch, and Left from its child back up; Left then closes it.
+    await press(items()[1]!, 'ArrowRight');
+    expect(document.activeElement).toBe(items()[2]);
+    await press(items()[2]!, 'ArrowLeft');
+    expect(document.activeElement).toBe(items()[1]);
     await press(items()[1]!, 'ArrowLeft');
     expect(items()).toHaveLength(3);
+    await press(items()[1]!, 'ArrowLeft');
+    expect(document.activeElement).toBe(items()[0]);
   });
 });
