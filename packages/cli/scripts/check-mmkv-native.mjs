@@ -87,7 +87,7 @@ async function hooked() {
 }
 let bridge, server, viewer;
 const report = { app: target.appId, mmkv: mmkvMajor, metroPort, checks: [], limitations: [] };
-const pass = name => { report.checks.push(name); console.log('PASS ' + name); };
+const pass = name => { report.checks.push(name); console.log(`PASS ${name}`); };
 try {
   await new Promise((resolve, reject) => { cdp.once('open', resolve); cdp.once('error', reject); });
   // Hermes rejects object handles (callFunctionOn, releaseObject) until Runtime is enabled per session.
@@ -189,7 +189,7 @@ try {
   assert.equal(await action('readAfter'), 'changed by the app');
   pass(`disconnect restores ${mmkvMajor === 4 ? 'native factory' : 'the MMKV class method'} and app storage still works`);
   report.completedAt = new Date().toISOString();
-  if (reportFile) writeFileSync(reportFile, JSON.stringify(report, null, 2) + '\n');
+  if (reportFile) writeFileSync(reportFile, `${JSON.stringify(report, null, 2)}\n`);
   console.log(JSON.stringify(report, null, 2));
 } finally {
   bridge?.stop();

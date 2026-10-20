@@ -4,7 +4,7 @@ import type { CapybaraEvent } from '@capybara-devtools/protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
 import { createServer } from '../src/server.js';
-import { hasBundleFrames, symbolicateEvents } from '../src/symbolicate.js';
+import { localWebOrigin, needsSymbolication, symbolicateEvents } from '../src/symbolicate.js';
 
 const cleanups: Array<() => unknown> = [];
 afterEach(async () => {
@@ -16,6 +16,7 @@ interface MetroFrame {
   lineNumber: number;
   column: number;
   methodName?: string;
+  collapse?: boolean;
 }
 
 /** Answers `/symbolicate` the way Metro does: mapped frames get a source file, the rest come back as sent. */
@@ -63,7 +64,7 @@ describe('symbolicateEvents', () => {
       `    at anonymous (${url}:500:3)`,
       '    at apply (native)',
     ].join('\n')));
-    expect(hasBundleFrames([event])).toBe(true);
+    expect(needsSymbolication([event])).toBe(true);
 
     await symbolicateEvents([event]);
 
@@ -78,6 +79,30 @@ describe('symbolicateEvents', () => {
       { file: url, lineNumber: 86171, column: 27, methodName: 'onPress' },
       { file: url, lineNumber: 500, column: 2, methodName: 'anonymous' },
     ]]);
+  });
+
+  it("drops the console wrappers Metro collapses from the top of console.trace() stacks, as LogBox does", async () => {
+    const polyfill = '/Users/dev/app/node_modules/@react-native/js-polyfills/console.js';
+    const metro = await fakeMetro({
+      ...APP,
+      667: { file: polyfill, lineNumber: 667, column: 37, methodName: 'methodName', collapse: true },
+      17416: { file: '/Users/dev/app/node_modules/react-devtools-core/dist/backend.js', lineNumber: 17416, column: 30, collapse: true },
+    });
+    const url = bundle(metro.port);
+    const trace = (stack: string[]) => ({ $t: 'error', name: 'Trace', message: '', stack: ['Trace', ...stack].join('\n') });
+    const event = logOf(
+      1,
+      trace([`    at anonymous (${url}:667:38)`, `    at overrideMethod (${url}:17416:31)`, `    at onPress (${url}:86171:28)`]),
+      trace([`    at anonymous (${url}:667:38)`]),
+      { ...error(`Error: boom\n    at anonymous (${url}:667:38)\n    at onPress (${url}:86171:28)`) },
+    );
+
+    await symbolicateEvents([event]);
+
+    expect(stackOf(event)).toBe('Trace\n    at onPress (/Users/dev/app/App.tsx:42:13)');
+    // A stack of collapsed frames only, and the stacks of errors, keep every frame.
+    expect(stackOf(event, (args) => args[1])).toBe(`Trace\n    at methodName (${polyfill}:667:38)`);
+    expect(stackOf(event, (args) => args[2])).toBe(`Error: boom\n    at methodName (${polyfill}:667:38)\n    at onPress (/Users/dev/app/App.tsx:42:13)`);
   });
 
   it('finds errors anywhere in the arguments and reads V8 and JSC frames, in one request per Metro', async () => {
@@ -131,8 +156,87 @@ describe('symbolicateEvents', () => {
       logOf(2, { $t: 'array', items: null }, { $t: 'map', entries: [null, [1]] }, { $t: 'error', stack: 42 }),
       { seq: 3, ts: 3, kind: 'log', payload: null } as unknown as CapybaraEvent,
     ];
-    expect(hasBundleFrames(plain)).toBe(false);
+    expect(needsSymbolication(plain)).toBe(false);
     await expect(symbolicateEvents(plain)).resolves.toBeUndefined();
+  });
+});
+
+const BASE64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+/** One source map segment, as base64 VLQ. */
+function segment(...fields: number[]): string {
+  return fields
+    .map((field) => {
+      let value = field < 0 ? (-field << 1) | 1 : field << 1;
+      let out = '';
+      do {
+        let digit = value & 31;
+        value >>>= 5;
+        if (value > 0) digit |= 32;
+        out += BASE64[digit];
+      } while (value > 0);
+      return out;
+    })
+    .join('');
+}
+
+/** A dev server with a Vite-style module (inline map) and a Next.js-style chunk (sectioned map in a file). */
+async function fakeDevServer() {
+  const requested: string[] = [];
+  const appMap = { version: 3, sources: ['App.tsx'], names: [], mappings: `;;${segment(4, 0, 48, 42)}` };
+  const pageMap = {
+    version: 3,
+    sections: [{ offset: { line: 0, column: 0 }, map: { version: 3, sources: ['file:///Users/dev/shop/app/page.tsx'], names: ['onClick'], mappings: `;${segment(10, 0, 30, 70, 0)}` } }],
+  };
+  const files: Record<string, string> = {
+    '/src/App.tsx': `const a = 1;\nconst b = 2;\nexport function run() {}\n//# sourceMappingURL=data:application/json;base64,${Buffer.from(JSON.stringify(appMap)).toString('base64')}`,
+    '/_next/static/chunks/page.js': 'var x;\nfunction handle() {}\n//# sourceMappingURL=page.js.map',
+    '/_next/static/chunks/page.js.map': JSON.stringify(pageMap),
+    '/src/elsewhere.js': 'x();\n//# sourceMappingURL=http://cdn.example.test/elsewhere.js.map',
+  };
+  const server = http.createServer((req, res) => {
+    requested.push(req.url ?? '');
+    const file = files[req.url ?? ''];
+    if (file === undefined) return void res.writeHead(404).end();
+    res.writeHead(200, { 'content-type': req.url?.endsWith('.map') ? 'application/json' : 'text/javascript' }).end(file);
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  cleanups.push(() => new Promise((resolve) => server.close(resolve)));
+  return { origin: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, requested };
+}
+
+describe('web stacks through the source maps of the dev server', () => {
+  it('maps frames of Vite modules and Next.js chunks to their sources, and leaves the rest', async () => {
+    const dev = await fakeDevServer();
+    const stack = [
+      'Error: Card declined',
+      `    at run (${dev.origin}/src/App.tsx:3:5)`,
+      `    at ${dev.origin}/_next/static/chunks/page.js:2:11`,
+      `    at load (${dev.origin}/admin/delete:1:1)`,
+      `    at lib (http://cdn.example.test/lib.js:1:1)`,
+      `    at other (${dev.origin}/src/elsewhere.js:1:1)`,
+    ].join('\n');
+    const event = logOf(1, 'Payment failed', error(stack));
+    expect(needsSymbolication([event])).toBe(false);
+    expect(needsSymbolication([event], dev.origin)).toBe(true);
+    await symbolicateEvents([event], { webOrigin: dev.origin });
+    expect(((event.payload as { args: Array<{ stack?: string }> }).args[1]!.stack ?? '').split('\n')).toEqual([
+      'Error: Card declined',
+      '    at run (src/App.tsx:49:43)',
+      '    at onClick (/Users/dev/shop/app/page.tsx:31:71)',
+      `    at load (${dev.origin}/admin/delete:1:1)`,
+      '    at lib (http://cdn.example.test/lib.js:1:1)',
+      `    at other (${dev.origin}/src/elsewhere.js:1:1)`,
+    ]);
+    // Only scripts of the page's own origin, and maps on it.
+    expect(dev.requested.sort()).toEqual(['/_next/static/chunks/page.js', '/_next/static/chunks/page.js.map', '/src/App.tsx', '/src/elsewhere.js']);
+  });
+
+  it('takes the origin of web apps whose dev server runs on this machine', () => {
+    const info = { id: 'w', appName: 'Shop', platform: 'web' as const, sdk: { name: 'test', version: '0' }, startedAt: 0 };
+    expect(localWebOrigin({ ...info, url: 'http://localhost:5173/cart?x=1' })).toBe('http://localhost:5173');
+    expect(localWebOrigin({ ...info, url: 'https://shop.example.com/' })).toBeUndefined();
+    expect(localWebOrigin({ ...info, platform: 'ios', url: 'http://localhost:8081/' })).toBeUndefined();
+    expect(localWebOrigin(info)).toBeUndefined();
   });
 });
 

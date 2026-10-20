@@ -18,6 +18,7 @@ export function serialize(value: unknown, options?: SerializeOptions): Serialize
     maxDepth: 6,
     maxKeys: 100,
     maxItems: 100,
+    // MAX_STRING_LENGTH, written out since this function cannot import it.
     maxString: 10_000,
     maxNodes: 2_000,
   };
@@ -176,7 +177,7 @@ export function serialize(value: unknown, options?: SerializeOptions): Serialize
     }
   }
 
-  function functionName(fn: Function): string {
+  function functionName(fn: { name: string }): string {
     try {
       return fn.name || 'anonymous';
     } catch {

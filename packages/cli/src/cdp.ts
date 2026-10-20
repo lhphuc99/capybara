@@ -1,4 +1,12 @@
-import type { BodyPreview, LogLevel, NetworkInitiator, Platform, SerializedValue } from '@capybara-devtools/protocol';
+import {
+  MAX_BODY_SIZE,
+  MAX_STRING_LENGTH,
+  type BodyPreview,
+  type LogLevel,
+  type NetworkInitiator,
+  type Platform,
+  type SerializedValue,
+} from '@capybara-devtools/protocol';
 
 /** The parts of a Chrome DevTools Protocol `RemoteObject` the Metro bridge reads. */
 export interface RemoteObject {
@@ -11,9 +19,6 @@ export interface RemoteObject {
   objectId?: string;
 }
 
-/** Same limits as the SDK, so both kinds of session look alike in the UI. */
-export const MAX_BODY = 128 * 1024;
-const MAX_STRING = 10_000;
 
 const LEVELS: Record<string, LogLevel> = {
   debug: 'debug',
@@ -34,7 +39,7 @@ export function primitiveValue(object: RemoteObject): SerializedValue {
   switch (object.type) {
     case 'string': {
       const text = String(object.value ?? '');
-      return text.length > MAX_STRING ? { $t: 'string', v: text.slice(0, MAX_STRING), length: text.length } : text;
+      return text.length > MAX_STRING_LENGTH ? { $t: 'string', v: text.slice(0, MAX_STRING_LENGTH), length: text.length } : text;
     }
     case 'number': {
       const special = object.unserializableValue;
@@ -56,18 +61,6 @@ export function primitiveValue(object: RemoteObject): SerializedValue {
   }
   if (object.subtype === 'null') return null;
   return object.description ?? object.className ?? 'Object';
-}
-
-/** React Native reports unhandled promise rejections through `console.error`. */
-export function isUnhandledRejection(args: SerializedValue[]): boolean {
-  const first = args[0] as { $t?: unknown; message?: unknown } | null | undefined;
-  return (
-    typeof first === 'object' &&
-    first !== null &&
-    first.$t === 'error' &&
-    typeof first.message === 'string' &&
-    first.message.startsWith('Uncaught (in promise')
-  );
 }
 
 /** The `initiator` of `Network.requestWillBeSent`; React Native puts the JS stack of the request in it. */
@@ -128,10 +121,10 @@ export function isTextual(contentType: string | undefined): boolean {
 }
 
 export function textBody(text: string, contentType: string | undefined): BodyPreview {
-  const truncated = text.length > MAX_BODY;
+  const truncated = text.length > MAX_BODY_SIZE;
   return {
     kind: 'text',
-    text: truncated ? text.slice(0, MAX_BODY) : text,
+    text: truncated ? text.slice(0, MAX_BODY_SIZE) : text,
     size: Buffer.byteLength(text),
     truncated,
     contentType,

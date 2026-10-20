@@ -1,32 +1,20 @@
 import type { ServerInfo, SessionInfo } from '@capybara-devtools/protocol';
 import { useState } from 'react';
+import { readStringsPref, writePref } from '../prefs';
 import { updateNotice } from '../updates';
 import { CopyButton } from './CopyButton';
 
 const KEY = 'capybara:dismissed-updates';
 
-function readDismissed(): Set<string> {
-  try {
-    const saved = JSON.parse(localStorage.getItem(KEY) ?? '[]') as unknown;
-    return new Set(Array.isArray(saved) ? saved.filter((item): item is string => typeof item === 'string') : []);
-  } catch {
-    return new Set();
-  }
-}
-
 export function UpdateBanner({ server, session }: { server?: ServerInfo; session?: SessionInfo }) {
-  const [dismissed, setDismissed] = useState(readDismissed);
+  const [dismissed, setDismissed] = useState(() => new Set(readStringsPref(KEY)));
   const notice = updateNotice(server, session, window.capybaraDesktop !== undefined, dismissed);
   if (!notice) return null;
 
   const dismiss = () => {
     const next = new Set(dismissed).add(notice.key);
     setDismissed(next);
-    try {
-      localStorage.setItem(KEY, JSON.stringify([...next]));
-    } catch {
-      // Hidden for this page load only.
-    }
+    writePref(KEY, JSON.stringify([...next]));
   };
 
   return (

@@ -2,7 +2,7 @@
 
 React Native SDK for [Capybara](https://github.com/lhphuc99/capybara#readme): sends your app's logs, network requests (including WebSockets), storage and state to the Capybara UI on your computer, and lets you edit AsyncStorage and MMKV values from it.
 
-On React Native 0.85 or later, Capybara reads logs, network and storage through Metro without this package, except in Expo Go on Android, whose JavaScript engine cannot be debugged. Add it to edit storage, to see storage changes as they happen, to see state, in Expo Go on Android, or on older React Native versions.
+On React Native 0.85 or later, Capybara reads logs, network and storage through Metro without this package, except in Expo Go on Android, whose JavaScript engine cannot be debugged. Add it to see storage changes as they happen, to see state, in Expo Go on Android, or on older React Native versions.
 
 ```bash
 npm install @capybara-devtools/react-native
@@ -34,13 +34,16 @@ Then run `npx capybara-devtools` (or open the desktop app) on the computer runni
 
 ## State
 
-The State tab shows Redux, Zustand, TanStack Query, SWR and React Context. `init()` picks up Redux Toolkit's `configureStore()`, zustand stores made with `devtools()` and React Context providers on its own, as long as it runs before your store modules load. With Expo Router, that means an entry file of your own (`"main": "index.ts"`) that imports the file calling `init()`, then `expo-router/entry`. The rest take one line each:
+The State tab shows Redux, Zustand, XState, MobX, TanStack Query, SWR and React Context. `init()` picks up Redux Toolkit's `configureStore()`, zustand stores made with `devtools()` and React Context providers on its own, as long as it runs before your store modules load. With Expo Router, that means an entry file of your own (`"main": "index.ts"`) that imports the file calling `init()`, then `expo-router/entry`. The rest take one line each:
 
 ```tsx
-import { swrMiddleware, watchQueryClient, watchZustand } from '@capybara-devtools/react-native';
+import { swrMiddleware, watchMobX, watchQueryClient, watchXState, watchZustand } from '@capybara-devtools/react-native';
+import * as mobx from 'mobx';
 
 if (__DEV__) {
   watchZustand(useCounterStore, { name: 'counter' }); // a store without devtools()
+  watchXState(checkoutActor); // from createActor(machine)
+  watchMobX(cartStore, mobx, { name: 'cart' });
   watchQueryClient(queryClient);
 }
 

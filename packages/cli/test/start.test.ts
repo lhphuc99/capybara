@@ -1,7 +1,7 @@
 import http from 'node:http';
 import net, { type AddressInfo, type Socket } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
-import { isCapybaraServer, listen, PortInUseError, startOrReuse } from '../src/server.js';
+import { isCapybaraServer, listen, PortInUseError, startOrReuse } from '../src/start.js';
 
 const cleanup: Array<() => Promise<void>> = [];
 

@@ -1,7 +1,7 @@
 import net from 'node:net';
 import { VIEWER_PATH } from '@capybara-devtools/protocol';
-import { createServer, type CapybaraServer, type ServerOptions } from 'capybara-devtools';
 import { WebSocket, type RawData } from 'ws';
+import { createServer, type CapybaraServer, type ServerOptions } from './server.js';
 
 export class PortInUseError extends Error {
   constructor(readonly port: number) {
@@ -9,11 +9,11 @@ export class PortInUseError extends Error {
   }
 }
 
-export interface Started {
-  port: number;
-  /** Null when another Capybara process (e.g. `npx capybara-devtools`) already serves the port. */
-  server: CapybaraServer | null;
-}
+/** `address` is where the server listens, as `CapybaraServer.start()` says. */
+export type Started =
+  | { port: number; address: string; server: CapybaraServer }
+  /** Another Capybara process (the desktop app, another `capybara`) already serves the port. */
+  | { port: number; server: null };
 
 /** Starts a server, or reuses the Capybara server that already has the port. */
 export async function startOrReuse(options: ServerOptions): Promise<Started> {
@@ -24,11 +24,11 @@ export async function startOrReuse(options: ServerOptions): Promise<Started> {
 }
 
 /** Resolves to null when the port is taken. */
-export async function listen(options: ServerOptions): Promise<{ port: number; server: CapybaraServer } | null> {
+export async function listen(options: ServerOptions): Promise<{ port: number; address: string; server: CapybaraServer } | null> {
   if (!options.host && options.port !== 0 && (await isHeldElsewhere(options.port))) return null;
   const server = createServer(options);
   try {
-    return { port: (await server.start()).port, server };
+    return { ...(await server.start()), server };
   } catch (error) {
     await server.close();
     if ((error as NodeJS.ErrnoException).code === 'EADDRINUSE') return null;

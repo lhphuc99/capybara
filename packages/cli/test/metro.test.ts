@@ -50,7 +50,7 @@ async function fixture(options: {
   let visible = true;
   let sdk = options.sdk ?? false;
   let heldProbes: Array<() => void> | null = null;
-  let ready = options.ready ?? true;
+  const ready = options.ready ?? true;
   let socket: WebSocket | undefined;
   let connections = 0;
   let contextId = 1;
@@ -77,10 +77,12 @@ async function fixture(options: {
     error: new Error('Uncaught (in promise, id: 0) failed'),
     nullObject: null
   };
+  globalThis.saved = { user: '{"name":"Ada"}' };
   globalThis.modules = new Map([[1, {
     isInitialized: true, publicModule: { exports: { default: {
-      getAllKeys: async () => ['user'], getItem: async () => '{"name":"Ada"}',
-      setItem: () => { throw new Error('Must not write'); }
+      getAllKeys: async () => Object.keys(saved), getItem: async (key) => saved[key] ?? null,
+      setItem: async (key, value) => { saved[key] = value; }, removeItem: async (key) => { delete saved[key]; },
+      clear: async () => { saved = {}; }
     } } }
   }]]);
   globalThis.__r = { getModules: () => modules }`, vm);
@@ -169,7 +171,9 @@ async function fixture(options: {
     return viewer;
   };
   const viewer = await view();
-  cleanups.push(() => viewers.forEach((ws) => ws.terminate()));
+  cleanups.push(() => {
+    for (const ws of viewers) ws.terminate();
+  });
   let bridge: MetroBridge | undefined;
   cleanups.push(() => bridge?.stop());
   const hints: string[] = [];
@@ -278,6 +282,55 @@ describe('Metro discovery and CDP event relay', () => {
     expect(f.events().map((e) => e.seq)).toEqual([1, 2, 3, 4]);
   });
 
+  it('keeps console groups, tables and traces apart from plain logs', async () => {
+    const f = await fixture();
+    f.start();
+    await until(() => expect(f.sessions()).toHaveLength(1));
+    f.log([{ type: 'string', value: 'Loading' }], 'startGroup');
+    f.log([{ type: 'string', value: 'inside' }]);
+    f.log([], 'startGroupCollapsed');
+    f.log([{ type: 'object', objectId: 'user' }], 'table');
+    f.log([], 'endGroup');
+    f.log([], 'endGroup');
+    f.log([{ type: 'string', value: 'outside' }]);
+    f.event('Runtime.consoleAPICalled', {
+      type: 'trace', args: [], executionContextId: 1, timestamp: 1_800_000_000_000,
+      stackTrace: { callFrames: [{ functionName: 'load', url: 'http://localhost:8081/index.bundle', lineNumber: 9, columnNumber: 4 }] },
+    });
+    await until(() => expect(f.events()).toHaveLength(6));
+    expect(f.events().map((e) => e.payload)).toEqual([
+      { level: 'log', source: 'console', args: ['Loading'], method: 'group' },
+      { level: 'log', source: 'console', args: ['inside'], depth: 1 },
+      { level: 'log', source: 'console', args: ['console.groupCollapsed'], depth: 1, method: 'groupCollapsed' },
+      { level: 'log', source: 'console', args: [{ name: 'Ada', roles: ['admin'] }], depth: 2, method: 'table' },
+      { level: 'log', source: 'console', args: ['outside'] },
+      {
+        level: 'log',
+        source: 'console',
+        args: ['console.trace', { $t: 'error', name: 'Trace', message: '', stack: 'Trace\n    at load (http://localhost:8081/index.bundle:10:5)' }],
+        method: 'trace',
+      },
+    ]);
+  });
+
+  it('shows the headers of a response whose body is still arriving', async () => {
+    const f = await fixture();
+    f.start();
+    await until(() => expect(f.sessions()).toHaveLength(1));
+    f.request('s1', 'https://api.example.test/chat');
+    f.event('Network.responseReceived', {
+      requestId: 's1', timestamp: 10.125, response: { status: 200, statusText: 'OK', mimeType: 'application/x-ndjson', headers: { 'Content-Type': 'application/x-ndjson' } },
+    });
+    await until(() => expect(f.events()).toHaveLength(2));
+    expect(f.events()[1].payload).toEqual({
+      id: 's1', status: 200, statusText: 'OK', headers: { 'Content-Type': 'application/x-ndjson' }, duration: 125, streaming: true,
+    });
+    f.event('Network.loadingFinished', { requestId: 's1', timestamp: 12, encodedDataLength: 20 });
+    await until(() => expect(f.events()).toHaveLength(3));
+    expect(f.events()[2].payload).toMatchObject({ id: 's1', status: 200, duration: 125 });
+    expect(f.events()[2].payload.streaming).toBeUndefined();
+  });
+
   it('captures POST headers/body, 404 responses, base64 bodies, failed and aborted requests', async () => {
     const f = await fixture();
     f.start();
@@ -343,6 +396,21 @@ describe('Metro discovery and CDP event relay', () => {
     await until(() => expect(f.commands.some((c) => c.method === 'Runtime.releaseObject')).toBe(true));
     expect(f.sessions()).toHaveLength(0);
     expect(f.events()).toHaveLength(0);
+  });
+
+  it('says when it started reading an app that was already running, and not when it saw the app start', async () => {
+    const running = await fixture();
+    running.start();
+    await until(() => expect(running.sessions()).toHaveLength(1));
+    expect(running.sessions()[0].session.info.attachedLate).toBe(true);
+    running.stop();
+
+    const starting = await fixture({ ready: false });
+    starting.start();
+    await until(() => expect(starting.commands.some((c) => c.method === 'Network.enable')).toBe(true));
+    starting.log([{ type: 'string', value: 'Running "App"' }]);
+    await until(() => expect(starting.sessions()).toHaveLength(1));
+    expect(starting.sessions()[0].session.info).not.toHaveProperty('attachedLate');
   });
 
   it('checks again when the app starts while an earlier check is still unanswered', async () => {
@@ -451,7 +519,7 @@ describe('Metro discovery and CDP event relay', () => {
     await until(() => expect(f.sessions()).toHaveLength(1));
     expect(f.origins).toEqual([`http://127.0.0.1:${f.metroPort}`, `http://localhost:${f.metroPort}`]);
     f.viewer.send(JSON.stringify({ t: 'command', id: 'storage', sessionId: f.sessions()[0].session.info.id, plugin: 'storage', method: 'clear' }));
-    await until(() => expect(f.messages.find((m) => m.t === 'result')).toMatchObject({ ok: false, error: expect.stringContaining('read-only') }));
+    await until(() => expect(f.messages.find((m) => m.t === 'result')).toMatchObject({ ok: false, error: 'Invalid storage command' }));
   });
 
   it('relays WebSocket traffic, including a socket opened before attaching, then removes the hook', async () => {
@@ -514,7 +582,7 @@ describe('Metro discovery and CDP event relay', () => {
     await until(() => expect(f.commands.some((c) => c.method === 'Runtime.removeBinding')).toBe(true));
   });
 
-  it('routes read-only storage commands from the viewer to the app through CDP', async () => {
+  it('routes storage commands from the viewer to the app through CDP, writes included', async () => {
     const f = await fixture();
     f.start();
     await until(() => expect(f.sessions()).toHaveLength(1));
@@ -523,14 +591,20 @@ describe('Metro discovery and CDP event relay', () => {
     }));
     const result = (id: string) => f.messages.find((m) => m.t === 'result' && m.id === id);
     command('list', 'list');
-    await until(() => expect(result('list')).toMatchObject({ ok: true, result: [{ readOnly: true, canClear: false }] }));
+    await until(() => expect(result('list')).toMatchObject({ ok: true, result: [{ readOnly: false, canClear: true }] }));
     const adapter = result('list').result[0].id;
     command('entries', 'entries', { adapter });
     await until(() => expect(result('entries')).toMatchObject({ ok: true, result: { total: 1, entries: [{ key: 'user', value: '{"name":"Ada"}' }] } }));
     command('get', 'get', { adapter, key: 'user' });
     await until(() => expect(result('get')).toMatchObject({ ok: true, result: { value: '{"name":"Ada"}' } }));
     command('write', 'set', { adapter, key: 'user', value: 'changed' });
-    await until(() => expect(result('write')).toMatchObject({ ok: false, error: expect.stringContaining('read-only') }));
-    expect(f.commands.filter((c) => c.method === 'Runtime.releaseObject')).toHaveLength(3);
+    await until(() => expect(result('write')).toMatchObject({ ok: true, result: null }));
+    command('reread', 'get', { adapter, key: 'user' });
+    await until(() => expect(result('reread')).toMatchObject({ ok: true, result: { value: 'changed' } }));
+    command('remove', 'remove', { adapter, key: 'user' });
+    await until(() => expect(result('remove')).toMatchObject({ ok: true, result: null }));
+    command('empty', 'entries', { adapter });
+    await until(() => expect(result('empty')).toMatchObject({ ok: true, result: { total: 0, entries: [] } }));
+    expect(f.commands.filter((c) => c.method === 'Runtime.releaseObject')).toHaveLength(7);
   });
 });

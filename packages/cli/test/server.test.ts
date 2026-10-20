@@ -3,7 +3,7 @@ import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { networkInterfaces, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
 import { isLocalConnection } from '../src/security.js';
 import { createServer, lanAddresses, reachableAddresses, type CapybaraServer, type ServerOptions } from '../src/server.js';
@@ -119,6 +119,17 @@ async function load(sessionId = 'app-1') {
 }
 
 describe('event relay', () => {
+  it('gives a session the time it connected when the app sends no start time', async () => {
+    await start();
+    const app = connect('/client');
+    await app.opened;
+    const { startedAt: _, ...withoutStart } = session();
+    app.send({ t: 'hello', protocol: 1, session: withoutStart });
+    await app.next((m) => m.t === 'welcome');
+    const { meta } = await load();
+    expect(meta.info.startedAt).toBeGreaterThan(Date.now() - 5_000);
+  });
+
   it('streams app events to viewers and serves history to late viewers', async () => {
     await start();
     const ui = viewer();
@@ -137,6 +148,34 @@ describe('event relay', () => {
     expect(await late.next((m) => m.t === 'init')).toMatchObject({ sessions: [{ eventCount: 2, connected: true }] });
     late.send({ t: 'history', sessionId: 'app-1' });
     expect((await late.next((m) => m.t === 'history')).events).toHaveLength(2);
+  });
+
+  it('sends a long history in parts to viewers that ask, and in one message to the others', async () => {
+    await start();
+    const ui = viewer();
+    await ui.opened;
+    const { app } = await connectApp();
+    const body = 'x'.repeat(128 * 1024);
+    const responses = Array.from({ length: 40 }, (_, i) => ({
+      seq: i + 1,
+      ts: i + 1,
+      kind: 'network.response',
+      payload: { id: `r${i + 1}`, status: 200, headers: {}, body: { kind: 'text', text: body }, duration: 1 },
+    }));
+    await deliver(app, ui, responses);
+    const histories = () => ui.messages.filter((m) => m.t === 'history');
+
+    ui.send({ t: 'history', sessionId: 'app-1', parts: true });
+    await ui.next((m) => m.t === 'history' && !m.more);
+    const parts = histories();
+    expect(parts.length).toBeGreaterThan(1);
+    expect(parts.map((part) => part.more)).toEqual([...parts.slice(1).map(() => true), undefined]);
+    expect(parts.flatMap((part) => part.events).map((e: any) => e.seq)).toEqual(responses.map((e) => e.seq));
+
+    // Viewers before 0.5.1 do not ask, and would keep only the first part.
+    ui.send({ t: 'history', sessionId: 'app-1' });
+    const whole = await ui.next((m) => m.t === 'history' && m.events.length === responses.length);
+    expect(whole.more).toBeUndefined();
   });
 
   it('tells a reconnecting app where to resume and drops replayed events', async () => {
@@ -365,6 +404,32 @@ describe('diagnosing failed requests', () => {
   });
 });
 
+describe('hints', () => {
+  const unreadable = "Expo Go on Android (Pixel 9) can't be read through Metro: its JavaScript engine does not support debugging.";
+
+  it('shows each hint in the UI once, and passes it on', async () => {
+    const printed: string[] = [];
+    await start({ onHint: (hint) => printed.push(hint) });
+    const before = viewer();
+    await before.opened;
+    server!.hint(unreadable);
+    server!.hint(unreadable);
+    expect((await before.next((m) => m.t === 'server')).server.hints).toEqual([unreadable]);
+    expect(printed).toEqual([unreadable]);
+
+    // A UI opened later gets them with the rest of the server info.
+    const after = viewer();
+    expect((await after.next((m) => m.t === 'init')).server.hints).toEqual([unreadable]);
+  });
+
+  it('keeps the newest ten', async () => {
+    await start();
+    for (let i = 1; i <= 12; i++) server!.hint(`Hint ${i}`);
+    const ui = viewer();
+    expect((await ui.next((m) => m.t === 'init')).server.hints).toEqual(Array.from({ length: 10 }, (_, i) => `Hint ${i + 3}`));
+  });
+});
+
 describe('access control', () => {
   it('refuses viewer sockets from other origins', async () => {
     await start();
@@ -383,25 +448,45 @@ describe('access control', () => {
     await expect(connect('/viewer', { origin: 'http://localhost:5174' }).opened).resolves.toBeUndefined();
   });
 
-  it('refuses plain HTTP requests addressed to other hosts', async () => {
+  it('refuses plain HTTP requests addressed to other hosts, with a page that says what to open instead', async () => {
     await start();
     expect(await statusOf({ headers: { host: 'evil.test' } })).toBe(403);
+    // Such as this computer's own name on the network.
+    const page = await get({ headers: { host: `devbox.local:${port}` } });
+    expect(page.status).toBe(403);
+    expect(page.body).toContain('Open Capybara at localhost or an IP address');
+    expect(page.body).toContain(`<a href="http://localhost:${port}">`);
   });
 
   // Another device, as the server sees it: a peer at this machine's LAN address, on loopback.
   it.skipIf(!lan)('shows the UI and what apps sent only to this machine, while apps connect from anywhere', async () => {
     const hints: string[] = [];
     await start({ onHint: (hint) => hints.push(hint) });
+    const ui = viewer();
+    await ui.opened;
     const elsewhere = { localAddress: lan };
     await expect(connect('/viewer', { origin: `http://127.0.0.1:${port}` }, elsewhere).opened).rejects.toThrow('HTTP 403');
     expect(await statusOf(elsewhere)).toBe(403);
     await expect(connect('/client', {}, elsewhere).opened).resolves.toBeUndefined();
     expect(await statusOf()).toBe(200);
 
-    // The device is told how to get in, and the terminal once which device was turned away.
+    // The device is told how to get in, and the terminal and the UI once which device was turned away.
     expect(await bodyOf(elsewhere)).toContain('--remote-ui');
     expect(hints).toEqual([expect.stringContaining(`${lan} was turned away`)]);
     expect(hints[0]).toContain('--remote-ui');
+    expect(hints[0]).toContain('Let Other Devices Open the UI');
+    expect((await ui.next((m) => m.t === 'server')).server.hints).toEqual(hints);
+  });
+
+  it.skipIf(!lan)('says which apps connect from another device', async () => {
+    await start();
+    const phone = connect('/client', {}, { localAddress: lan });
+    await phone.opened;
+    phone.send({ t: 'hello', protocol: 1, session: session('phone') });
+    await phone.next((m) => m.t === 'welcome');
+    await connectApp('simulator');
+    expect((await load('phone')).meta.address).toBe(lan);
+    expect((await load('simulator')).meta).not.toHaveProperty('address');
   });
 
   it.skipIf(!lan)('lets other devices open the UI with remoteUi', async () => {
@@ -409,6 +494,26 @@ describe('access control', () => {
     const elsewhere = { localAddress: lan };
     await expect(connect('/viewer', { origin: `http://127.0.0.1:${port}` }, elsewhere).opened).resolves.toBeUndefined();
     expect(await statusOf(elsewhere)).toBe(200);
+  });
+
+  it.skipIf(!lan)('lets other devices in and out as remote UI is turned on and off while running', async () => {
+    await start();
+    const elsewhere = { localAddress: lan };
+    const ui = viewer();
+    await ui.opened;
+    expect(await statusOf(elsewhere)).toBe(403);
+    server!.setRemoteUi(true);
+    // The device turned away before made the server send a hint already.
+    await ui.next((m) => m.t === 'server' && m.server.remoteUi);
+    expect(await statusOf(elsewhere)).toBe(200);
+    const device = connect('/viewer', { origin: `http://127.0.0.1:${port}` }, elsewhere);
+    await device.opened;
+    const closed = new Promise<number>((resolve) => device.ws.once('close', (code) => resolve(code)));
+    server!.setRemoteUi(false);
+    // The device is let go; this machine's viewer stays and hears of the change.
+    expect(await closed).toBe(1008);
+    await vi.waitFor(() => expect(ui.messages.filter((m) => m.t === 'server').at(-1).server.remoteUi).toBe(false));
+    expect(await statusOf(elsewhere)).toBe(403);
   });
 
   it.skipIf(!lan)('opens the UI at its LAN address on this machine', async () => {

@@ -7,6 +7,7 @@ import { existsSync } from 'node:fs';
  * open across exec, so the server kept them and an AppImage could not unmount and exit. bash closes
  * everything but stdio before adb starts.
  */
+// biome-ignore lint/suspicious/noTemplateCurlyInString: shell parameter expansion
 const CLOSE_INHERITED = 'for fd in /proc/$$/fd/*; do fd=${fd##*/}; [ "$fd" -gt 2 ] && eval "exec $fd>&-"; done; exec "$@"';
 
 let bash: boolean | undefined;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { StatePath } from '../src/index.js';
-import { formatOp, formatPath, libraryTitle, parsePath, stateChangeLabel, STATE_LIBRARIES } from '../src/values.js';
+import { formatOp, formatPath, libraryTitle, makeMatcher, parsePath, stateChangeLabel, STATE_LIBRARIES } from '../src/values.js';
 
 describe('state paths', () => {
   it('writes paths the way code reads them', () => {
@@ -65,8 +65,19 @@ describe('state changes', () => {
   });
 
   it('titles libraries in a fixed order', () => {
-    expect(STATE_LIBRARIES).toEqual(['redux', 'zustand', 'tanstack-query', 'swr', 'context']);
+    expect(STATE_LIBRARIES).toEqual(['redux', 'zustand', 'xstate', 'mobx', 'tanstack-query', 'swr', 'context']);
     expect(libraryTitle('tanstack-query')).toBe('TanStack Query');
     expect(libraryTitle('jotai')).toBe('jotai');
+  });
+});
+
+describe('makeMatcher', () => {
+  it('reads /pattern/flags as a regular expression, and a path such as /api/users as text', () => {
+    expect(makeMatcher('/^GET/i')!.test('get /users')).toBe(true);
+    expect(makeMatcher('/api/users')).toMatchObject({ invalid: false });
+    expect(makeMatcher('/api/users')!.test('GET https://shop.test/api/users?page=2')).toBe(true);
+    expect(makeMatcher('/api/users')!.test('GET https://shop.test/api/orders')).toBe(false);
+    expect(makeMatcher('/a(/')).toMatchObject({ invalid: true });
+    expect(makeMatcher('  ')).toBeNull();
   });
 });

@@ -1,10 +1,13 @@
 import { METRO_SDK, type StorageAdapterInfo, type StorageEntries, type StorageEntry } from '@capybara-devtools/protocol';
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { CopyButton } from '../components/CopyButton';
+import { EmptyPanel } from '../components/EmptyMessage';
 import { JsonTree } from '../components/JsonTree';
 import { ColumnHandle, ResizeHandle, useColumnWidth, usePaneWidth } from '../components/ResizeHandle';
+import { SearchInput } from '../components/SearchInput';
 import { storageCommand } from '../connection';
 import { formatBytes, makeMatcher, parseJson } from '../format';
+import { focusOnMount, useListKeys } from '../listKeys';
 import type { SessionState } from '../store';
 
 export function StoragePanel({ session }: { session: SessionState }) {
@@ -32,6 +35,10 @@ function StorageBrowser({ session }: { session: SessionState }) {
   const navRef = useRef<HTMLDivElement>(null);
   const entriesRef = useRef<HTMLDivElement>(null);
   const keyRef = useRef<HTMLSpanElement>(null);
+  const requestRef = useRef(0);
+  const shownRef = useRef(0);
+  const timerRef = useRef<number | undefined>(undefined);
+  const seenRef = useRef<{ adapterId: string | null; reloadToken: number }>({ adapterId: null, reloadToken: 0 });
   const adapter = adapters?.find((a) => a.id === adapterId);
   const version = adapterId ? (session.storageVersions[adapterId] ?? 0) : 0;
 
@@ -58,32 +65,57 @@ function StorageBrowser({ session }: { session: SessionState }) {
   }, [sessionId, connected, scanToken]);
 
   useEffect(() => {
-    if (!connected || !adapterId) return;
-    let cancelled = false;
-    // Persisted stores can write many times a second; refresh at most every 250 ms after the first load.
-    const delay = version === 0 && reloadToken === 0 ? 0 : 250;
-    const timer = window.setTimeout(() => {
-      setLoading(true);
-      storageCommand(sessionId, 'entries', { adapter: adapterId })
-        .then(
-          (result) => {
-            if (cancelled) return;
+    const seen = seenRef.current;
+    const active = connected ? adapterId : null;
+    seenRef.current = { adapterId: active, reloadToken };
+    const load = (adapter: string, quiet: boolean) => {
+      const request = ++requestRef.current;
+      if (!quiet) setLoading(true);
+      const settle = (show: () => void) => {
+        // Newer than what is shown, if not the newest: replies slower than the writes still show up.
+        if (request > shownRef.current) {
+          shownRef.current = request;
+          show();
+        }
+        if (request === requestRef.current) setLoading(false);
+      };
+      storageCommand(sessionId, 'entries', { adapter }).then(
+        (result) =>
+          settle(() => {
             setListing(result);
             setError(null);
-          },
-          (reason: Error) => {
-            if (!cancelled) setError(reason.message);
-          },
-        )
-        .finally(() => {
-          if (!cancelled) setLoading(false);
-        });
-    }, delay);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
+          }),
+        (reason: Error) => settle(() => setError(reason.message)),
+      );
     };
+    if (active !== seen.adapterId) {
+      // Replies on their way belong to the adapter shown before.
+      shownRef.current = requestRef.current;
+      window.clearTimeout(timerRef.current);
+      timerRef.current = undefined;
+      if (active) load(active, false);
+      else setLoading(false);
+    } else if (active && reloadToken !== seen.reloadToken) {
+      window.clearTimeout(timerRef.current);
+      timerRef.current = undefined;
+      load(active, false);
+    } else if (active && timerRef.current === undefined) {
+      // Persisted stores can write many times a second. The timer is not reset by later writes, so a store written
+      // all the time is still read every 250 ms.
+      timerRef.current = window.setTimeout(() => {
+        timerRef.current = undefined;
+        load(active, true);
+      }, 250);
+    }
   }, [sessionId, connected, adapterId, version, reloadToken]);
+
+  useEffect(
+    () => () => {
+      window.clearTimeout(timerRef.current);
+      timerRef.current = undefined;
+    },
+    [],
+  );
 
   const matcher = useMemo(() => makeMatcher(query), [query]);
   const visible = useMemo(
@@ -91,6 +123,18 @@ function StorageBrowser({ session }: { session: SessionState }) {
     [listing, matcher],
   );
   const selectedEntry = listing?.entries.find((entry) => entry.key === selectedKey);
+  const entryBodyRef = useRef<HTMLDivElement>(null);
+  const entryKeys = useMemo(() => visible.map((entry) => entry.key), [visible]);
+  const onEntryKey = useListKeys({
+    listRef: entryBodyRef,
+    keys: entryKeys,
+    onMove: (key) => {
+      setSelectedKey(key);
+      setAdding(false);
+    },
+  });
+  // The one row in the tab order: the selected one, else the first.
+  const tabbableKey = selectedKey !== null && entryKeys.includes(selectedKey) ? selectedKey : entryKeys[0];
 
   const reload = () => setReloadToken((n) => n + 1);
   const run = async (action: () => Promise<unknown>): Promise<boolean> => {
@@ -106,56 +150,43 @@ function StorageBrowser({ session }: { session: SessionState }) {
 
   if (!connected) {
     return (
-      <section className="panel">
-        <div className="empty">
-          <strong>The app is offline</strong>
-          <p>Storage is read live from the app. Reconnect it to browse and edit values.</p>
-        </div>
-      </section>
+      <EmptyPanel title="The app is offline">
+        <p>Storage is read live from the app. Reconnect it to browse and edit values.</p>
+      </EmptyPanel>
     );
   }
 
   if (adapters && adapters.length === 0) {
     if (viaMetro) {
       return (
-        <section className="panel">
-          <div className="empty">
-            <strong>No storage found yet</strong>
-            <p>Open the app screen that uses AsyncStorage or MMKV, then scan again.</p>
-            <p>MMKV v2/v3: use the store again after connecting. MMKV v4: new instances can be detected after connecting; existing private instances may remain unavailable.</p>
-            <button type="button" className="btn" onClick={() => setScanToken((n) => n + 1)}>Find stores</button>
-          </div>
-        </section>
+        <EmptyPanel title="No storage found yet">
+          <p>Open the app screen that uses AsyncStorage or MMKV, then scan again.</p>
+          <p>MMKV v2/v3: use the store again after connecting. MMKV v4: new instances can be detected after connecting; existing private instances may remain unavailable.</p>
+          <button type="button" className="btn" onClick={() => setScanToken((n) => n + 1)}>Find stores</button>
+        </EmptyPanel>
       );
     }
     return (
-      <section className="panel">
-        <div className="empty">
-          <strong>No storage configured</strong>
-          <p>Pass the storages your app uses to init():</p>
-          <pre className="code left">{`import AsyncStorage from '@react-native-async-storage/async-storage';
+      <EmptyPanel title="No storage configured">
+        <p>Pass the storages your app uses to init():</p>
+        <pre className="code left">{`import AsyncStorage from '@react-native-async-storage/async-storage';
 import { asyncStorage, mmkvStorage } from '@capybara-devtools/react-native';
 
 init({ storage: [asyncStorage(AsyncStorage), mmkvStorage(storage)] });`}</pre>
-        </div>
-      </section>
+      </EmptyPanel>
     );
   }
 
   return (
     <section className="panel">
       <div className="toolbar">
-        <input
-          className={`search${matcher?.invalid ? ' invalid' : ''}`}
-          placeholder="Filter keys and values"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          spellCheck={false}
-        />
+        <SearchInput value={query} onChange={setQuery} placeholder="Filter keys and values" invalid={matcher?.invalid} />
         <span className="spacer" />
         {viaMetro && (
           <>
-            <span className="tag">Read-only via Metro</span>
+            <span className="tag" title="Read through Metro: Refresh shows what the app wrote since">
+              {adapter?.readOnly === false ? 'Via Metro' : 'Read-only via Metro'}
+            </span>
             <button type="button" className="btn" onClick={() => setScanToken((n) => n + 1)}>Find stores</button>
           </>
         )}
@@ -210,7 +241,7 @@ init({ storage: [asyncStorage(AsyncStorage), mmkvStorage(storage)] });`}</pre>
                 key={a.id}
                 type="button"
                 className="adapter"
-                aria-selected={a.id === adapterId}
+                aria-current={a.id === adapterId ? 'true' : undefined}
                 onClick={() => {
                   setAdapterId(a.id);
                   setSelectedKey(null);
@@ -232,6 +263,7 @@ init({ storage: [asyncStorage(AsyncStorage), mmkvStorage(storage)] });`}</pre>
             onChange={nav.setWidth}
             onCommit={nav.save}
             onReset={nav.reset}
+            value={nav.width}
             label="Resize the list of stores"
           />
         </div>
@@ -254,21 +286,27 @@ init({ storage: [asyncStorage(AsyncStorage), mmkvStorage(storage)] });`}</pre>
                 onChange={keyColumn.setWidth}
                 onCommit={keyColumn.save}
                 onReset={keyColumn.reset}
+                value={keyColumn.width}
                 label="Resize the key and value columns"
               />
             </span>
             <span>Value</span>
             <span className="num">Size</span>
           </div>
-          <div className="entry-body">
-            {visible.map((entry) => (
+          <div className="entry-body" ref={entryBodyRef} role="listbox" aria-label="Keys">
+            {visible.map((entry, index) => (
               <div
                 key={entry.key}
+                role="option"
+                aria-selected={entry.key === selectedKey}
+                tabIndex={entry.key === tabbableKey ? 0 : -1}
+                data-row={entry.key}
                 className={`entry-row${entry.key === selectedKey ? ' selected' : ''}`}
                 onClick={() => {
                   setSelectedKey(entry.key);
                   setAdding(false);
                 }}
+                onKeyDown={(event) => onEntryKey(event, index)}
               >
                 <span className="entry-key" title={entry.key}>
                   {entry.key}
@@ -446,7 +484,7 @@ function ValueEditor({
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             spellCheck={false}
-            autoFocus
+            ref={focusOnMount}
           />
           <div className="editor-actions">
             <button type="button" className="btn" onClick={() => setEditing(false)}>
@@ -487,7 +525,7 @@ function NewEntry({ onSave, onCancel }: { onSave: (key: string, value: string) =
         value={key}
         onChange={(event) => setKey(event.target.value)}
         spellCheck={false}
-        autoFocus
+        ref={focusOnMount}
       />
       <textarea
         className="editor-text"

@@ -67,6 +67,30 @@ const groups: Group[] = [
           for (let i = 1; i <= 200; i++) console.log(`Line ${i}`, { i, even: i % 2 === 0 });
         },
       },
+      {
+        label: 'Group, table and count',
+        run: () => {
+          console.group('Checkout');
+          console.table([
+            { sku: 'tea-01', qty: 2, price: 12.5 },
+            { sku: 'mug-07', qty: 1, price: 34.9 },
+          ]);
+          console.count('checkout');
+          console.groupCollapsed('Shipping');
+          console.log('Express, 2 days');
+          console.groupEnd();
+          console.groupEnd();
+        },
+      },
+      {
+        label: 'Time and trace',
+        run: async () => {
+          console.time('load users');
+          await fetch('/api/users');
+          console.timeEnd('load users');
+          console.trace('Who loaded the users?');
+        },
+      },
     ],
   },
   {
@@ -114,6 +138,14 @@ const groups: Group[] = [
           }),
       },
       { label: 'Slow request (1.5 s)', run: () => fetch('/api/slow').then((r) => `status ${r.status}`) },
+      {
+        label: 'Streamed answer (ndjson)',
+        run: async () => {
+          const response = await fetch('/api/stream');
+          const text = await response.text();
+          return `${text.trim().split('\n').length} lines`;
+        },
+      },
       { label: 'Server error (500)', run: () => fetch('/api/error').then((r) => `status ${r.status}`) },
       {
         label: 'Network failure',

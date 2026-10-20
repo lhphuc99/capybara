@@ -1,5 +1,6 @@
 import vm from 'node:vm';
 import { describe, expect, it } from 'vitest';
+import { MAX_STRING_LENGTH } from '@capybara-devtools/protocol';
 import { serialize } from '../src/serialize.js';
 
 describe('serialize', () => {
@@ -81,5 +82,12 @@ describe('serialize', () => {
       byId: { $t: 'map', entries: [[1, { ok: true }]], size: 1 },
       deep: [[[[[{ $t: 'limit', name: 'Array(1)' }]]]]],
     });
+  });
+});
+
+describe('serialize defaults', () => {
+  it('cut strings at MAX_STRING_LENGTH, as the Metro bridge does for its own values', () => {
+    const long = 'x'.repeat(MAX_STRING_LENGTH + 1);
+    expect(serialize(long)).toEqual({ $t: 'string', v: long.slice(0, MAX_STRING_LENGTH), length: MAX_STRING_LENGTH + 1 });
   });
 });

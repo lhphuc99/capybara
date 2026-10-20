@@ -305,7 +305,9 @@ const queries = [
 function stateEvents() {
   const { events, add: emit } = timeline();
   for (const store of stateStores) emit(0, 'state.store', { store });
-  shopChanges.forEach(([afterMs, change], index) => emit(afterMs, 'state.change', { store: 'redux:1', rev: index + 1, cause: 'action', ...change }));
+  shopChanges.forEach(([afterMs, change], index) => {
+    emit(afterMs, 'state.change', { store: 'redux:1', rev: index + 1, cause: 'action', ...change });
+  });
   emit(800, 'state.entries', { store: 'tanstack-query:1', upserts: queries, removed: [], reset: true });
   return events;
 }

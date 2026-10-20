@@ -63,6 +63,16 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     return json(200, { ok: true, waitedMs: 1_500 });
   }
   if (url.pathname === '/error') return json(500, { error: 'Internal Server Error', code: 'E_DB_TIMEOUT' });
+  if (url.pathname === '/stream') {
+    // One line every 300 ms, as AI APIs stream an answer.
+    res.writeHead(200, { 'content-type': 'application/x-ndjson' });
+    const words = ['Capybaras', 'are', 'the', 'largest', 'living', 'rodents', 'in', 'the', 'world.'];
+    for (const [index, word] of words.entries()) {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      res.write(`${JSON.stringify({ index, word, done: index === words.length - 1 })}\n`);
+    }
+    return res.end();
+  }
   return json(404, { error: `No mock for ${req.method} ${url.pathname}` });
 }
 

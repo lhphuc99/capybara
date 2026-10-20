@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { AppearanceMenu } from './components/AppearanceMenu';
 import { EmptyState } from './components/EmptyState';
+import { HintBanner } from './components/HintBanner';
 import { RemoteAccess } from './components/RemoteAccess';
 import { SessionPicker } from './components/SessionPicker';
 import { Toaster } from './components/Toaster';
@@ -12,19 +13,23 @@ import { NetworkPanel } from './panels/NetworkPanel';
 import { StatePanel } from './panels/StatePanel';
 import { StoragePanel } from './panels/StoragePanel';
 import { stateBadge } from './state';
+import { readPref, writePref } from './prefs';
 import { useStore, type SessionState } from './store';
 
 type Tab = 'logs' | 'network' | 'storage' | 'state';
 const TAB_KEY = 'capybara:tab';
+/** Pressed outside a text field, 1 to 4 open the tabs in this order. */
+const TABS: Tab[] = ['logs', 'network', 'storage', 'state'];
+
+/** Whether a key press belongs to the field it was typed in. */
+function typing(target: EventTarget | null): boolean {
+  const element = target as HTMLElement | null;
+  return element !== null && (element.isContentEditable || /^(?:INPUT|TEXTAREA|SELECT)$/.test(element.tagName));
+}
 
 function initialTab(): Tab {
-  try {
-    const saved = localStorage.getItem(TAB_KEY);
-    if (saved === 'logs' || saved === 'network' || saved === 'storage' || saved === 'state') return saved;
-  } catch {
-    // storage blocked: fall back to the default
-  }
-  return 'logs';
+  const saved = readPref(TAB_KEY);
+  return saved === 'network' || saved === 'storage' || saved === 'state' ? saved : 'logs';
 }
 
 export function App() {
@@ -35,13 +40,31 @@ export function App() {
   const [tab, setTab] = useState<Tab>(initialTab);
   const session = selectedId ? sessions[selectedId] : undefined;
 
+  useEffect(() => writePref(TAB_KEY, tab), [tab]);
+
+  // `/` and Cmd/Ctrl+F go to the filter of the tab shown; 1 to 4 switch tabs.
   useEffect(() => {
-    try {
-      localStorage.setItem(TAB_KEY, tab);
-    } catch {
-      // not essential
-    }
-  }, [tab]);
+    const onKey = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.altKey) return;
+      const find = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'f';
+      if (!find && (typing(event.target) || event.metaKey || event.ctrlKey)) return;
+      if (find || event.key === '/') {
+        const search = document.querySelector<HTMLInputElement>('.main .toolbar input.search');
+        if (!search) return;
+        event.preventDefault();
+        search.focus();
+        search.select();
+        return;
+      }
+      const next = TABS[Number(event.key) - 1];
+      if (next && /^[1-4]$/.test(event.key) && session) {
+        event.preventDefault();
+        setTab(next);
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [session]);
 
   const logs = session?.logs;
   const network = session?.network;
@@ -59,20 +82,20 @@ export function App() {
         </div>
         <SessionPicker sessions={sessions} selectedId={selectedId} />
         {session && (
-          <nav className="tabs" role="tablist">
-            <TabButton active={tab === 'logs'} onClick={() => setTab('logs')}>
+          <div className="tabs" role="tablist" aria-label="Panels">
+            <TabButton active={tab === 'logs'} shortcut="1" onClick={() => setTab('logs')}>
               Logs <Count total={session.logs.length} alerts={errorCount} />
             </TabButton>
-            <TabButton active={tab === 'network'} onClick={() => setTab('network')}>
+            <TabButton active={tab === 'network'} shortcut="2" onClick={() => setTab('network')}>
               Network <Count total={session.network.length} alerts={failedCount} />
             </TabButton>
-            <TabButton active={tab === 'storage'} onClick={() => setTab('storage')}>
+            <TabButton active={tab === 'storage'} shortcut="3" onClick={() => setTab('storage')}>
               Storage
             </TabButton>
-            <TabButton active={tab === 'state'} onClick={() => setTab('state')}>
+            <TabButton active={tab === 'state'} shortcut="4" onClick={() => setTab('state')}>
               State <Count total={stateCount.stores} alerts={stateCount.errors} />
             </TabButton>
-          </nav>
+          </div>
         )}
         <ConnectionBadge status={status} session={session} />
         <RemoteAccess />
@@ -80,6 +103,7 @@ export function App() {
       </header>
       <main className="main">
         <UpdateBanner server={server} session={session?.meta.info} />
+        <HintBanner server={server} />
         {!session ? (
           <EmptyState status={status} server={server} />
         ) : !session.loaded ? (
@@ -99,9 +123,9 @@ export function App() {
   );
 }
 
-function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
+function TabButton({ active, shortcut, onClick, children }: { active: boolean; shortcut: string; onClick: () => void; children: ReactNode }) {
   return (
-    <button type="button" role="tab" className="tab" aria-selected={active} onClick={onClick}>
+    <button type="button" role="tab" className="tab" aria-selected={active} aria-keyshortcuts={shortcut} title={`Press ${shortcut}`} onClick={onClick}>
       {children}
     </button>
   );

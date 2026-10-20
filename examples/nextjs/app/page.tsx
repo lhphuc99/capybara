@@ -141,7 +141,7 @@ export default function Page() {
       </p>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
         {actions.map((action) => (
-          <button key={action.label} onClick={() => void run(action)}>
+          <button key={action.label} type="button" onClick={() => void run(action)}>
             {action.label}
           </button>
         ))}
@@ -149,7 +149,7 @@ export default function Page() {
       <h2>State</h2>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
         {stateActions.map((action) => (
-          <button key={action.label} onClick={() => void run(action)}>
+          <button key={action.label} type="button" onClick={() => void run(action)}>
             {action.label}
           </button>
         ))}

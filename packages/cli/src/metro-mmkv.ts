@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
-
-type CdpCall = <T>(method: string, params?: object) => Promise<T>;
+import type { CdpCall } from './metro-debugger.js';
 
 /** Refresh the runtime lease and discover MMKV modules loaded after the connection was made. */
 export function watchMetroMMKV(call: CdpCall, contextId: number) {
@@ -66,7 +65,7 @@ export function trackMMKV(action: 'watch' | 'stop', owner: string) {
     const stores = new Map<string, { deref(): AnyObject | undefined }>();
     const identities = new WeakMap<object, string>();
     const patched = new WeakMap<object, Set<string>>();
-    const patches: Array<{ target: object; key: string; descriptor?: PropertyDescriptor; wrapper: Function }> = [];
+    const patches: Array<{ target: object; key: string; descriptor?: PropertyDescriptor; wrapper: (...args: unknown[]) => unknown }> = [];
     let sequence = 0;
     let disposed = false;
     let expiry: ReturnType<typeof setInterval>;
@@ -107,7 +106,7 @@ export function trackMMKV(action: 'watch' | 'stop', owner: string) {
       const source = descriptor ?? inherited;
       if (!source || typeof source.value !== 'function') return;
       if (descriptor ? (!descriptor.configurable && !descriptor.writable) : !Object.isExtensible(target)) return;
-      const original = source.value as Function;
+      const original = source.value as (...args: unknown[]) => unknown;
       const wrapper = function (this: unknown, ...args: unknown[]) {
         // Let the original method own its receiver, return value, and exceptions.
         const result = Reflect.apply(original, this, args);

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { StateEntrySummary, StateLibrary } from '@capybara-devtools/protocol';
+import type { StateCommands, StateEntrySummary, StateLibrary } from '@capybara-devtools/protocol';
 import {
   CLIENT_GLOBAL,
   createClient,
@@ -105,13 +105,18 @@ function fakeCache() {
   };
 }
 
+/** The state plugin's commands as the protocol types them; the plugin itself only promises `unknown`. */
+type Commands = {
+  [M in keyof StateCommands]: (params: StateCommands[M]['params']) => M extends 'act' ? Promise<StateCommands[M]['result']> : StateCommands[M]['result'];
+};
+
 function harness(options: StatePluginOptions = {}) {
   const events: Recorded[] = [];
   const ctx: PluginContext = { emit: (kind, payload) => events.push({ kind, payload }), serialize, console };
   const plugin = statePlugin(options);
   const teardown = plugin.setup!(ctx) as () => void;
   const of = (kind: string) => events.filter((e) => e.kind === kind).map((e) => e.payload);
-  return { commands: plugin.commands!, events, of, teardown };
+  return { commands: plugin.commands as unknown as Commands, events, of, teardown };
 }
 
 /** The engine reads the connection from the active client; the harness has none, so fake one. */
@@ -379,6 +384,28 @@ describe('statePlugin options and entries', () => {
     await expect(commands.act!({ store: id, key: 'b', op: 'remove' })).rejects.toThrow('client does not support "remove"');
     expect(cache.acted).toEqual(['refetch:b']);
     expect(() => commands.get!({ store: id })).toThrow('client has entries instead of a state');
+  });
+
+  it('sanitizes the data of an entry before it is read, and never sends it when the sanitizer fails', () => {
+    online();
+    const cache = fakeCache();
+    const id = register(cache.driver)!;
+    cache.set('me', 'success', { name: 'Ann', token: 'secret' });
+    const seen: unknown[] = [];
+    const { commands } = harness({
+      sanitizeEntry: (data, entry) => {
+        seen.push(entry);
+        return { ...(data as object), token: '[hidden]' };
+      },
+    });
+    expect(commands.entry!({ store: id, key: 'me', path: ['token'] })?.data).toBe('[hidden]');
+    expect(seen).toEqual([{ store: expect.objectContaining({ id, library: 'tanstack-query' }), key: 'me' }]);
+    const failing = harness({
+      sanitizeEntry: () => {
+        throw new Error('bad sanitizer');
+      },
+    });
+    expect(failing.commands.entry!({ store: id, key: 'me' })?.data).toBe('[sanitizeEntry threw: bad sanitizer]');
   });
 });
 

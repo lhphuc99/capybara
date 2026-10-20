@@ -3,6 +3,7 @@ import { isIPv4 } from 'node:net';
 import { networkInterfaces } from 'node:os';
 import {
   CLIENT_PATH,
+  COMMAND_TIMEOUT_MS,
   PROTOCOL_VERSION,
   VIEWER_PATH,
   type ClientToServer,
@@ -20,8 +21,8 @@ import {
 import { WebSocket, WebSocketServer, type RawData } from 'ws';
 import { diagnoseRequest } from './diagnose.js';
 import { isAllowedHost, isAllowedViewerOrigin, isLocalConnection, isLoopbackAddress, unmapped } from './security.js';
-import { refuseRemote, serveStatic } from './static.js';
-import { hasBundleFrames, symbolicateEvents } from './symbolicate.js';
+import { refuseHost, refuseRemote, serveStatic } from './static.js';
+import { localWebOrigin, needsSymbolication, symbolicateEvents } from './symbolicate.js';
 
 export { reverseAndroidPorts } from './adb.js';
 export { DEFAULT_METRO_PORTS, startMetroBridge, type MetroBridge, type MetroBridgeOptions } from './metro.js';
@@ -41,7 +42,7 @@ export interface ServerOptions {
    * apps send, tokens included. Default false: only this machine; apps connect from anywhere either way.
    */
   remoteUi?: boolean;
-  /** Told once per device that was refused the UI, with how to let it in. */
+  /** Told once per device that was refused the UI, with how to let it in, and of each `hint()`. */
   onHint?: (message: string) => void;
   /** Disconnected sessions beyond this are dropped, oldest first. Default 20. */
   maxSessions?: number;
@@ -66,6 +67,10 @@ export interface CapybaraServer {
   /** `address` is the one the server listens on, `::` or `0.0.0.0` for all interfaces. */
   start(): Promise<{ port: number; address: string }>;
   close(): Promise<void>;
+  /** Shows a hint in the UI and passes it to `onHint`, e.g. one from the Metro bridge. */
+  hint(message: string): void;
+  /** Turns `remoteUi` on or off while running; other devices with the UI open are let go when it goes off. */
+  setRemoteUi(enabled: boolean): void;
 }
 
 interface Session {
@@ -81,6 +86,8 @@ interface Session {
   lastSeq: number;
   socket: WebSocket | null;
   lastSeen: number;
+  /** The device's address, when the app connects from another one. */
+  address?: string;
   /** Set while a batch waits for Metro to map its stacks; later batches and clears wait behind it. */
   queue?: Promise<void>;
 }
@@ -96,12 +103,15 @@ interface PendingCommand {
 const HEARTBEAT_MS = 15_000;
 const LATEST_REFRESH_MS = 12 * 60 * 60 * 1_000;
 const MAX_PINNED_STORES = 200;
+const MAX_HINTS = 10;
+/** Characters of events per part of a history sent in parts. */
+const HISTORY_PART_CHARS = 4 * 1024 * 1024;
 
 export function createServer(options: ServerOptions): CapybaraServer {
   const maxSessions = options.maxSessions ?? 20;
   const maxEvents = options.maxEventsPerSession ?? 5_000;
   const maxStateEvents = options.maxStateEvents ?? 2_000;
-  const commandTimeout = options.commandTimeout ?? 10_000;
+  const commandTimeout = options.commandTimeout ?? COMMAND_TIMEOUT_MS;
   const allowedOrigins = options.allowedOrigins ?? [];
   const sessions = new Map<string, Session>();
   const viewers = new Set<WebSocket>();
@@ -115,22 +125,35 @@ export function createServer(options: ServerOptions): CapybaraServer {
   let closed = false;
   const closing = new AbortController();
 
-  const mayView = (req: http.IncomingMessage) => options.remoteUi === true || isLocalConnection(req.socket);
+  const hints: string[] = [];
+  const hint = (message: string) => {
+    if (hints.includes(message)) return;
+    options.onHint?.(message);
+    hints.push(message);
+    if (hints.length > MAX_HINTS) hints.shift();
+    broadcast({ t: 'server', server: serverInfo() });
+  };
+
+  let remoteUi = options.remoteUi === true;
+  const mayView = (req: http.IncomingMessage) => remoteUi || isLocalConnection(req.socket);
+  /** Whether each viewer is on this machine, so others can be let go when remote UI is turned off. */
+  const localViewers = new WeakMap<WebSocket, boolean>();
   const hinted = new Set<string>();
   // Whoever tried probably sits at this computer too, and may not know about --remote-ui.
   const refused = (req: http.IncomingMessage) => {
     const address = unmapped(req.socket.remoteAddress) ?? 'A device';
     if (hinted.has(address)) return;
     hinted.add(address);
-    options.onHint?.(
+    hint(
       `${address} was turned away: only this computer can open the UI or read it with capybara mcp. ` +
-        'Restart with --remote-ui to let other devices in; they then see everything apps send, tokens included.',
+        'Restart with --remote-ui (in the desktop app, turn on Settings › Let Other Devices Open the UI) to let other devices in; ' +
+        'they then see everything apps send, tokens included.',
     );
   };
 
   const httpServer = http.createServer((req, res) => {
     if (!isAllowedHost(req.headers.host)) {
-      res.writeHead(403, { 'content-type': 'text/plain' }).end('Forbidden host');
+      refuseHost(res, req.socket.localPort);
       return;
     }
     if (!mayView(req)) {
@@ -146,14 +169,17 @@ export function createServer(options: ServerOptions): CapybaraServer {
     const path = (req.url ?? '').split('?')[0];
     if (path === CLIENT_PATH) {
       // Apps connect from anywhere on the LAN; they can only add events, never read them.
-      wss.handleUpgrade(req, socket, head, acceptClient);
+      wss.handleUpgrade(req, socket, head, (ws) => acceptClient(ws, req));
     } else if (
       path === VIEWER_PATH &&
       mayView(req) &&
       isAllowedHost(req.headers.host) &&
       isAllowedViewerOrigin(req.headers.origin, req.headers.host, allowedOrigins)
     ) {
-      wss.handleUpgrade(req, socket, head, acceptViewer);
+      wss.handleUpgrade(req, socket, head, (ws) => {
+        localViewers.set(ws, isLocalConnection(req.socket));
+        acceptViewer(ws);
+      });
     } else {
       if (path === VIEWER_PATH && !mayView(req)) refused(req);
       socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
@@ -192,6 +218,7 @@ export function createServer(options: ServerOptions): CapybaraServer {
     connected: s.socket !== null,
     lastSeen: s.lastSeen,
     eventCount: s.events.length + s.state.events.length + s.state.stores.size,
+    ...(s.address && { address: s.address }),
   });
 
   // The UI skips events at or below the last seq it applied, so the three lists must merge in seq order.
@@ -202,8 +229,9 @@ export function createServer(options: ServerOptions): CapybaraServer {
     version: options.version ?? '0.0.0',
     port,
     addresses: reachableAddresses(bound),
-    remoteUi: options.remoteUi === true,
+    remoteUi,
     latest,
+    hints: [...hints],
   });
 
   const refreshLatest = async () => {
@@ -235,12 +263,13 @@ export function createServer(options: ServerOptions): CapybaraServer {
   // Apps
   // ---------------------------------------------------------------------------
 
-  const attach = (info: SessionInfo, ws: WebSocket): Session => {
+  const attach = (info: SessionInfo, ws: WebSocket, address: string | undefined): Session => {
     let session = sessions.get(info.id);
     if (session) {
       if (session.socket && session.socket !== ws) session.socket.close();
       session.socket = ws;
       session.info = info;
+      session.address = address;
     } else {
       session = {
         info,
@@ -249,6 +278,7 @@ export function createServer(options: ServerOptions): CapybaraServer {
         lastSeq: 0,
         socket: ws,
         lastSeen: Date.now(),
+        address,
       };
       sessions.set(info.id, session);
     }
@@ -292,13 +322,14 @@ export function createServer(options: ServerOptions): CapybaraServer {
       }
     }
     if (fresh.length === 0) return;
-    if (!session.queue && !hasBundleFrames(fresh)) {
+    const webOrigin = localWebOrigin(session.info);
+    if (!session.queue && !needsSymbolication(fresh, webOrigin)) {
       store(session, fresh);
       return;
     }
     inOrder(session, async () => {
-      await symbolicateEvents(fresh, { signal: closing.signal }).catch(() => {});
-      // The session may have been removed while Metro was answering.
+      await symbolicateEvents(fresh, { signal: closing.signal, webOrigin }).catch(() => {});
+      // The session may have been removed while Metro or the dev server was answering.
       if (sessions.get(session.info.id) === session && !closed) store(session, fresh);
     });
   };
@@ -321,9 +352,10 @@ export function createServer(options: ServerOptions): CapybaraServer {
     });
   };
 
-  const acceptClient = (ws: WebSocket) => {
+  const acceptClient = (ws: WebSocket, req: http.IncomingMessage) => {
     watch(ws);
     let session: Session | undefined;
+    const address = isLocalConnection(req.socket) ? undefined : unmapped(req.socket.remoteAddress);
 
     ws.on('message', (raw) => {
       const message = parse<ClientToServer>(raw);
@@ -341,7 +373,8 @@ export function createServer(options: ServerOptions): CapybaraServer {
           ws.close();
           return;
         }
-        session = attach(message.session, ws);
+        const info = message.session;
+        session = attach(Number.isFinite(info.startedAt) ? info : { ...info, startedAt: Date.now() }, ws, address);
         send(ws, { t: 'welcome', lastSeq: session.lastSeq });
         return;
       }
@@ -410,6 +443,38 @@ export function createServer(options: ServerOptions): CapybaraServer {
     }
   };
 
+  /**
+   * A busy session's history can pass what a client takes in one message (ws stops at 100 MiB) and even what one
+   * string can hold, so viewers that ask get it in parts.
+   */
+  const sendHistory = (ws: WebSocket, sessionId: string, inParts: boolean) => {
+    const session = sessions.get(sessionId);
+    const events = session ? history(session) : [];
+    if (!inParts) {
+      try {
+        send(ws, { t: 'history', sessionId, events });
+        return;
+      } catch {
+        // Longer than a string can be: an older viewer still gets the first part rather than a crashed server.
+      }
+    }
+    const head = `{"t":"history","sessionId":${JSON.stringify(sessionId)},"events":[`;
+    let part: string[] = [];
+    let chars = 0;
+    const flush = (more: boolean) => {
+      if (ws.readyState === WebSocket.OPEN) ws.send(`${head}${part.join(',')}]${more ? ',"more":true' : ''}}`);
+      part = [];
+      chars = 0;
+    };
+    for (const event of events) {
+      const json = JSON.stringify(event);
+      if (part.length > 0 && chars + json.length > HISTORY_PART_CHARS) flush(true);
+      part.push(json);
+      chars += json.length;
+    }
+    flush(false);
+  };
+
   const acceptViewer = (ws: WebSocket) => {
     watch(ws);
     viewers.add(ws);
@@ -419,11 +484,9 @@ export function createServer(options: ServerOptions): CapybaraServer {
       const message = parse<ViewerToServer>(raw);
       if (!message) return;
       switch (message.t) {
-        case 'history': {
-          const session = sessions.get(message.sessionId);
-          send(ws, { t: 'history', sessionId: message.sessionId, events: session ? history(session) : [] });
+        case 'history':
+          sendHistory(ws, message.sessionId, message.parts === true);
           break;
-        }
         case 'command':
           forward(ws, message);
           break;
@@ -506,6 +569,17 @@ export function createServer(options: ServerOptions): CapybaraServer {
         httpServer.close(() => resolve());
         httpServer.closeAllConnections();
       }),
+
+    hint,
+
+    setRemoteUi(enabled) {
+      if (remoteUi === enabled) return;
+      remoteUi = enabled;
+      if (!enabled) {
+        for (const viewer of viewers) if (!localViewers.get(viewer)) viewer.close(1008, 'Only the computer Capybara runs on can open it now');
+      }
+      broadcast({ t: 'server', server: serverInfo() });
+    },
   };
 }
 

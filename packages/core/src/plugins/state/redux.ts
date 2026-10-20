@@ -70,7 +70,7 @@ const EXPLICIT = Symbol.for('capybara.reduxEnhancer');
 const MAX_SENT = 20;
 /** On the stack while `replaceReducer` runs: its `@@redux/REPLACE` goes around the wrapped dispatch. */
 const REPLACING = {};
-const LABELS = { redux: 'Redux store', zustand: 'zustand' } as const;
+const LABELS = { redux: 'Redux store', zustand: 'zustand', xstate: 'XState actor', mobx: 'MobX store' } as const;
 
 /**
  * Stores being watched, by `getState`. Redux Toolkit and the enhancers further out pass that function on as it
@@ -503,7 +503,7 @@ function filtersOf(options: unknown): Filters | undefined {
     hidden(action, state) {
       const type = typeOf(action);
       try {
-        return (allow !== undefined && !allow.test(type)) || (deny !== undefined && deny.test(type)) || (predicate !== undefined && !predicate(state, action));
+        return (allow !== undefined && !allow.test(type)) || deny?.test(type) || (predicate !== undefined && !predicate(state, action));
       } catch {
         return false;
       }

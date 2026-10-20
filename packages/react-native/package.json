@@ -37,10 +37,10 @@
   ],
   "sideEffects": false,
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "dev": "tsc -p tsconfig.json --watch",
+    "build": "tsc -b",
+    "dev": "tsc -b --watch",
     "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -b"
   },
   "dependencies": {
     "@capybara-devtools/core": "0.5.0",

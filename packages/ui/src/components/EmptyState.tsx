@@ -44,12 +44,15 @@ if (import.meta.env.DEV) init({ appName: 'My web app' });`}</pre>
 
       <h2>Storage without an SDK</h2>
       <p>
-        Open the Storage tab to browse AsyncStorage and discoverable MMKV instances already loaded by your app.
-        This connection is read-only; use Refresh to see new values. Private MMKV instances may not be discoverable.
+        Open the Storage tab to browse and edit AsyncStorage and discoverable MMKV instances already loaded by your app.
+        Use Refresh to see what the app wrote since. Private MMKV instances may not be discoverable.
       </p>
 
-      <h2>Optional: edit React Native storage</h2>
-      <p>Install the SDK for storage editing and explicitly configured instances. Apps with the SDK are skipped by the Metro bridge.</p>
+      <h2>Optional: the React Native SDK</h2>
+      <p>
+        Install the SDK for the State tab, storage that updates as the app writes it, and instances Metro cannot find. Apps with
+        the SDK are skipped by the Metro bridge.
+      </p>
       <pre className="code">{`import AsyncStorage from '@react-native-async-storage/async-storage';
 import { asyncStorage, init } from '@capybara-devtools/react-native';
 

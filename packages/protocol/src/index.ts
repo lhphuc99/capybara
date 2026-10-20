@@ -35,6 +35,11 @@ export interface SessionInfo {
   userAgent?: string;
   /** Names of the plugins the SDK runs, e.g. "network". Older SDKs and Metro sessions leave it out. */
   plugins?: string[];
+  /**
+   * Capybara began reading this app through Metro after the app had started, so requests from before `startedAt`
+   * are missing. Its console logs are not: the engine keeps them for a debugger that attaches later.
+   */
+  attachedLate?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -89,6 +94,13 @@ export interface LogPayload {
   level: LogLevel;
   source: LogSource;
   args: SerializedValue[];
+  /** How many `console.group()` calls the entry was logged in; absent outside any. */
+  depth?: number;
+  /**
+   * Console methods shown differently from a plain log. `table` has the data as its first argument and the
+   * columns, if given, as its second; `trace` ends with an error value named Trace that holds the stack.
+   */
+  method?: 'table' | 'group' | 'groupCollapsed' | 'trace';
 }
 
 /** Through Metro, `other` is a request reported without the JS stack that tells fetch from XHR, as Expo Go reports them. */
@@ -122,6 +134,11 @@ export interface NetworkResponsePayload {
   body?: BodyPreview;
   /** Milliseconds from request start to response headers. */
   duration: number;
+  /**
+   * The body is still arriving: `body` holds what came so far, and another `network.response` for the request
+   * follows with all of it. Older viewers take the first one as the whole response until the next comes.
+   */
+  streaming?: true;
 }
 
 /**
@@ -189,7 +206,7 @@ export interface StorageChangePayload {
   key?: string;
 }
 
-export type StateLibrary = 'redux' | 'zustand' | 'tanstack-query' | 'swr' | 'context';
+export type StateLibrary = 'redux' | 'zustand' | 'xstate' | 'mobx' | 'tanstack-query' | 'swr' | 'context';
 
 /** Keys from the root of a store's state or an entry's data, e.g. `['todos', 0, 'title']`. */
 export type StatePath = Array<string | number>;
@@ -377,6 +394,8 @@ export interface SessionMeta {
   connected: boolean;
   lastSeen: number;
   eventCount: number;
+  /** Where the app connects from when that is not this computer, such as a phone; any device on the network can connect. */
+  address?: string;
 }
 
 export interface ServerInfo {
@@ -388,6 +407,11 @@ export interface ServerInfo {
   remoteUi?: boolean;
   /** Newest versions on npm, once the server has looked them up. Missing when the check is off or failed. */
   latest?: LatestVersions;
+  /**
+   * What the person at this computer should know, oldest first: a device was refused the UI, an app cannot be read
+   * through Metro. The CLI also prints them; the desktop app has nowhere else to show them. Missing from older servers.
+   */
+  hints?: string[];
 }
 
 /** One step of a diagnosis: a browser rule that passed or failed, or something the server saw on the way. */
@@ -407,7 +431,8 @@ export interface NetworkDiagnosis {
 }
 
 export type ViewerToServer =
-  | { t: 'history'; sessionId: string }
+  /** `parts` asks for the history in parts; servers before 0.5.1 send it in one message whatever its size. */
+  | { t: 'history'; sessionId: string; parts?: true }
   | { t: 'command'; id: string; sessionId: string; plugin: string; method: string; params?: unknown }
   /** Answered with a CommandResult whose `result` is a NetworkDiagnosis. */
   | { t: 'diagnose'; id: string; sessionId: string; requestId: string }
@@ -421,10 +446,14 @@ export type ServerToViewer =
   | { t: 'server'; server: ServerInfo }
   | { t: 'session'; session: SessionMeta }
   | { t: 'session.removed'; sessionId: string }
-  | { t: 'history'; sessionId: string; events: CapybaraEvent[] }
+  /** Every part but the last has `more`. */
+  | { t: 'history'; sessionId: string; events: CapybaraEvent[]; more?: true }
   | { t: 'events'; sessionId: string; events: CapybaraEvent[] }
   | { t: 'cleared'; sessionId: string; scope?: 'state' }
   | CommandResult;
 
+export * from './limits.js';
+export * from './session-model.js';
+export * from './state-model.js';
 export * from './values.js';
 export * from './versions.js';

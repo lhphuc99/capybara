@@ -80,6 +80,34 @@ describe('createClient', () => {
     expect(client.connected).toBe(true);
   });
 
+  it('sends at once from a hidden page, whose timers the browser holds back', async () => {
+    const { client, sockets } = setup([], { flushInterval: 50 });
+    const socket = sockets[0]!;
+    socket.open();
+    socket.receive({ t: 'welcome', lastSeq: 0 });
+    const page = { visibilityState: 'visible' };
+    (globalThis as { document?: unknown }).document = page;
+    try {
+      client.log('log', 'visible');
+      await settle();
+      expect(socket.events()).toEqual([]);
+
+      // A batch waiting on its timer goes out too once the page is hidden.
+      page.visibilityState = 'hidden';
+      client.log('log', 'hidden');
+      client.log('log', 'same task');
+      expect(socket.events()).toEqual([]);
+      await settle();
+      expect(socket.events().map((e: any) => e.payload.args[0])).toEqual(['visible', 'hidden', 'same task']);
+      expect(socket.sent.filter((m) => m.t === 'events')).toHaveLength(1);
+
+      vi.advanceTimersByTime(50);
+      expect(socket.sent.filter((m) => m.t === 'events')).toHaveLength(1);
+    } finally {
+      delete (globalThis as { document?: unknown }).document;
+    }
+  });
+
   it('names its plugins in the hello', () => {
     const { sockets } = setup([{ name: 'network' }, { name: 'state' }]);
     sockets[0]!.open();
@@ -161,6 +189,87 @@ describe('createClient', () => {
       expect(console.warn).toBe(stub);
     } finally {
       console.warn = realWarn;
+    }
+  });
+
+  it('records groups, tables, timers, counters, assertions and traces the way browsers print them', () => {
+    const names = ['log', 'warn', 'error', 'table', 'group', 'groupCollapsed', 'groupEnd', 'time', 'timeLog', 'timeEnd', 'count', 'countReset', 'assert', 'trace'] as const;
+    const real = names.map((name) => [name, console[name]] as const);
+    for (const name of names) (console as unknown as Record<string, () => void>)[name] = () => {};
+    try {
+      const { client, sockets } = setup([consolePlugin()]);
+      sockets[0]!.open();
+      sockets[0]!.receive({ t: 'welcome', lastSeq: 0 });
+      console.group('Loading');
+      console.log('inside');
+      console.groupCollapsed();
+      console.table([{ a: 1 }], ['a']);
+      console.groupEnd();
+      console.groupEnd();
+      // One more than was opened.
+      console.groupEnd();
+      console.log('outside');
+      console.count();
+      console.count('clicks');
+      console.count();
+      console.countReset('nope');
+      console.assert(true, 'fine');
+      console.assert(false, 'Expected %d items', 3);
+      console.assert(false);
+      console.timeEnd('missing');
+      console.time('load');
+      console.timeLog('load', 'step');
+      console.timeEnd('load');
+      console.error(Object.assign(new Error('Uncaught (in promise, id: 0): "Error: Session expired"'), { stack: undefined }));
+      console.trace('here');
+      vi.runOnlyPendingTimers();
+      const payloads = sockets[0]!.events().map((event: { payload: unknown }) => event.payload);
+      expect(payloads.slice(0, 14)).toEqual([
+        { level: 'log', source: 'console', args: ['Loading'], method: 'group' },
+        { level: 'log', source: 'console', args: ['inside'], depth: 1 },
+        { level: 'log', source: 'console', args: ['console.groupCollapsed'], depth: 1, method: 'groupCollapsed' },
+        { level: 'log', source: 'console', args: [[{ a: 1 }], ['a']], depth: 2, method: 'table' },
+        { level: 'log', source: 'console', args: ['outside'] },
+        { level: 'log', source: 'console', args: ['default: 1'] },
+        { level: 'log', source: 'console', args: ['clicks: 1'] },
+        { level: 'log', source: 'console', args: ['default: 2'] },
+        { level: 'warn', source: 'console', args: ["Count for 'nope' does not exist"] },
+        { level: 'error', source: 'console', args: ['Assertion failed: Expected %d items', 3] },
+        { level: 'error', source: 'console', args: ['Assertion failed'] },
+        { level: 'warn', source: 'console', args: ["Timer 'missing' does not exist"] },
+        { level: 'log', source: 'console', args: [expect.stringMatching(/^load: \d+\.\d{3} ms$/), 'step'] },
+        { level: 'log', source: 'console', args: [expect.stringMatching(/^load: \d+\.\d{3} ms$/)] },
+      ]);
+      expect(payloads[14]).toMatchObject({ level: 'error', source: 'unhandledrejection' });
+      const trace = payloads[15] as { method: string; args: [string, { $t: string; name: string; stack: string }] };
+      expect(trace.method).toBe('trace');
+      expect(trace.args[0]).toBe('here');
+      expect(trace.args[1]).toMatchObject({ $t: 'error', name: 'Trace' });
+      // The stack starts at the app's call, not in the SDK.
+      expect(trace.args[1].stack.split('\n')[0]).toBe('Trace');
+      expect(trace.args[1].stack.split('\n')[1]).toContain('client.test.ts');
+      client.stop();
+    } finally {
+      for (const [name, original] of real) (console as unknown as Record<string, unknown>)[name] = original;
+    }
+  });
+
+  it('leaves a console wrapper installed after its own on stop', () => {
+    const calls: unknown[][] = [];
+    const realError = console.error;
+    console.error = (...args: unknown[]) => calls.push(args);
+    try {
+      const { client } = setup([consolePlugin()]);
+      // LogBox and Sentry wrap console.error this way.
+      const ours = console.error;
+      const theirs = (...args: unknown[]) => ours(...args);
+      console.error = theirs;
+      client.stop();
+      expect(console.error).toBe(theirs);
+      console.error('after stop');
+      expect(calls).toEqual([['after stop']]);
+    } finally {
+      console.error = realError;
     }
   });
 

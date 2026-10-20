@@ -117,12 +117,14 @@ function utf8Size(value: string): number {
 
 /** Runs `hooks[name](firstArg)` after the wrapped method's promise resolves. Returns an undo function. */
 function wrapMethods(target: Record<string, unknown>, hooks: Record<string, (key?: string) => void>): () => void {
-  const originals: Array<[string, unknown]> = [];
+  const originals: Array<[string, unknown, unknown]> = [];
+  let active = true;
   for (const [name, hook] of Object.entries(hooks)) {
     const original = target[name];
     if (typeof original !== 'function') continue;
     const wrapped = function (this: unknown, ...args: unknown[]) {
       const result = (original as (...a: unknown[]) => unknown).apply(this, args);
+      if (!active) return result;
       const key = typeof args[0] === 'string' ? args[0] : undefined;
       Promise.resolve(result).then(
         () => hook(key),
@@ -132,12 +134,14 @@ function wrapMethods(target: Record<string, unknown>, hooks: Record<string, (key
     };
     try {
       target[name] = wrapped;
-      originals.push([name, original]);
+      originals.push([name, original, wrapped]);
     } catch {
       // frozen module object: change events are unavailable, everything else still works
     }
   }
   return () => {
-    for (const [name, original] of originals) target[name] = original;
+    // A wrapper installed after ours stays; ours, still under it, then only passes calls on.
+    active = false;
+    for (const [name, original, wrapped] of originals) if (target[name] === wrapped) target[name] = original;
   };
 }

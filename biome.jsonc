@@ -1,0 +1,49 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "files": {
+    "includes": ["**", "!packages/cli/test/native-fixture*", "!**/*.json", "!**/*.svg"]
+  },
+  // Lint only: the code keeps the formatting it has.
+  "formatter": { "enabled": false },
+  "assist": { "enabled": false },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      "correctness": {
+        // Effects list values they react to without reading them, such as a version counter.
+        "useExhaustiveDependencies": { "level": "error", "options": { "reportUnnecessaryDependencies": false } },
+        // `return each(value)` in a function that returns nothing.
+        "noVoidTypeReturn": "off"
+      },
+      "style": {
+        // `!` marks indexes the code has checked, which noUncheckedIndexedAccess cannot see.
+        "noNonNullAssertion": "off",
+        "noDescendingSpecificity": "off"
+      },
+      "suspicious": {
+        // Library internals and test doubles.
+        "noExplicitAny": "off",
+        // Lists that never reorder.
+        "noArrayIndexKey": "off",
+        // A plugin's setup returns a teardown or nothing.
+        "noConfusingVoidType": "off",
+        // `map.set(key, (value = new Map()))`.
+        "noAssignInExpressions": "off",
+        // Code that runs in the app writes out SameValueZero (`a !== a` for NaN) and avoids Object.hasOwn,
+        // which older engines lack.
+        "noSelfCompare": "off",
+        "noPrototypeBuiltins": "off",
+        // The web SDK's cookie adapter and the examples set cookies on purpose.
+        "noDocumentCookie": "off"
+      },
+      "complexity": {
+        // Patches pass the caller's exact arguments on; some engines treat an explicit `undefined` differently.
+        "noArguments": "off",
+        // Tests match aligned columns.
+        "noAdjacentSpacesInRegex": "off"
+      }
+    }
+  }
+}

@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import { readPref, writePref } from './prefs';
 
 export type Appearance = 'system' | 'light' | 'dark';
 
@@ -14,13 +15,8 @@ const systemDark = window.matchMedia('(prefers-color-scheme: dark)');
 const listeners = new Set<() => void>();
 
 function saved(): Appearance {
-  try {
-    const value = localStorage.getItem(KEY);
-    if (value === 'light' || value === 'dark') return value;
-  } catch {
-    // storage blocked: follow the system
-  }
-  return 'system';
+  const value = readPref(KEY);
+  return value === 'light' || value === 'dark' ? value : 'system';
 }
 
 let current = saved();
@@ -32,12 +28,7 @@ function apply() {
 
 export function setAppearance(next: Appearance): void {
   current = next;
-  try {
-    if (next === 'system') localStorage.removeItem(KEY);
-    else localStorage.setItem(KEY, next);
-  } catch {
-    // not essential
-  }
+  writePref(KEY, next === 'system' ? null : next);
   window.capybaraDesktop?.setAppearance(next);
   apply();
   for (const listener of listeners) listener();

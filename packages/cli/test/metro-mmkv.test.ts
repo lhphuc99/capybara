@@ -1,7 +1,7 @@
 import { createContext, runInContext } from 'node:vm';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { trackMMKV, watchMetroMMKV } from '../src/metro-mmkv.js';
-import { inspectStorage } from '../src/metro-storage.js';
+import { storageExpression } from '../src/metro-storage.js';
 
 const cleanups: Array<() => void> = [];
 afterEach(() => {
@@ -42,7 +42,7 @@ function runtime(source = '', weakRef = true) {
   const entries = () => run('globalThis.__CAPYBARA_MMKV_TRACKER_V1__?.entries() ?? []');
   cleanups.push(() => run('globalThis.__CAPYBARA_MMKV_TRACKER_V1__?.dispose()'));
   const inspect = async (method: string, params: object = {}) => {
-    const state = run(`(${inspectStorage.toString()})(${JSON.stringify(method)}, ${JSON.stringify(params)})`);
+    const state = run(storageExpression(method, params));
     await vi.waitFor(() => expect(state.done).toBe(true), { interval: 1 });
     if (state.error) throw new Error(state.error);
     return JSON.parse(JSON.stringify(state.value));
@@ -193,10 +193,10 @@ describe('MMKV CDP lifecycle', () => {
   it('serializes a standalone tracker, refreshes the same lease, and stops after an in-flight refresh', async () => {
     const app = runtime('expose(1, { MMKV });');
     let finish!: () => void;
-    const call = vi.fn(async <T>(_method: string, params?: any): Promise<T> => {
+    const call = vi.fn(async (_method: string, params?: any): Promise<any> => {
       app.run(params.expression);
       if (params.expression.endsWith(')') && call.mock.calls.length === 1) await new Promise<void>(resolve => { finish = resolve; });
-      return {} as T;
+      return {};
     });
     const watcher = watchMetroMMKV(call, 7);
     expect(call.mock.calls[0]?.[1]).toMatchObject({ contextId: 7, returnByValue: true });

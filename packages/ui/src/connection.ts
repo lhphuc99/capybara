@@ -1,4 +1,5 @@
 import {
+  COMMAND_TIMEOUT_MS,
   DEFAULT_PORT,
   VIEWER_PATH,
   type CommandResult,
@@ -68,11 +69,15 @@ export function connect(handlers: Handlers): void {
   open();
 }
 
-export function send(message: ViewerToServer): void {
-  if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
+/** False when the server is unreachable, and the message was dropped. */
+export function send(message: ViewerToServer): boolean {
+  if (socket?.readyState !== WebSocket.OPEN) return false;
+  socket.send(JSON.stringify(message));
+  return true;
 }
 
-function request<T>(message: (id: string) => ViewerToServer, timeout = 15_000): Promise<T> {
+// Longer than the server waits for the app, so its "The app did not answer" comes first.
+function request<T>(message: (id: string) => ViewerToServer, timeout = COMMAND_TIMEOUT_MS + 5_000): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     if (socket?.readyState !== WebSocket.OPEN) {
       reject(new Error('Not connected to the Capybara server'));

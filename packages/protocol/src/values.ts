@@ -68,7 +68,7 @@ function previewSpecial(v: SpecialValue, nested: boolean): string {
     case 'regexp':
       return v.v;
     case 'error':
-      return `${v.name}: ${v.message}`;
+      return v.message ? `${v.name}: ${v.message}` : v.name;
     case 'string':
       return shortString(v.v);
     case 'array':
@@ -151,9 +151,9 @@ export function plainValue(value: SerializedValue, raw = false): unknown {
 export function valueText(value: SerializedValue, raw = false): string {
   if (typeof value === 'string') return value;
   if (!raw && isSpecial(value) && value.$t === 'error') {
-    const head = `${value.name}: ${value.message}`;
+    const head = value.message ? `${value.name}: ${value.message}` : value.name;
     if (!value.stack) return head;
-    return value.stack.startsWith(head) ? value.stack : `${head}\n${value.stack}`;
+    return value.stack === head || value.stack.startsWith(`${head}\n`) ? value.stack : `${head}\n${value.stack}`;
   }
   const plain = plainValue(value, raw);
   return typeof plain === 'string' ? plain : (JSON.stringify(plain, null, 2) ?? String(plain));
@@ -171,6 +171,19 @@ export function formatLogMessage(args: SerializedValue[]): string {
   }
   for (const arg of rest) parts.push(typeof arg === 'string' ? arg : preview(arg));
   return parts.join(' ');
+}
+
+/** React Native reports an unhandled promise rejection through `console.error`, with an error as the first argument. */
+export function isUnhandledRejection(args: SerializedValue[]): boolean {
+  const first = args[0];
+  return (
+    typeof first === 'object' &&
+    first !== null &&
+    isSpecial(first) &&
+    first.$t === 'error' &&
+    typeof first.message === 'string' &&
+    first.message.startsWith('Uncaught (in promise')
+  );
 }
 
 function applyFormat(format: string, args: SerializedValue[]): { text: string; used: number } {
@@ -206,7 +219,8 @@ export interface Matcher {
 export function makeMatcher(query: string): Matcher | null {
   const trimmed = query.trim();
   if (!trimmed) return null;
-  const regex = /^\/(.+)\/([a-z]*)$/i.exec(trimmed);
+  // Only JavaScript's flags: a path such as /api/users is text.
+  const regex = /^\/(.+)\/([dgimsuyv]*)$/.exec(trimmed);
   if (regex) {
     try {
       const pattern = new RegExp(regex[1]!, regex[2]!.replace(/[gy]/g, ''));
@@ -233,6 +247,8 @@ export function formatBytes(bytes: number | undefined): string {
 const LIBRARY_TITLES: Record<string, string> = {
   redux: 'Redux',
   zustand: 'Zustand',
+  xstate: 'XState',
+  mobx: 'MobX',
   'tanstack-query': 'TanStack Query',
   swr: 'SWR',
   context: 'React Context',

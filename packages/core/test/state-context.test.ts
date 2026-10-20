@@ -3,13 +3,8 @@ import vm from 'node:vm';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { StateStoreInfo } from '@capybara-devtools/protocol';
 import { CLIENT_GLOBAL, serialize, statePlugin, type PluginContext, type StatePluginOptions } from '../src/index.js';
-import {
-  installReactHook,
-  walkProviders,
-  type Fiber,
-  type FiberRoot,
-  type ReactHook,
-} from '../src/plugins/state/context.js';
+import { walkProviders, type Fiber, type FiberRoot } from '../src/plugins/state/fibers.js';
+import { installReactHook, type ReactHook } from '../src/plugins/state/react-hook.js';
 import { REGISTRY_GLOBAL } from '../src/plugins/state/registry.js';
 
 type Recorded = { kind: string; payload: any };
@@ -17,7 +12,7 @@ type ReactModule = typeof import('react');
 type Root = import('react-dom/client').Root;
 
 const HOOK = '__REACT_DEVTOOLS_GLOBAL_HOOK__';
-const scope = globalThis as Record<string, any>;
+const scope = globalThis as Record<PropertyKey, any>;
 
 // ---------------------------------------------------------------------------
 // Fake fibers, shaped like React 18's: providers render `context.Provider`, which points back to the context.
@@ -229,7 +224,7 @@ describe('installReactHook', () => {
 
   it('wraps the onCommitFiberRoot of the hook it finds, calling the original first, and puts it back', () => {
     const order: string[] = [];
-    const original = vi.fn(function (this: unknown) {
+    const original = vi.fn(function (this: unknown, ..._args: unknown[]) {
       order.push('original');
       return 'result';
     });

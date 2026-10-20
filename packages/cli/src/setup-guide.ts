@@ -7,7 +7,7 @@ import { DEFAULT_PORT, isNewerVersion } from '@capybara-devtools/protocol';
 
 export type AppKind = 'vite' | 'next' | 'expo' | 'react-native' | 'web';
 export type PackageManagerName = 'npm' | 'yarn' | 'pnpm' | 'bun';
-export type StateLibrary = 'redux-toolkit' | 'redux' | 'zustand' | 'tanstack-query' | 'swr' | 'context';
+export type StateLibrary = 'redux-toolkit' | 'redux' | 'zustand' | 'xstate' | 'mobx' | 'tanstack-query' | 'swr' | 'context';
 
 interface PackageJson {
   name?: string;
@@ -85,6 +85,8 @@ const STATE_TITLES: Record<StateLibrary, string> = {
   'redux-toolkit': 'Redux Toolkit',
   redux: 'Redux',
   zustand: 'zustand',
+  xstate: 'XState',
+  mobx: 'MobX',
   'tanstack-query': 'TanStack Query',
   swr: 'SWR',
   context: 'React Context',
@@ -326,6 +328,8 @@ function stateLibraries(dependencies: Record<string, string>): StateLibrary[] {
   if (dependencies['@reduxjs/toolkit']) found.push('redux-toolkit');
   else if (dependencies.redux) found.push('redux');
   if (dependencies.zustand) found.push('zustand');
+  if (dependencies.xstate) found.push('xstate');
+  if (dependencies.mobx) found.push('mobx');
   if (TANSTACK_PACKAGES.some((name) => dependencies[name])) found.push('tanstack-query');
   if (dependencies.swr) found.push('swr');
   if (dependencies.react) found.push('context');
@@ -635,6 +639,20 @@ function appGuide(project: AppProject, options: GuideOptions): string[] {
           );
           break;
         }
+        case 'xstate':
+          lines.push(
+            '**XState**: where an actor is made with `createActor(machine)`, add a line after it. Each transition shows with the event behind it:',
+            '',
+            ...code('ts', [sdkImport('watchXState'), '', `if (${dev}) watchXState(actor);`].join('\n')),
+          );
+          break;
+        case 'mobx':
+          lines.push(
+            '**MobX**: after each store is made, add a line. The mobx module is passed in, so the SDK does not depend on MobX:',
+            '',
+            ...code('ts', [sdkImport('watchMobX'), "import * as mobx from 'mobx';", '', `if (${dev}) watchMobX(cartStore, mobx, { name: 'cart' });`].join('\n')),
+          );
+          break;
         case 'context':
           lines.push(
             "**React Context**: shows up on its own. Optionally set displayName on the app's contexts (`AuthContext.displayName = 'Auth'`), so each is listed by name.",

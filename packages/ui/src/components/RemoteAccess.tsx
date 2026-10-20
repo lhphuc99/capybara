@@ -82,11 +82,11 @@ function HowToAllow() {
 function QrCode({ text }: { text: string }) {
   const { size, data } = encode(text, { ecc: 'M', border: 2 });
   let path = '';
-  data.forEach((row, y) =>
+  data.forEach((row, y) => {
     row.forEach((dark, x) => {
       if (dark) path += `M${x} ${y}h1v1h-1z`;
-    }),
-  );
+    });
+  });
   return (
     <svg width="148" height="148" viewBox={`0 0 ${size} ${size}`} shapeRendering="crispEdges" role="img" aria-label={text}>
       <rect width={size} height={size} fill="#fff" />

@@ -1,33 +1,47 @@
+import { MAX_STORAGE_KEYS, STORAGE_PREVIEW_LENGTH, STORAGE_VALUE_LENGTH } from '@capybara-devtools/protocol';
 import type { RemoteObject } from './cdp.js';
+import type { CdpCall } from './metro-debugger.js';
 
 interface Evaluation {
   result?: RemoteObject;
   exceptionDetails?: { text?: string; exception?: { description?: string } };
 }
 
-type CdpCall = <T>(method: string, params?: object) => Promise<T>;
-
 /** Hermes fails to compile evaluated source containing characters outside the BMP, such as an emoji in a key. */
 function asciiLiteral(value: unknown): string {
   return JSON.stringify(value).replace(/[\u007f-￿]/g, (char) => `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`);
 }
 
-/** Hermes does not consistently implement awaitPromise. Keep the result in an object handle and poll it. */
-export async function readMetroStorage(
+/** Code that runs a storage command inside the app: arguments go in as JSON literals, with the SDK's limits, which it cannot import. */
+export function storageExpression(method: string, params: { adapter?: unknown; key?: unknown; value?: unknown }): string {
+  const limits = { keys: MAX_STORAGE_KEYS, preview: STORAGE_PREVIEW_LENGTH, value: STORAGE_VALUE_LENGTH };
+  return `(${inspectStorage.toString()})(${JSON.stringify(method)}, ${asciiLiteral({ ...params, limits })})`;
+}
+
+/** The arguments each storage command takes, all strings. */
+const COMMANDS: Record<string, Array<'adapter' | 'key' | 'value'>> = {
+  list: [],
+  entries: ['adapter'],
+  get: ['adapter', 'key'],
+  set: ['adapter', 'key', 'value'],
+  remove: ['adapter', 'key'],
+  clear: ['adapter'],
+};
+
+/** Runs a storage command of the viewer in the app. Hermes does not consistently implement awaitPromise, so the result stays in an object handle that is polled. */
+export async function metroStorage(
   call: CdpCall,
   contextId: number,
   isActive: () => boolean,
   method: string,
   params: unknown,
 ): Promise<unknown> {
-  if (!['list', 'entries', 'get'].includes(method)) throw new Error('Storage through Metro is read-only');
-  const input = params as { adapter?: unknown; key?: unknown } | null;
-  if (method !== 'list' && (typeof input?.adapter !== 'string' || (method === 'get' && typeof input.key !== 'string'))) {
-    throw new Error('Invalid storage command');
-  }
-  // Only the arguments this reader understands cross into the app, always as JSON literals.
-  const args = method === 'list' ? {} : { adapter: input!.adapter, key: input!.key };
-  const expression = `(${inspectStorage.toString()})(${JSON.stringify(method)}, ${asciiLiteral(args)})`;
+  const names = COMMANDS[method];
+  if (!names) throw new Error(`Unknown storage command "${method}"`);
+  const input = (params ?? {}) as Record<string, unknown>;
+  if (names.some((name) => typeof input[name] !== 'string')) throw new Error('Invalid storage command');
+  // Only the arguments the command takes cross into the app.
+  const expression = storageExpression(method, Object.fromEntries(names.map((name) => [name, input[name]])));
   let objectId: string | undefined;
   const check = () => {
     if (!isActive()) throw new Error('The app reloaded or disconnected. Select its current session.');
@@ -72,17 +86,29 @@ export async function readMetroStorage(
  * Self-contained: evaluated in the app, without installing a package.
  * Inspects initialized Metro exports. May initialize the known AsyncStorage implementation already
  * in the bundle; never runs arbitrary module factories or MMKV constructors. ESM export getters
- * are read to resolve live bindings, but nested application object getters are skipped.
+ * are read to resolve live bindings, but nested application object getters are skipped. Writes only
+ * what the viewer's set, remove and clear commands ask for.
  */
-export function inspectStorage(method: string, params: { adapter?: string; key?: string }) {
+export function inspectStorage(
+  method: string,
+  params: { adapter?: string; key?: string; value?: string; limits: { keys: number; preview: number; value: number } },
+) {
   const state: { done: boolean; value?: unknown; error?: string } = { done: false };
   type Store = {
     getAllKeys(): readonly string[] | Promise<readonly string[]>;
     getItem?(key: string): Promise<string | null>;
     multiGet?(keys: string[]): Promise<ReadonlyArray<readonly [string, string | null]>>;
+    setItem?(key: string, value: string): Promise<void>;
+    removeItem?(key: string): Promise<void>;
+    clear?(): Promise<void>;
     getString?(key: string): string | undefined;
     getNumber?(key: string): number | undefined;
     getBoolean?(key: string): boolean | undefined;
+    set?(key: string, value: string): void;
+    // react-native-mmkv 4 renamed delete to remove.
+    delete?(key: string): void;
+    remove?(key: string): void;
+    clearAll?(): void;
   };
   type Found = { id: string; label: string; kind: 'async' | 'mmkv'; store: Store };
 
@@ -203,24 +229,50 @@ export function inspectStorage(method: string, params: { adapter?: string; key?:
     return { key, value: value.slice(0, limit), size: utf8Size(value), truncated: value.length > limit };
   };
 
+  const writable = ({ kind, store }: Found) =>
+    kind === 'async'
+      ? typeof store.setItem === 'function' && typeof store.removeItem === 'function'
+      : typeof store.set === 'function' && (typeof store.remove === 'function' || typeof store.delete === 'function');
+  const clearable = ({ kind, store }: Found) => (kind === 'async' ? typeof store.clear === 'function' : typeof store.clearAll === 'function');
+
   const execute = async () => {
-    if (!['list', 'entries', 'get'].includes(method)) throw new Error('Storage through Metro is read-only');
+    if (!['list', 'entries', 'get', 'set', 'remove', 'clear'].includes(method)) throw new Error(`Unknown storage command "${method}"`);
     const stores = discover();
-    if (method === 'list') return stores.map(({ id, label, kind }) => ({
-      id, label, readOnly: true, canClear: false,
-      note: 'Read-only through Metro. Use Refresh to read the latest values.' +
-        (kind === 'mmkv' ? ' MMKV keeps no value types, so they are inferred: false and an empty string are stored alike and show as false, and binary values may not display.' : ''),
+    if (method === 'list') return stores.map((item) => ({
+      id: item.id, label: item.label, readOnly: !writable(item), canClear: writable(item) && clearable(item),
+      note: 'Read through Metro: use Refresh to read the latest values.' +
+        (item.kind === 'mmkv' ? ' MMKV keeps no value types, so they are inferred: false and an empty string are stored alike and show as false, and binary values may not display. Values set here are saved as text.' : ''),
     }));
     const item = stores.find((store) => store.id === params.adapter);
     if (!item) throw new Error('This storage is no longer available. Find stores again after opening the relevant app screen.');
+    if (method === 'set' || method === 'remove' || method === 'clear') {
+      if (!writable(item) || (method === 'clear' && !clearable(item))) throw new Error(`${item.label} cannot be changed through Metro`);
+      const { store } = item;
+      if (method === 'clear') {
+        if (item.kind === 'async') await store.clear!();
+        else store.clearAll!();
+        return null;
+      }
+      if (typeof params.key !== 'string') throw new Error('Invalid storage key');
+      if (method === 'remove') {
+        if (item.kind === 'async') await store.removeItem!(params.key);
+        else if (typeof store.remove === 'function') store.remove(params.key);
+        else store.delete!(params.key);
+        return null;
+      }
+      if (typeof params.value !== 'string') throw new Error('Invalid storage value');
+      if (item.kind === 'async') await store.setItem!(params.key, params.value);
+      else store.set!(params.key, params.value);
+      return null;
+    }
     if (method === 'get') {
       if (typeof params.key !== 'string') throw new Error('Invalid storage key');
       const value = await read(item, params.key);
-      return value === null ? null : entry(params.key, value, 1_000_000);
+      return value === null ? null : entry(params.key, value, params.limits.value);
     }
     const allKeys = await item.store.getAllKeys();
     if (!Array.isArray(allKeys) || !allKeys.every((key) => typeof key === 'string')) throw new Error('Invalid storage keys');
-    const keys = [...allKeys].sort().slice(0, 1_000);
+    const keys = [...allKeys].sort().slice(0, params.limits.keys);
     const entries: ReturnType<typeof entry>[] = [];
     // Bounded batches avoid holding every full value of a large store at once.
     for (let i = 0; i < keys.length; i += 25) {
@@ -228,7 +280,7 @@ export function inspectStorage(method: string, params: { adapter?: string; key?:
       const pairs = item.kind === 'async' && item.store.multiGet
         ? await item.store.multiGet(batch)
         : await Promise.all(batch.map(async (key) => [key, await read(item, key)] as const));
-      for (const [key, value] of pairs) entries.push(entry(key, value ?? null, 2_000));
+      for (const [key, value] of pairs) entries.push(entry(key, value ?? null, params.limits.preview));
     }
     return { entries, total: allKeys.length };
   };

@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import { devToolSockets, hostFromUrl, portFromUrl } from '../src/host.js';
 import { asyncStorage, mmkvStorage, type MMKVLike } from '../src/storage.js';
@@ -45,7 +46,9 @@ function fakeAsyncStorage(initial: Record<string, string> = {}) {
     mergeItem: async (key: string, value: string) =>
       void data.set(key, JSON.stringify({ ...JSON.parse(data.get(key) ?? '{}'), ...JSON.parse(value) })),
     multiGet: async (keys: readonly string[]) => keys.map((k) => [k, data.get(k) ?? null] as const),
-    multiSet: async (pairs: [string, string][]) => pairs.forEach(([k, v]) => data.set(k, v)),
+    multiSet: async (pairs: [string, string][]) => {
+      for (const [k, v] of pairs) data.set(k, v);
+    },
     clear: async () => data.clear(),
   };
 }
@@ -80,6 +83,22 @@ describe('asyncStorage', () => {
 
     unsubscribe();
     expect(store.setItem).toBe(originalSetItem);
+  });
+
+  it('leaves a wrapper installed after its own when unsubscribed, and reports nothing through it', async () => {
+    const store = fakeAsyncStorage();
+    const onChange = vi.fn();
+    const unsubscribe = asyncStorage(store).watch!(onChange);
+    const ours = store.setItem;
+    const theirs = (key: string, value: string) => ours(key, value);
+    store.setItem = theirs;
+
+    unsubscribe();
+    expect(store.setItem).toBe(theirs);
+    await store.setItem('a', '1');
+    await Promise.resolve();
+    expect(store.data.get('a')).toBe('1');
+    expect(onChange).not.toHaveBeenCalled();
   });
 });
 
@@ -210,5 +229,18 @@ describe('mmkvStorage', () => {
     const v3 = { ...fakeMmkv(), remove: undefined, delete: vi.fn() };
     await mmkvStorage(v3).remove!('k');
     expect(v3.delete).toHaveBeenCalledWith('k');
+  });
+});
+
+describe('entry', () => {
+  it('re-exports the same API from core as the web SDK, so apps on both find the same names', () => {
+    const fromCore = (file: string) => {
+      const source = readFileSync(new URL(file, import.meta.url), 'utf8');
+      const blocks = [...source.matchAll(/export (?:type )?\{([^}]*)\} from '@capybara-devtools\/core';/g)];
+      return blocks.flatMap((block) => block[1]!.split(',').map((name) => name.trim()).filter(Boolean)).sort();
+    };
+    const native = fromCore('../src/index.ts');
+    expect(native.length).toBeGreaterThan(10);
+    expect(native).toEqual(fromCore('../../web/src/index.ts'));
   });
 });

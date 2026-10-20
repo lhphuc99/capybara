@@ -1,7 +1,72 @@
 import type { SerializedValue } from '@capybara-devtools/protocol';
 import { describe, expect, it } from 'vitest';
-import { decodeSocketIo, isFetchOrXhr, logEntryText, valueText } from '../src/format';
-import type { LogEntry } from '../src/store';
+import { decodeSocketIo, isFetchOrXhr, logEntryText, toCurl, valueText } from '../src/format';
+import type { LogEntry, NetworkEntry } from '../src/store';
+
+describe('toCurl', () => {
+  const request = (fields: Partial<NetworkEntry>): NetworkEntry => ({
+    id: 'r1',
+    seq: 1,
+    ts: 0,
+    initiator: 'fetch',
+    method: 'GET',
+    url: 'https://api.test/items',
+    requestHeaders: {},
+    state: 'done',
+    ...fields,
+  });
+
+  it('copies the method, headers and text body', () => {
+    const curl = toCurl(
+      request({
+        method: 'POST',
+        requestHeaders: { 'Content-Type': 'application/json' },
+        requestBody: { kind: 'text', text: `{"name":"O'Neil"}` },
+      }),
+    );
+    expect(curl).toEqual({
+      command: `curl 'https://api.test/items' \\\n  -X POST \\\n  -H 'Content-Type: application/json' \\\n  --data-raw '{"name":"O'\\''Neil"}'`,
+      note: undefined,
+    });
+  });
+
+  it('asks for the headers of a HEAD request, since curl waits for a body with -X HEAD', () => {
+    expect(toCurl(request({ method: 'HEAD' })).command).toBe(`curl 'https://api.test/items' \\\n  --head`);
+  });
+
+  it('sends form fields as they were, files by name from the current folder', () => {
+    const curl = toCurl(
+      request({
+        method: 'POST',
+        requestHeaders: { 'content-type': 'multipart/form-data', 'X-Token': 'abc' },
+        requestBody: {
+          kind: 'form',
+          text: 'title=Trip\nnote=@home\nline one\navatar=[file photo "1".jpg, image/jpeg, 1200 B]\nlog=[file file:///data/cache/app.log]',
+        },
+      }),
+    );
+    expect(curl.command.split(' \\\n  ')).toEqual([
+      `curl 'https://api.test/items'`,
+      '-X POST',
+      `-H 'X-Token: abc'`,
+      `--form-string 'title=Trip'`,
+      `--form-string 'note=@home\nline one'`,
+      `-F 'avatar=@"photo \\"1\\".jpg";type=image/jpeg'`,
+      `-F 'log=@"app.log"'`,
+    ]);
+    expect(curl.note).toBe('Copied. Files upload from the current folder');
+  });
+
+  it('says when the command cannot send the body as the app did', () => {
+    expect(toCurl(request({ method: 'PUT', requestBody: { kind: 'binary', size: 10, summary: 'Blob' } }))).toEqual({
+      command: `curl 'https://api.test/items' \\\n  -X PUT`,
+      note: 'Copied without the body, not captured as text',
+    });
+    expect(toCurl(request({ method: 'POST', requestBody: { kind: 'text', text: '{"a":', truncated: true } })).note).toBe(
+      'Copied with only the beginning of the body',
+    );
+  });
+});
 
 describe('copied text', () => {
   it('turns captured values into plain JSON, saying what was cut', () => {
@@ -40,6 +105,9 @@ describe('copied text', () => {
     const error = (stack: string): SerializedValue => ({ $t: 'error', name: 'TypeError', message: 'boom', stack });
     expect(valueText(error('TypeError: boom\n    at f (app.js:1:1)'))).toBe('TypeError: boom\n    at f (app.js:1:1)');
     expect(valueText(error('f@app.js:1:1'))).toBe('TypeError: boom\nf@app.js:1:1');
+    const trace: SerializedValue = { $t: 'error', name: 'Trace', message: '', stack: 'Trace\n    at where (app.js:2:3)' };
+    expect(valueText(trace)).toBe('Trace\n    at where (app.js:2:3)');
+    expect(valueText({ $t: 'error', name: 'Error', message: '', stack: 'ErrorBoundary@app.js:1:1' })).toBe('Error\nErrorBoundary@app.js:1:1');
   });
 
   it('writes a log entry as its line, then its objects and errors in full', () => {
