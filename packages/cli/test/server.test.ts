@@ -3,7 +3,7 @@ import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { networkInterfaces, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
 import { isLocalConnection } from '../src/security.js';
 import { createServer, lanAddresses, reachableAddresses, type CapybaraServer, type ServerOptions } from '../src/server.js';
@@ -458,7 +458,7 @@ describe('access control', () => {
     expect(await bodyOf(elsewhere)).toContain('--remote-ui');
     expect(hints).toEqual([expect.stringContaining(`${lan} was turned away`)]);
     expect(hints[0]).toContain('--remote-ui');
-    expect(hints[0]).toContain('CAPYBARA_REMOTE_UI=1');
+    expect(hints[0]).toContain('Let Other Devices Open the UI');
     expect((await ui.next((m) => m.t === 'server')).server.hints).toEqual(hints);
   });
 
@@ -467,6 +467,26 @@ describe('access control', () => {
     const elsewhere = { localAddress: lan };
     await expect(connect('/viewer', { origin: `http://127.0.0.1:${port}` }, elsewhere).opened).resolves.toBeUndefined();
     expect(await statusOf(elsewhere)).toBe(200);
+  });
+
+  it.skipIf(!lan)('lets other devices in and out as remote UI is turned on and off while running', async () => {
+    await start();
+    const elsewhere = { localAddress: lan };
+    const ui = viewer();
+    await ui.opened;
+    expect(await statusOf(elsewhere)).toBe(403);
+    server!.setRemoteUi(true);
+    // The device turned away before made the server send a hint already.
+    await ui.next((m) => m.t === 'server' && m.server.remoteUi);
+    expect(await statusOf(elsewhere)).toBe(200);
+    const device = connect('/viewer', { origin: `http://127.0.0.1:${port}` }, elsewhere);
+    await device.opened;
+    const closed = new Promise<number>((resolve) => device.ws.once('close', (code) => resolve(code)));
+    server!.setRemoteUi(false);
+    // The device is let go; this machine's viewer stays and hears of the change.
+    expect(await closed).toBe(1008);
+    await vi.waitFor(() => expect(ui.messages.filter((m) => m.t === 'server').at(-1).server.remoteUi).toBe(false));
+    expect(await statusOf(elsewhere)).toBe(403);
   });
 
   it.skipIf(!lan)('opens the UI at its LAN address on this machine', async () => {

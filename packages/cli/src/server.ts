@@ -69,6 +69,8 @@ export interface CapybaraServer {
   close(): Promise<void>;
   /** Shows a hint in the UI and passes it to `onHint`, e.g. one from the Metro bridge. */
   hint(message: string): void;
+  /** Turns `remoteUi` on or off while running; other devices with the UI open are let go when it goes off. */
+  setRemoteUi(enabled: boolean): void;
 }
 
 interface Session {
@@ -130,7 +132,10 @@ export function createServer(options: ServerOptions): CapybaraServer {
     broadcast({ t: 'server', server: serverInfo() });
   };
 
-  const mayView = (req: http.IncomingMessage) => options.remoteUi === true || isLocalConnection(req.socket);
+  let remoteUi = options.remoteUi === true;
+  const mayView = (req: http.IncomingMessage) => remoteUi || isLocalConnection(req.socket);
+  /** Whether each viewer is on this machine, so others can be let go when remote UI is turned off. */
+  const localViewers = new WeakMap<WebSocket, boolean>();
   const hinted = new Set<string>();
   // Whoever tried probably sits at this computer too, and may not know about --remote-ui.
   const refused = (req: http.IncomingMessage) => {
@@ -139,7 +144,7 @@ export function createServer(options: ServerOptions): CapybaraServer {
     hinted.add(address);
     hint(
       `${address} was turned away: only this computer can open the UI or read it with capybara mcp. ` +
-        'Restart with --remote-ui (for the desktop app, set CAPYBARA_REMOTE_UI=1) to let other devices in; ' +
+        'Restart with --remote-ui (in the desktop app, turn on Settings › Let Other Devices Open the UI) to let other devices in; ' +
         'they then see everything apps send, tokens included.',
     );
   };
@@ -169,7 +174,10 @@ export function createServer(options: ServerOptions): CapybaraServer {
       isAllowedHost(req.headers.host) &&
       isAllowedViewerOrigin(req.headers.origin, req.headers.host, allowedOrigins)
     ) {
-      wss.handleUpgrade(req, socket, head, acceptViewer);
+      wss.handleUpgrade(req, socket, head, (ws) => {
+        localViewers.set(ws, isLocalConnection(req.socket));
+        acceptViewer(ws);
+      });
     } else {
       if (path === VIEWER_PATH && !mayView(req)) refused(req);
       socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
@@ -218,7 +226,7 @@ export function createServer(options: ServerOptions): CapybaraServer {
     version: options.version ?? '0.0.0',
     port,
     addresses: reachableAddresses(bound),
-    remoteUi: options.remoteUi === true,
+    remoteUi,
     latest,
     hints: [...hints],
   });
@@ -556,6 +564,15 @@ export function createServer(options: ServerOptions): CapybaraServer {
       }),
 
     hint,
+
+    setRemoteUi(enabled) {
+      if (remoteUi === enabled) return;
+      remoteUi = enabled;
+      if (!enabled) {
+        for (const viewer of viewers) if (!localViewers.get(viewer)) viewer.close(1008, 'Only the computer Capybara runs on can open it now');
+      }
+      broadcast({ t: 'server', server: serverInfo() });
+    },
   };
 }
 

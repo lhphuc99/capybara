@@ -23,7 +23,7 @@ npm start          # UI at http://localhost:7357
 npm run desktop    # or the same in a desktop app, see below
 ```
 
-The UI opens only on the computer Capybara runs on, while apps connect from any device on your network. To open it from another device, start Capybara with `--remote-ui`, or set `CAPYBARA_REMOTE_UI=1` (the desktop app reads it too); that device then sees everything apps send, tokens included. A device that is turned away gets a page saying so, and the CLI prints its address, which the UI also shows in a banner. The device button at the top right of the UI shows the address to copy and a QR code to scan with a phone or tablet, or the flag to restart with.
+The UI opens only on the computer Capybara runs on, while apps connect from any device on your network. To open it from another device, start Capybara with `--remote-ui` (or set `CAPYBARA_REMOTE_UI=1`), or in the desktop app turn on **Settings › Let Other Devices Open the UI**; that device then sees everything apps send, tokens included. A device that is turned away gets a page saying so, and the CLI prints its address, which the UI also shows in a banner. The device button at the top right of the UI shows the address to copy and a QR code to scan with a phone or tablet, or the flag to restart with.
 
 An AI assistant can add the SDK to your app for you: see [Set up Capybara with an AI assistant](#set-up-capybara-with-an-ai-assistant).
 
@@ -249,7 +249,8 @@ npm run desktop:package:all      # all three
 
 Packages land in `apps/desktop/release/`, named like `Capybara-0.1.0-win-x64.exe`. A Mac builds all three without Wine or Docker; the macOS package can only be built on a Mac.
 
-- Apps connect exactly as they do to the CLI, on port 7357. Set `CAPYBARA_PORT` to use another port, and `CAPYBARA_REMOTE_UI=1` to let other devices open the UI. What the CLI would print, such as a device that was turned away or an app that can't be read through Metro, shows in a banner at the top of the window.
+- Apps connect exactly as they do to the CLI, on port 7357. Set `CAPYBARA_PORT` to use another port. What the CLI would print, such as a device that was turned away or an app that can't be read through Metro, shows in a banner at the top of the window.
+- **Settings** (in the Capybara menu on macOS, the File menu elsewhere) turns on **Let Other Devices Open the UI**, after asking, and off again, which lets go of the devices that had it open. It also turns reading React Native apps through Metro on and off, and picks the Metro ports to look on (8081 to 8085; 8081 and 8082 at first). The app remembers them; while it shows the server of `npx capybara-devtools`, they wait until it runs its own. `CAPYBARA_REMOTE_UI=1` still turns remote UI on for one run.
 - If `npx capybara-devtools` is already running, the window shows that server, and the app takes over the port once the CLI stops. If another program holds the port, the app says so and lets you try again. The other way round, `npx capybara-devtools` started while the app runs opens the app's UI and exits.
 - On macOS, closing the window keeps the server running in the Dock. Quit with ⌘Q. On Windows and Linux, closing the window quits.
 - No build is signed for distribution. On another Mac the first launch is blocked until you allow it in System Settings → Privacy & Security. On Windows, SmartScreen warns about an unknown publisher: choose More info → Run anyway.

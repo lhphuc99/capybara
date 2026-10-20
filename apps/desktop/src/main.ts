@@ -12,22 +12,26 @@ import {
   startMetroBridge,
   startOrReuse,
   updateCheckFrom,
+  type CapybaraServer,
   type MetroBridge,
   type ServerOptions,
   type Started,
 } from 'capybara-devtools';
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, shell, type MenuItemConstructorOptions } from 'electron';
+import { DEFAULT_SETTINGS, isAppearance, parseSettings, settingsMenu, togglePort, type DesktopSettings } from './settings.js';
 import { checkForUpdates, startUpdateChecks } from './updater.js';
 
 const TAKEOVER_INTERVAL_MS = 2_000;
-const APPEARANCES = ['system', 'light', 'dark'] as const;
-type Appearance = (typeof APPEARANCES)[number];
 
 let url = '';
 let mainWindow: BrowserWindow | null = null;
 let metroBridge: MetroBridge | undefined;
 let takeoverTimer: ReturnType<typeof setTimeout> | undefined;
 let quitting = false;
+let settings: DesktopSettings = DEFAULT_SETTINGS;
+/** The server this app runs; none while it shows the server of another program. */
+let own: { server: CapybaraServer; port: number } | undefined;
+const remoteUiFromEnv = remoteUiFrom(process.env);
 
 app.on('before-quit', () => {
   quitting = true;
@@ -49,44 +53,16 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 async function main() {
+  settings = readSettings();
   // The UI owns the Appearance setting; keeping a copy here gives the window the right colors before it loads.
-  nativeTheme.themeSource = readAppearance();
+  nativeTheme.themeSource = settings.appearance;
   nativeTheme.on('updated', () => mainWindow?.setBackgroundColor(windowBackground()));
   ipcMain.on('appearance', (event, value: unknown) => {
     if (event.sender !== mainWindow?.webContents || !isAppearance(value) || value === nativeTheme.themeSource) return;
     nativeTheme.themeSource = value;
-    saveAppearance(value);
+    saveSettings({ appearance: value });
   });
-
-  const updates: MenuItemConstructorOptions[] = app.isPackaged
-    ? [{ label: 'Check for Updates…', click: () => void checkForUpdates(() => mainWindow, true) }]
-    : [];
-  // Electron's default menu has a Help menu linking to electronjs.org.
-  Menu.setApplicationMenu(
-    Menu.buildFromTemplate([
-      process.platform === 'darwin'
-        ? {
-            label: app.name,
-            submenu: [
-              { role: 'about' },
-              ...updates,
-              { type: 'separator' },
-              { role: 'services' },
-              { type: 'separator' },
-              { role: 'hide' },
-              { role: 'hideOthers' },
-              { role: 'unhide' },
-              { type: 'separator' },
-              { role: 'quit' },
-            ],
-          }
-        : { role: 'fileMenu' },
-      { role: 'editMenu' },
-      { role: 'viewMenu' },
-      { role: 'windowMenu' },
-      ...(process.platform !== 'darwin' && updates.length > 0 ? [{ label: 'Help', submenu: updates }] : []),
-    ]),
-  );
+  buildMenu();
 
   const port = readPort(process.env.CAPYBARA_PORT, true);
   if (port === undefined) {
@@ -110,7 +86,7 @@ async function main() {
   const options: ServerOptions = {
     port: port ?? DEFAULT_PORT,
     uiDir: join(app.getAppPath(), 'dist', 'ui'),
-    remoteUi: remoteUiFrom(process.env),
+    remoteUi: remoteUiFromEnv || settings.remoteUi,
     onHint: (hint) => console.log(hint),
     version: app.getVersion(),
     latestVersions: checkUpdates ? () => fetchLatestVersions() : undefined,
@@ -122,10 +98,11 @@ async function main() {
   }
   url = `http://localhost:${started.port}`;
   if (started.server) {
-    const server = started.server;
     console.log(`Capybara server on port ${started.port}`);
     reverseAndroidPorts(started.port, findAdb());
-    metroBridge = startMetroBridge({ port: started.port, version: app.getVersion(), onHint: (hint) => server.hint(hint) });
+    own = { server: started.server, port: started.port };
+    restartMetro();
+    buildMenu();
   } else {
     console.log(`Using the Capybara server already running on port ${started.port}`);
     takeOverWhenFree(options);
@@ -159,21 +136,105 @@ async function start(options: ServerOptions): Promise<Started | undefined> {
 function takeOverWhenFree(options: ServerOptions) {
   if (quitting) return;
   takeoverTimer = setTimeout(async () => {
-    const own = await listen(options).catch(() => null);
+    const taken = await listen(options).catch(() => null);
     if (quitting) {
-      await own?.server.close();
+      await taken?.server.close();
       return;
     }
-    if (!own) {
+    if (!taken) {
       takeOverWhenFree(options);
       return;
     }
-    console.log(`Took over port ${own.port}`);
-    reverseAndroidPorts(own.port, findAdb());
-    metroBridge = startMetroBridge({ port: own.port, version: app.getVersion(), onHint: (hint) => own.server.hint(hint) });
+    console.log(`Took over port ${taken.port}`);
+    reverseAndroidPorts(taken.port, findAdb());
+    own = taken;
+    restartMetro();
+    buildMenu();
     // The page came from the other server, which may be a different version.
     if (mainWindow) load(mainWindow);
   }, TAKEOVER_INTERVAL_MS);
+}
+
+/** Reads apps through Metro on the ports in the settings, or stops reading them. */
+function restartMetro() {
+  metroBridge?.stop();
+  metroBridge = undefined;
+  if (!own || !settings.metro) return;
+  const { server, port } = own;
+  metroBridge = startMetroBridge({ port, metroPorts: settings.metroPorts, version: app.getVersion(), onHint: (hint) => server.hint(hint) });
+}
+
+async function setRemoteUi(on: boolean) {
+  if (on) {
+    const { response } = await dialog.showMessageBox({
+      type: 'warning',
+      message: 'Let other devices open Capybara?',
+      detail:
+        'Phones, tablets and other computers on your network can then open the UI, and read it with capybara mcp. ' +
+        'They see everything your apps send, tokens included.',
+      buttons: ['Let Them In', 'Cancel'],
+      defaultId: 1,
+      cancelId: 1,
+    });
+    if (response !== 0) {
+      // The menu ticked the box already.
+      buildMenu();
+      return;
+    }
+  }
+  saveSettings({ remoteUi: on });
+  own?.server.setRemoteUi(on);
+  buildMenu();
+}
+
+function buildMenu() {
+  const updates: MenuItemConstructorOptions[] = app.isPackaged
+    ? [{ label: 'Check for Updates…', click: () => void checkForUpdates(() => mainWindow, true) }]
+    : [];
+  const options = settingsMenu(
+    { settings, ownServer: own !== undefined, remoteUiFromEnv },
+    {
+      setRemoteUi: (on) => void setRemoteUi(on),
+      setMetro: (on) => {
+        saveSettings({ metro: on });
+        restartMetro();
+        buildMenu();
+      },
+      setMetroPort: (port, on) => {
+        saveSettings({ metroPorts: togglePort(settings.metroPorts, port, on) });
+        restartMetro();
+        buildMenu();
+      },
+    },
+  );
+  // Electron's default menu has a Help menu linking to electronjs.org.
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate([
+      process.platform === 'darwin'
+        ? {
+            label: app.name,
+            submenu: [
+              { role: 'about' },
+              ...updates,
+              { type: 'separator' },
+              options,
+              { type: 'separator' },
+              { role: 'services' },
+              { type: 'separator' },
+              { role: 'hide' },
+              { role: 'hideOthers' },
+              { role: 'unhide' },
+              { type: 'separator' },
+              { role: 'quit' },
+            ],
+          }
+        : { label: 'File', submenu: [options, { type: 'separator' }, { role: 'quit' }] },
+      { role: 'editMenu' },
+      { role: 'viewMenu' },
+      { role: 'windowMenu' },
+      ...(process.platform !== 'darwin' && updates.length > 0 ? [{ label: 'Help', submenu: updates }] : []),
+    ]),
+  );
 }
 
 /** Opened from the Dock or Start menu, the app doesn't get the shell's PATH, so look where the Android SDK keeps adb. */
@@ -253,24 +314,20 @@ function windowBackground(): string {
   return nativeTheme.shouldUseDarkColors ? '#0e1116' : '#ffffff';
 }
 
-function isAppearance(value: unknown): value is Appearance {
-  return APPEARANCES.includes(value as Appearance);
-}
-
 const settingsFile = () => join(app.getPath('userData'), 'settings.json');
 
-function readAppearance(): Appearance {
+function readSettings(): DesktopSettings {
   try {
-    const { appearance } = JSON.parse(readFileSync(settingsFile(), 'utf8')) as { appearance?: unknown };
-    return isAppearance(appearance) ? appearance : 'system';
+    return parseSettings(readFileSync(settingsFile(), 'utf8'));
   } catch {
-    return 'system';
+    return parseSettings(undefined);
   }
 }
 
-function saveAppearance(appearance: Appearance) {
+function saveSettings(change: Partial<DesktopSettings>) {
+  settings = { ...settings, ...change };
   try {
-    writeFileSync(settingsFile(), `${JSON.stringify({ appearance })}\n`);
+    writeFileSync(settingsFile(), `${JSON.stringify(settings)}\n`);
   } catch {
     // The setting still applies for this run.
   }

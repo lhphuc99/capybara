@@ -30,7 +30,7 @@ const REMOTE_REFUSED = `<!doctype html>
 <body style="font: 15px/1.5 system-ui; margin: 40px auto; max-width: 600px; padding: 0 16px; color: #333">
 <h1 style="font-size: 20px">Capybara opens only on the computer it runs on</h1>
 <p>It shows everything your apps send, tokens included, so other devices stay out unless you let them in.</p>
-<p>To open it here, restart Capybara on that computer with <code>npx capybara-devtools --remote-ui</code>, or set <code>CAPYBARA_REMOTE_UI=1</code> for the desktop app.</p>
+<p>To open it here, restart Capybara on that computer with <code>npx capybara-devtools --remote-ui</code>, or in the desktop app turn on <b>Settings › Let Other Devices Open the UI</b>.</p>
 </body>`;
 
 /** What another device gets instead of the UI. */

@@ -246,7 +246,7 @@ export class ViewerConnection {
 function refused(address: string): Error {
   return new Error(
     `Capybara on ${address} refused the connection: only the computer it runs on can read it. ` +
-      'On that computer, start it with --remote-ui (or set CAPYBARA_REMOTE_UI=1 for the desktop app), and pass its IP address as --host.',
+      'On that computer, start it with --remote-ui (in the desktop app, turn on Settings › Let Other Devices Open the UI), and pass its IP address as --host.',
   );
 }
 
