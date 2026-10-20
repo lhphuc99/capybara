@@ -93,6 +93,7 @@ if (process.env.NODE_ENV === 'development') init({ appName: 'My Next.js app' });
 
 On older versions, call it at the top of a client component rendered from the root layout; on the server `init()` does nothing. Requests the Next.js dev overlay makes for itself (`/__nextjs_*`) are not recorded, and server-side logs and requests are not captured yet. See [`examples/nextjs`](examples/nextjs).
 
+- Stack traces of logged errors, uncaught errors and `console.trace()` point into your source files (`src/App.tsx:49:43`): Capybara reads the source maps your dev server serves with each script, Vite's and Next.js's alike. It fetches only scripts from the page's own dev server, and only when that server runs on the same computer.
 - WebSockets the page creates after `init()` are recorded, which is another reason to import the SDK first. Dev server sockets (Vite, Next.js and Metro HMR) are skipped.
 - React's "Download the React DevTools" notice, which its development build prints on every page load, is not recorded. It still prints in the browser console.
 - Cookie writes refresh the Storage tab automatically where the Cookie Store API exists (such as Chrome); elsewhere use Refresh.

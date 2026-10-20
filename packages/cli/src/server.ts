@@ -22,7 +22,7 @@ import { WebSocket, WebSocketServer, type RawData } from 'ws';
 import { diagnoseRequest } from './diagnose.js';
 import { isAllowedHost, isAllowedViewerOrigin, isLocalConnection, isLoopbackAddress, unmapped } from './security.js';
 import { refuseRemote, serveStatic } from './static.js';
-import { hasBundleFrames, symbolicateEvents } from './symbolicate.js';
+import { localWebOrigin, needsSymbolication, symbolicateEvents } from './symbolicate.js';
 
 export { reverseAndroidPorts } from './adb.js';
 export { DEFAULT_METRO_PORTS, startMetroBridge, type MetroBridge, type MetroBridgeOptions } from './metro.js';
@@ -309,13 +309,14 @@ export function createServer(options: ServerOptions): CapybaraServer {
       }
     }
     if (fresh.length === 0) return;
-    if (!session.queue && !hasBundleFrames(fresh)) {
+    const webOrigin = localWebOrigin(session.info);
+    if (!session.queue && !needsSymbolication(fresh, webOrigin)) {
       store(session, fresh);
       return;
     }
     inOrder(session, async () => {
-      await symbolicateEvents(fresh, { signal: closing.signal }).catch(() => {});
-      // The session may have been removed while Metro was answering.
+      await symbolicateEvents(fresh, { signal: closing.signal, webOrigin }).catch(() => {});
+      // The session may have been removed while Metro or the dev server was answering.
       if (sessions.get(session.info.id) === session && !closed) store(session, fresh);
     });
   };
