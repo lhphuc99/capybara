@@ -249,6 +249,7 @@ export function createMcpServer(connection: ViewerConnection, options: McpOption
       inputSchema: {
         session,
         search: z.string().optional().describe('Text or /pattern/ matched against the method and URL.'),
+        inContent: z.boolean().optional().describe('Match search against request and response headers, bodies and WebSocket messages too.'),
         method: z.string().optional().describe('Only this method, e.g. POST.'),
         status: z
           .string()

@@ -68,7 +68,7 @@ function previewSpecial(v: SpecialValue, nested: boolean): string {
     case 'regexp':
       return v.v;
     case 'error':
-      return `${v.name}: ${v.message}`;
+      return v.message ? `${v.name}: ${v.message}` : v.name;
     case 'string':
       return shortString(v.v);
     case 'array':
@@ -219,7 +219,8 @@ export interface Matcher {
 export function makeMatcher(query: string): Matcher | null {
   const trimmed = query.trim();
   if (!trimmed) return null;
-  const regex = /^\/(.+)\/([a-z]*)$/i.exec(trimmed);
+  // Only JavaScript's flags: a path such as /api/users is text.
+  const regex = /^\/(.+)\/([dgimsuyv]*)$/.exec(trimmed);
   if (regex) {
     try {
       const pattern = new RegExp(regex[1]!, regex[2]!.replace(/[gy]/g, ''));

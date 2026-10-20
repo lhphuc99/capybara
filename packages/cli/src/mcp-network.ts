@@ -10,6 +10,8 @@ import { clock, duration, indent, parseJson, searchMatcher, truncate } from './m
 
 export interface NetworkQuery {
   search?: string;
+  /** Match `search` against headers, bodies and WebSocket messages too. */
+  inContent?: boolean;
   method?: string;
   status?: string;
   errors?: boolean;
@@ -30,8 +32,17 @@ export function filterRequests(requests: NetworkEntry[], query: NetworkQuery, re
     if (query.minDuration !== undefined && (entry.duration ?? 0) < query.minDuration) return false;
     if (query.after !== undefined && entry.seq <= query.after) return false;
     if (query.before !== undefined && entry.seq >= query.before) return false;
-    return !matcher || matcher.test(`${entry.method} ${redact.url(entry.url)}`);
+    if (!matcher) return true;
+    return matcher.test(`${entry.method} ${redact.url(entry.url)}`) || (query.inContent === true && matcher.test(contentText(entry, redact)));
   });
+}
+
+/** What a content search reads of a request, with credentials hidden as they are when shown. */
+function contentText(entry: NetworkEntry, redact: Redactor): string {
+  const headers = (record: Record<string, string> | undefined) => Object.entries(redact.headers(record)).map(([name, value]) => `${name}: ${value}`);
+  const bodies = [entry.requestBody, entry.responseBody].filter((body) => body?.text !== undefined).map((body) => bodyText(body, redact, 'full'));
+  const messages = entry.socket?.messages.flatMap((message) => (message.data.text === undefined ? [] : [redact.text(message.data.text)])) ?? [];
+  return [...headers(entry.requestHeaders), ...headers(entry.responseHeaders), ...bodies, entry.error ?? '', ...messages].join('\n');
 }
 
 function isError(entry: NetworkEntry): boolean {
@@ -71,6 +82,7 @@ function statusLabel(entry: NetworkEntry): string {
     return entry.socket.closeCode !== undefined ? `${state} ${entry.socket.closeCode}` : state;
   }
   if (entry.state === 'failed') return entry.failure?.aborted ? 'aborted' : entry.failure?.timeout ? 'timeout' : 'failed';
+  if (entry.streaming) return `${entry.status} streaming`;
   return entry.status === undefined ? 'pending' : String(entry.status);
 }
 
@@ -96,7 +108,7 @@ export function requestDetail(entry: NetworkEntry, redact: Redactor, body: BodyM
       ? statusLabel(entry)
       : entry.status === undefined
         ? 'pending'
-        : `${entry.status}${entry.statusText ? ` ${entry.statusText}` : ''}`;
+        : `${entry.status}${entry.statusText ? ` ${entry.statusText}` : ''}${entry.streaming ? ', body still arriving' : ''}`;
   lines.push(`Status: ${status} · ${duration(entry.duration)} · ${entry.initiator} · started ${clock(entry.ts)} · request id ${entry.id}`);
   if (!entry.socket && entry.state === 'failed') {
     const cause = entry.failure?.cause ? ` (${entry.failure.cause})` : '';

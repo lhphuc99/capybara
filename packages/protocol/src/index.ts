@@ -129,6 +129,11 @@ export interface NetworkResponsePayload {
   body?: BodyPreview;
   /** Milliseconds from request start to response headers. */
   duration: number;
+  /**
+   * The body is still arriving: `body` holds what came so far, and another `network.response` for the request
+   * follows with all of it. Older viewers take the first one as the whole response until the next comes.
+   */
+  streaming?: true;
 }
 
 /**

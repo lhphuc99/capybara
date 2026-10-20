@@ -220,6 +220,8 @@ The SDK also works below React Native 0.85, where Metro discovery is not availab
 
 In the UI, WebSocket connections are **WS** rows in the Network tab. Select one to see its messages, filter them by text or direction, and inspect JSON payloads; socket.io frames are decoded into event names and arguments.
 
+The Network tab's filter matches the URL, method and status; with **Headers & bodies** on, it also matches headers, bodies and WebSocket messages. **Pause** keeps the list still while you read it: requests that come in meanwhile are counted, and **Resume** adds them. A response whose body is still arriving after half a second, such as a streamed answer from an AI API or a long poll, shows its status and headers with `streaming` in place of its time. With `fetch` in the SDK, its Response tab also shows what has come so far, updated every second until the body is complete or reaches 128 KB; through Metro the body shows once it has all arrived.
+
 To share what you see, **Copy all** in the Logs tab copies the entries that match the current filters as text, and the copy icon that appears when you hover over an entry copies just that one. Objects are copied in full as JSON and errors with their stack. In the Storage tab, **Copy** copies the selected value, and every object or value in a JSON tree has its own copy icon.
 
 Drag the line between the request list and its details (or between the keys and the value in the Storage tab) to resize them; double-click it to reset. The same goes for the line between the Path and Host columns, between a store's keys and values, and beside the list of stores in the Storage and State tabs, so long URLs, keys and names show in full. With a line focused, the arrow keys move it too. Widths are remembered.
@@ -283,7 +285,7 @@ npx capybara-devtools setup-guide            # the app in this folder, or pass i
 | `get_setup_guide` | How to add Capybara to an app, worked out from its package.json. Works before Capybara runs |
 | `list_sessions` | Connected apps and their session ids |
 | `get_logs` | Logs, filtered by level, text or `/regex/` and source (uncaught errors, unhandled rejections); one entry in full by `seq` |
-| `get_network` | Requests and WebSockets, one per line, filtered by status (`404`, `5xx`, `failed`), method, URL, type and duration |
+| `get_network` | Requests and WebSockets, one per line, filtered by status (`404`, `5xx`, `failed`), method, URL (with `inContent`, also headers, bodies and WebSocket messages), type and duration |
 | `get_request` | One request with its headers and bodies |
 | `diagnose_request` | Why a request from a web page failed, the same check as **Find out why** |
 | `get_websocket` | The messages of one WebSocket |

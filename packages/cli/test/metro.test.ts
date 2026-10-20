@@ -311,6 +311,24 @@ describe('Metro discovery and CDP event relay', () => {
     ]);
   });
 
+  it('shows the headers of a response whose body is still arriving', async () => {
+    const f = await fixture();
+    f.start();
+    await until(() => expect(f.sessions()).toHaveLength(1));
+    f.request('s1', 'https://api.example.test/chat');
+    f.event('Network.responseReceived', {
+      requestId: 's1', timestamp: 10.125, response: { status: 200, statusText: 'OK', mimeType: 'application/x-ndjson', headers: { 'Content-Type': 'application/x-ndjson' } },
+    });
+    await until(() => expect(f.events()).toHaveLength(2));
+    expect(f.events()[1].payload).toEqual({
+      id: 's1', status: 200, statusText: 'OK', headers: { 'Content-Type': 'application/x-ndjson' }, duration: 125, streaming: true,
+    });
+    f.event('Network.loadingFinished', { requestId: 's1', timestamp: 12, encodedDataLength: 20 });
+    await until(() => expect(f.events()).toHaveLength(3));
+    expect(f.events()[2].payload).toMatchObject({ id: 's1', status: 200, duration: 125 });
+    expect(f.events()[2].payload.streaming).toBeUndefined();
+  });
+
   it('captures POST headers/body, 404 responses, base64 bodies, failed and aborted requests', async () => {
     const f = await fixture();
     f.start();

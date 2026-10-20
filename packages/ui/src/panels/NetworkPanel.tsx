@@ -20,9 +20,34 @@ const FILTERS: Array<{ id: Filter; label: string }> = [
 
 const ROW_HEIGHT = 26;
 
+// Entries are immutable, so the headers and bodies a search reads are joined once per entry.
+const contentTexts = new WeakMap<NetworkEntry, string>();
+function contentText(entry: NetworkEntry): string {
+  let text = contentTexts.get(entry);
+  if (text === undefined) {
+    const headers = (record: Record<string, string> | undefined) =>
+      Object.entries(record ?? {}).map(([name, value]) => `${name}: ${value}`);
+    text = [
+      ...headers(entry.requestHeaders),
+      ...headers(entry.responseHeaders),
+      entry.requestBody?.text,
+      entry.responseBody?.text,
+      entry.error,
+      ...(entry.socket?.messages.map((message) => message.data.text) ?? []),
+    ]
+      .filter(Boolean)
+      .join('\n');
+    contentTexts.set(entry, text);
+  }
+  return text;
+}
+
 export function NetworkPanel({ session }: { session: SessionState }) {
   const [query, setQuery] = useState('');
+  const [inContent, setInContent] = useState(false);
   const [filter, setFilter] = useState<Filter>('all');
+  // While paused, requests after this one wait out of the list, so it holds still.
+  const [paused, setPaused] = useState<{ sessionId: string; seq: number } | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const layoutRef = useRef<HTMLDivElement>(null);
   const pane = usePaneWidth('capybara:pane:network', 46);
@@ -31,17 +56,21 @@ export function NetworkPanel({ session }: { session: SessionState }) {
   const hostRef = useRef<HTMLSpanElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const { network } = session;
+  const sessionId = session.meta.info.id;
+  const pausedAt = paused?.sessionId === sessionId ? paused.seq : undefined;
+  const listed = useMemo(() => (pausedAt === undefined ? network : network.filter((entry) => entry.seq <= pausedAt)), [network, pausedAt]);
 
   const matcher = useMemo(() => makeMatcher(query), [query]);
   const visible = useMemo(
     () =>
-      network.filter((entry) => {
+      listed.filter((entry) => {
         if (filter === 'fetch-xhr' && !isFetchOrXhr(entry.initiator)) return false;
         if (filter === 'ws' && entry.initiator !== 'websocket') return false;
         if (filter === 'failed' && statusTone(entry) !== 'error') return false;
-        return !matcher || matcher.test(`${entry.method} ${entry.url} ${entry.status ?? ''}`);
+        if (!matcher) return true;
+        return matcher.test(`${entry.method} ${entry.url} ${entry.status ?? ''}`) || (inContent && matcher.test(contentText(entry)));
       }),
-    [network, filter, matcher],
+    [listed, filter, matcher, inContent],
   );
   const selected = selectedId ? network.find((entry) => entry.id === selectedId) : undefined;
 
@@ -81,7 +110,21 @@ export function NetworkPanel({ session }: { session: SessionState }) {
   return (
     <section className="panel">
       <div className="toolbar">
-        <SearchInput value={query} onChange={setQuery} placeholder="Filter by URL, method or status" invalid={matcher?.invalid} />
+        <SearchInput
+          value={query}
+          onChange={setQuery}
+          placeholder={inContent ? 'Filter by URL, headers or body' : 'Filter by URL, method or status'}
+          invalid={matcher?.invalid}
+        />
+        <button
+          type="button"
+          className="chip"
+          aria-pressed={inContent}
+          title="Also match request and response headers, bodies and WebSocket messages"
+          onClick={() => setInContent(!inContent)}
+        >
+          Headers &amp; bodies
+        </button>
         <div className="chips">
           {FILTERS.map(({ id, label }) => (
             <button key={id} type="button" className="chip" aria-pressed={filter === id} onClick={() => setFilter(id)}>
@@ -91,14 +134,19 @@ export function NetworkPanel({ session }: { session: SessionState }) {
         </div>
         <span className="spacer" />
         <span className="note">
-          {visible.length === network.length ? `${network.length} requests` : `${visible.length} of ${network.length}`}
+          {visible.length === listed.length ? `${listed.length} requests` : `${visible.length} of ${listed.length}`}
+          {pausedAt !== undefined && ` · paused, ${network.length - listed.length} new`}
         </span>
         <button
           type="button"
           className="btn"
-          onClick={() => clearSession(session.meta.info.id)}
-          disabled={network.length === 0}
+          aria-pressed={pausedAt !== undefined}
+          title={pausedAt === undefined ? 'Stop adding new requests to the list' : 'Add the requests that came in meanwhile'}
+          onClick={() => setPaused(pausedAt === undefined ? { sessionId, seq: network.at(-1)?.seq ?? 0 } : null)}
         >
+          {pausedAt === undefined ? 'Pause' : 'Resume'}
+        </button>
+        <button type="button" className="btn" onClick={() => clearSession(sessionId)} disabled={network.length === 0}>
           Clear
         </button>
       </div>
@@ -192,14 +240,14 @@ function NetworkRow({
       title={entry.url}
     >
       <span className="net-status">
-        {entry.state === 'pending' ? 'pending' : entry.state === 'failed' ? failedLabel(entry) : entry.status}
+        {entry.state === 'pending' ? (entry.streaming ? entry.status : 'pending') : entry.state === 'failed' ? failedLabel(entry) : entry.status}
       </span>
       <span>{entry.method}</span>
       <span className="net-path">{path || '/'}</span>
       <span className="muted">{host}</span>
       <span className="muted">{entry.initiator}</span>
       <span className="num muted">{formatBytes(responseSize(entry))}</span>
-      <span className="num">{entry.state === 'open' ? 'open' : formatDuration(entry.duration)}</span>
+      <span className="num">{entry.streaming ? 'streaming' : entry.state === 'open' ? 'open' : formatDuration(entry.duration)}</span>
     </div>
   );
 }

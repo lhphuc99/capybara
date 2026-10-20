@@ -89,6 +89,37 @@ describe('networkPlugin: fetch', () => {
     teardown();
   });
 
+  it('reports a body that takes a while as it arrives, then all of it', async () => {
+    vi.useFakeTimers();
+    try {
+      const encoder = new TextEncoder();
+      let push!: (text: string) => void;
+      let close!: () => void;
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          push = (text) => controller.enqueue(encoder.encode(text));
+          close = () => controller.close();
+        },
+      });
+      globalThis.fetch = vi.fn(async () => new Response(stream, { headers: { 'content-type': 'application/x-ndjson' } }));
+      const { of, teardown } = harness();
+      const response = await fetch('https://api.test/chat', { method: 'POST' });
+      push('{"t":"Hel"}\n');
+      await vi.advanceTimersByTimeAsync(600);
+      expect(of('network.response')).toMatchObject([{ status: 200, streaming: true, body: { kind: 'text', text: '{"t":"Hel"}\n' } }]);
+      push('{"t":"lo"}\n');
+      close();
+      expect(await response.text()).toBe('{"t":"Hel"}\n{"t":"lo"}\n');
+      await vi.advanceTimersByTimeAsync(10);
+      const [, last] = of('network.response');
+      expect(last).toMatchObject({ status: 200, body: { kind: 'text', text: '{"t":"Hel"}\n{"t":"lo"}\n' } });
+      expect('streaming' in last).toBe(false);
+      teardown();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('truncates large bodies and redacts headers', async () => {
     globalThis.fetch = vi.fn(async () => new Response('x'.repeat(50), { headers: { 'content-type': 'text/plain' } }));
     const { of, teardown } = harness({ xhr: false, maxBodySize: 10, redactHeaders: ['authorization'] });

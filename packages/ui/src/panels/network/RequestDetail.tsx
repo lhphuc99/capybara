@@ -51,10 +51,13 @@ export function RequestDetail({
         {tab === 'response' &&
           (entry.state === 'failed' ? (
             <FailureView entry={entry} session={session} />
-          ) : entry.state === 'pending' ? (
+          ) : entry.state === 'pending' && !entry.streaming ? (
             <p className="note">Waiting for the response…</p>
           ) : (
-            <BodyView body={entry.responseBody} empty="No response body" copyable />
+            <>
+              {entry.streaming && <p className="note">Still arriving; this is what has come so far.</p>}
+              <BodyView body={entry.responseBody} empty={entry.streaming ? 'Nothing has arrived yet' : 'No response body'} copyable />
+            </>
           ))}
       </div>
     </aside>
@@ -68,7 +71,9 @@ function HeadersTab({ entry }: { entry: NetworkEntry }) {
     [
       'Status',
       entry.state === 'pending'
-        ? 'Pending'
+        ? entry.streaming
+          ? `${entry.status ?? ''} ${entry.statusText ?? ''} (body still arriving)`.trim()
+          : 'Pending'
         : entry.state === 'failed'
           ? `Failed: ${entry.error ?? ''}`
           : `${entry.status ?? ''} ${entry.statusText ?? ''}`.trim(),

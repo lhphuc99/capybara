@@ -22,6 +22,25 @@ describe('applySessionEvents', () => {
     expect(network[1]!.failure).toEqual({ cause: 'cross-origin', credentials: true, aborted: undefined, timeout: undefined });
   });
 
+  it('keeps a streamed response pending with what has arrived, until the last response finishes it', () => {
+    const request = event('network.request', { id: 'r1', initiator: 'fetch', method: 'POST', url: 'https://api.test/chat', headers: {} });
+    const first = event('network.response', {
+      id: 'r1',
+      status: 200,
+      headers: { 'content-type': 'application/x-ndjson' },
+      body: { kind: 'text', text: '{"t":"Hel"}', size: 11 },
+      duration: 40,
+      streaming: true,
+    });
+    const streaming = apply([request, first]).network[0]!;
+    expect(streaming).toMatchObject({ state: 'pending', streaming: true, status: 200, responseBody: { text: '{"t":"Hel"}' } });
+    const last = event('network.response', { id: 'r1', status: 200, headers: {}, body: { kind: 'text', text: '{"t":"Hel"}\n{"t":"lo"}', size: 23 }, duration: 40 });
+    const done = apply([request, first, last]).network[0]!;
+    expect(done.state).toBe('done');
+    expect('streaming' in done).toBe(false);
+    expect(done.responseBody?.text).toBe('{"t":"Hel"}\n{"t":"lo"}');
+  });
+
   it('follows a WebSocket from connect to close, telling a clean close from a dropped one', () => {
     const { network } = apply([
       event('ws.connect', { id: 'w1', url: 'wss://api.test/live' }),

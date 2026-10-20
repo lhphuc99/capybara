@@ -18,6 +18,8 @@ import type { Session } from './metro-relay.js';
 import { parseWebSocketReport, WEBSOCKET_BINDING } from './metro-websocket.js';
 
 const MAX_BODY_FETCH = 4 * 1024 * 1024;
+/** CDP hands over a body once it has all arrived; a response still arriving after this long shows its headers. */
+const STREAM_AFTER_MS = 500;
 
 const SERIALIZER_GLOBAL = '__CAPYBARA_SERIALIZE__';
 const INSTALL_SERIALIZER = `globalThis.${SERIALIZER_GLOBAL} = ${serialize.toString()}`;
@@ -84,6 +86,7 @@ export interface Request {
   ignored: boolean;
   response?: ResponseReceived['response'];
   responseAt?: number;
+  streaming?: ReturnType<typeof setTimeout>;
 }
 
 /** What reading the events of one run of the app needs from its watcher. */
@@ -179,12 +182,24 @@ export async function relayEvent(event: CdpEvent, context: EventContext): Promis
       if (!request || request.ignored) return;
       request.response = response;
       request.responseAt = timestamp;
+      request.streaming = setTimeout(() => {
+        session.emit('network.response', {
+          id: requestId,
+          status: response.status,
+          statusText: response.statusText || undefined,
+          headers: response.headers ?? {},
+          duration: elapsed(request.start, timestamp),
+          streaming: true,
+        });
+      }, STREAM_AFTER_MS);
+      request.streaming.unref?.();
       return;
     }
     case 'Network.loadingFinished': {
       const { requestId, timestamp, encodedDataLength } = event.params as LoadingFinished;
       const request = context.requests.get(requestId);
       context.requests.delete(requestId);
+      clearTimeout(request?.streaming);
       if (!request || request.ignored) return;
       const response = request.response;
       if (!response) {
@@ -211,6 +226,7 @@ export async function relayEvent(event: CdpEvent, context: EventContext): Promis
       const { requestId, timestamp, errorText, canceled } = event.params as LoadingFailed;
       const request = context.requests.get(requestId);
       context.requests.delete(requestId);
+      clearTimeout(request?.streaming);
       if (!request || request.ignored) return;
       session.emit('network.error', {
         id: requestId,

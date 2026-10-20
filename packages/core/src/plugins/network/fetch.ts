@@ -7,6 +7,10 @@ import type { Settings } from './settings.js';
 
 export type FetchFunction = ((...args: unknown[]) => unknown) & { polyfill?: unknown };
 
+/** A body still arriving after this long, e.g. a streamed AI answer or a long poll, is reported as it comes. */
+const STREAM_AFTER_MS = 500;
+const STREAM_EVERY_MS = 1_000;
+
 /**
  * whatwg-fetch marks itself `polyfill`. Bare React Native ships it as fetch, so every fetch is also an
  * XHR there, and patching both would record each request twice. Expo swaps in a native fetch.
@@ -56,7 +60,7 @@ export function patchFetch(ctx: PluginContext, settings: Settings): () => void {
         try {
           const duration = now() - start;
           const headers = settings.redact(headersToRecord(response.headers));
-          const done = (body?: BodyPreview) =>
+          const respond = (body: BodyPreview | undefined, streaming = false) =>
             ctx.emit('network.response', {
               id,
               status: response.status,
@@ -64,8 +68,12 @@ export function patchFetch(ctx: PluginContext, settings: Settings): () => void {
               headers,
               body,
               duration,
+              ...(streaming && { streaming: true as const }),
             });
-          readFetchBody(response, settings.maxBody).then(done, () => done());
+          readFetchBody(response, settings.maxBody, (partial) => respond(partial, true)).then(
+            (body) => respond(body),
+            () => respond(undefined),
+          );
         } catch {
           // never surface SDK failures to the app
         }
@@ -106,7 +114,12 @@ function describeFetch(input: RequestInfo | URL, init: RequestInit | undefined, 
   return { url: absoluteUrl(url), method, headers, body, credentials };
 }
 
-async function readFetchBody(response: Response, maxBody: number): Promise<BodyPreview | undefined> {
+/** `onProgress` gets what came so far of a body that takes a while, then again every second while more comes. */
+async function readFetchBody(
+  response: Response,
+  maxBody: number,
+  onProgress: (partial: BodyPreview | undefined) => void,
+): Promise<BodyPreview | undefined> {
   const contentType = response.headers.get('content-type') ?? undefined;
   const declared = Number(response.headers.get('content-length') ?? Number.NaN);
   const size = Number.isFinite(declared) ? declared : undefined;
@@ -123,6 +136,12 @@ async function readFetchBody(response: Response, maxBody: number): Promise<BodyP
   let text = '';
   let bytes = 0;
   let truncated = false;
+  let reported = 0;
+  const report = () => {
+    reported = now();
+    onProgress(text === '' ? undefined : { kind: 'text', text, size: bytes, contentType });
+  };
+  const timer = setTimeout(report, STREAM_AFTER_MS);
   try {
     for (;;) {
       const { done, value } = await reader.read();
@@ -133,9 +152,11 @@ async function readFetchBody(response: Response, maxBody: number): Promise<BodyP
         truncated = true;
         break;
       }
+      if (reported > 0 && now() - reported >= STREAM_EVERY_MS) report();
     }
     if (!truncated) text += decoder.decode();
   } finally {
+    clearTimeout(timer);
     if (truncated) reader.cancel().catch(() => {});
   }
   return {

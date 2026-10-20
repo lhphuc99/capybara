@@ -67,7 +67,7 @@ export function splitUrl(url: string): { path: string; host: string } {
 }
 
 export function statusTone(entry: NetworkEntry): 'ok' | 'redirect' | 'error' | 'pending' {
-  if (entry.state === 'pending') return 'pending';
+  if (entry.state === 'pending' && !entry.streaming) return 'pending';
   if (entry.state === 'failed' || (entry.status ?? 0) >= 400) return 'error';
   if ((entry.status ?? 0) >= 300) return 'redirect';
   return 'ok';

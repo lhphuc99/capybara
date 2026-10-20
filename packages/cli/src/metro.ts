@@ -242,6 +242,7 @@ function watchApp(
     for (const event of current.held) releaseEvent(event, release);
     current.held = [];
     current.session?.close();
+    for (const request of current.requests.values()) clearTimeout(request.streaming);
     current.requests.clear();
     return Promise.all([current.mmkv?.stop(), current.sockets?.stop()]).then(() => {});
   };

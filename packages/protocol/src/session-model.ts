@@ -19,6 +19,8 @@ export interface NetworkEntry {
   requestBody?: BodyPreview;
   /** `open` is only used by WebSockets. */
   state: 'pending' | 'open' | 'done' | 'failed';
+  /** Still pending, with its response headers in and its body arriving. */
+  streaming?: true;
   status?: number;
   statusText?: string;
   responseHeaders?: Record<string, string>;
@@ -148,9 +150,11 @@ export function applySessionEvents<T extends SessionModel>(model: T, events: Cap
         // The request may have been trimmed from the server's buffer; a lone response says little.
         if (index < 0) break;
         const list = editableNetwork();
+        const { streaming: _, ...entry } = list[index]!;
         list[index] = {
-          ...list[index]!,
-          state: 'done',
+          ...entry,
+          state: p.streaming ? 'pending' : 'done',
+          ...(p.streaming && { streaming: true }),
           status: p.status,
           statusText: p.statusText,
           responseHeaders: p.headers,
