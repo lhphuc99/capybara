@@ -39,7 +39,7 @@ import { newest, pickSession, sessionHeader, sessionLine } from './mcp-text.js';
 import { registerWriteTools, WRITE_INSTRUCTIONS } from './mcp-writes.js';
 import { resolveProjectDir, setupGuide } from './setup-guide.js';
 
-const INSTRUCTIONS = `Capybara records what a React Native or web app in development is doing: console logs, network requests (fetch, XHR, WebSocket), storage (localStorage, sessionStorage, cookies, AsyncStorage, MMKV) and state (Redux, Zustand, TanStack Query, SWR, React Context). These tools read the Capybara server running on this computer. To add Capybara to an app, call get_setup_guide, which works before Capybara runs, and make the changes it lists.
+const INSTRUCTIONS = `Capybara records what a React Native or web app in development is doing: console logs, network requests (fetch, XHR, WebSocket), storage (localStorage, sessionStorage, cookies, AsyncStorage, MMKV) and state (Redux, Zustand, XState, MobX, TanStack Query, SWR, React Context). These tools read the Capybara server running on this computer. To add Capybara to an app, call get_setup_guide, which works before Capybara runs, and make the changes it lists.
 
 Tools use the newest connected app unless you pass a session id from list_sessions. Ids from get_network work with get_request, get_websocket and diagnose_request. get_state lists the state stores; pass a store's id or label to get_state for its current state, to get_state_actions for what changed and which action changed it, or to get_queries for TanStack Query and SWR entries. Lists show the newest entries; pass "after" with the last seq you saw to get only newer ones, or "before" to page back. Values that look like credentials (Authorization, cookies, tokens, passwords) are hidden.`;
 
@@ -394,7 +394,7 @@ export function createMcpServer(connection: ViewerConnection, options: McpOption
     {
       title: 'Read app state',
       description:
-        "Reads the app's state stores (Redux, Zustand, React Context, and TanStack Query and SWR caches): without store, lists them with their ids and latest change; with store, its current state, or only the part at path. The current state is read from the app, which must be connected.",
+        "Reads the app's state stores (Redux, Zustand, XState, MobX, React Context, and TanStack Query and SWR caches): without store, lists them with their ids and latest change; with store, its current state, or only the part at path. The current state is read from the app, which must be connected.",
       inputSchema: {
         session,
         store: z.string().optional().describe('Store id or label from the list, e.g. redux:1 or cart.'),

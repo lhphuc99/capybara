@@ -573,7 +573,7 @@ describe('capybara mcp', () => {
       // Without the state plugin the app is never asked; it would not answer.
       const result = await until(() => call('get_state', { session: 'web-3' }), ({ isError }) => !isError);
       expect(result.text).toBe(
-        'Legacy (session web-3) uses @capybara-devtools/web 0.2.1, which does not report Redux, Zustand, TanStack Query, SWR or React Context state. Update it to the latest version.',
+        'Legacy (session web-3) uses @capybara-devtools/web 0.2.1, which does not report Redux, Zustand, XState, MobX, TanStack Query, SWR or React Context state. Update it to the latest version.',
       );
       expect((await call('get_state_actions', { session: 'web-3' })).text).toContain('Legacy (session web-3): no state changes recorded. Legacy (session web-3) uses');
     } finally {

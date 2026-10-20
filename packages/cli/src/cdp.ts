@@ -63,18 +63,6 @@ export function primitiveValue(object: RemoteObject): SerializedValue {
   return object.description ?? object.className ?? 'Object';
 }
 
-/** React Native reports unhandled promise rejections through `console.error`. */
-export function isUnhandledRejection(args: SerializedValue[]): boolean {
-  const first = args[0] as { $t?: unknown; message?: unknown } | null | undefined;
-  return (
-    typeof first === 'object' &&
-    first !== null &&
-    first.$t === 'error' &&
-    typeof first.message === 'string' &&
-    first.message.startsWith('Uncaught (in promise')
-  );
-}
-
 /** The `initiator` of `Network.requestWillBeSent`; React Native puts the JS stack of the request in it. */
 export interface RequestInitiator {
   stack?: { callFrames?: Array<{ functionName?: string }> };

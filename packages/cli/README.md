@@ -1,6 +1,6 @@
 # capybara-devtools
 
-Debug React Native and web apps from one place: logs, network (including WebSockets), storage and state (Redux, Zustand, TanStack Query, SWR, React Context), streamed live to a local UI.
+Debug React Native and web apps from one place: logs, network (including WebSockets), storage and state (Redux, Zustand, XState, MobX, TanStack Query, SWR, React Context), streamed live to a local UI.
 
 ```bash
 npx capybara-devtools

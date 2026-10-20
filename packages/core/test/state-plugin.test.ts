@@ -380,6 +380,28 @@ describe('statePlugin options and entries', () => {
     expect(cache.acted).toEqual(['refetch:b']);
     expect(() => commands.get!({ store: id })).toThrow('client has entries instead of a state');
   });
+
+  it('sanitizes the data of an entry before it is read, and never sends it when the sanitizer fails', () => {
+    online();
+    const cache = fakeCache();
+    const id = register(cache.driver)!;
+    cache.set('me', 'success', { name: 'Ann', token: 'secret' });
+    const seen: unknown[] = [];
+    const { commands } = harness({
+      sanitizeEntry: (data, entry) => {
+        seen.push(entry);
+        return { ...(data as object), token: '[hidden]' };
+      },
+    });
+    expect(commands.entry!({ store: id, key: 'me', path: ['token'] })?.data).toBe('[hidden]');
+    expect(seen).toEqual([{ store: expect.objectContaining({ id, library: 'tanstack-query' }), key: 'me' }]);
+    const failing = harness({
+      sanitizeEntry: () => {
+        throw new Error('bad sanitizer');
+      },
+    });
+    expect(failing.commands.entry!({ store: id, key: 'me' })?.data).toBe('[sanitizeEntry threw: bad sanitizer]');
+  });
 });
 
 describe('statePlugin in a client', () => {

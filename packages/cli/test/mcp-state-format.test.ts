@@ -101,7 +101,7 @@ describe('state stores in MCP', () => {
       lastSeen: 0,
       eventCount: 0,
     };
-    expect(noStoresText(session)).toContain('but not Redux, Zustand, TanStack Query, SWR or React Context state.');
+    expect(noStoresText(session)).toContain('but not Redux, Zustand, XState, MobX, TanStack Query, SWR or React Context state.');
   });
 
   it('lists the newest of same-named stores and leaves out library contexts', () => {

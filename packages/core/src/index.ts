@@ -27,6 +27,10 @@ export { capybaraReduxEnhancer, connectReduxStore } from './plugins/state/redux.
 export type { ReduxStoreEnhancer, ReduxStoreLike, ReduxStoreOptions } from './plugins/state/redux.js';
 export { watchZustand } from './plugins/state/zustand.js';
 export type { WatchZustandOptions, ZustandStoreLike } from './plugins/state/zustand.js';
+export { watchXState } from './plugins/state/xstate.js';
+export type { WatchXStateOptions, XStateActorLike } from './plugins/state/xstate.js';
+export { watchMobX } from './plugins/state/mobx.js';
+export type { MobxLike, WatchMobXOptions } from './plugins/state/mobx.js';
 export { createQueryClientDriver, summarizeMutation, summarizeQuery, watchQueryClient } from './plugins/state/tanstack.js';
 export type { QueryClientLike, WatchQueryClientOptions } from './plugins/state/tanstack.js';
 export { summarizeSWREntry, swrMiddleware, swrProvider, watchSWR } from './plugins/state/swr.js';

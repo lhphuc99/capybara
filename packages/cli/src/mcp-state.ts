@@ -81,7 +81,7 @@ export function reportsState(info: SessionInfo): boolean {
   return info.plugins?.includes('state') === true;
 }
 
-const LIBRARY_NAMES = 'Redux, Zustand, TanStack Query, SWR or React Context';
+const LIBRARY_NAMES = 'Redux, Zustand, XState, MobX, TanStack Query, SWR or React Context';
 
 /** Why a session shows no stores, in the UI's words. */
 export function noStoresText(session: SessionMeta): string {

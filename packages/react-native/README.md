@@ -34,13 +34,16 @@ Then run `npx capybara-devtools` (or open the desktop app) on the computer runni
 
 ## State
 
-The State tab shows Redux, Zustand, TanStack Query, SWR and React Context. `init()` picks up Redux Toolkit's `configureStore()`, zustand stores made with `devtools()` and React Context providers on its own, as long as it runs before your store modules load. With Expo Router, that means an entry file of your own (`"main": "index.ts"`) that imports the file calling `init()`, then `expo-router/entry`. The rest take one line each:
+The State tab shows Redux, Zustand, XState, MobX, TanStack Query, SWR and React Context. `init()` picks up Redux Toolkit's `configureStore()`, zustand stores made with `devtools()` and React Context providers on its own, as long as it runs before your store modules load. With Expo Router, that means an entry file of your own (`"main": "index.ts"`) that imports the file calling `init()`, then `expo-router/entry`. The rest take one line each:
 
 ```tsx
-import { swrMiddleware, watchQueryClient, watchZustand } from '@capybara-devtools/react-native';
+import { swrMiddleware, watchMobX, watchQueryClient, watchXState, watchZustand } from '@capybara-devtools/react-native';
+import * as mobx from 'mobx';
 
 if (__DEV__) {
   watchZustand(useCounterStore, { name: 'counter' }); // a store without devtools()
+  watchXState(checkoutActor); // from createActor(machine)
+  watchMobX(cartStore, mobx, { name: 'cart' });
   watchQueryClient(queryClient);
 }
 

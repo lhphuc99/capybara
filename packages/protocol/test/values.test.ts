@@ -65,7 +65,7 @@ describe('state changes', () => {
   });
 
   it('titles libraries in a fixed order', () => {
-    expect(STATE_LIBRARIES).toEqual(['redux', 'zustand', 'tanstack-query', 'swr', 'context']);
+    expect(STATE_LIBRARIES).toEqual(['redux', 'zustand', 'xstate', 'mobx', 'tanstack-query', 'swr', 'context']);
     expect(libraryTitle('tanstack-query')).toBe('TanStack Query');
     expect(libraryTitle('jotai')).toBe('jotai');
   });

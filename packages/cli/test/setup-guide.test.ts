@@ -70,6 +70,18 @@ describe('setup guide', () => {
     expect(text).not.toContain('claude mcp add');
   });
 
+  it('adds a line for XState actors and MobX stores', () => {
+    const dir = project({
+      'package.json': { name: 'flows', dependencies: { react: '^19.0.0', 'react-dom': '^19.0.0', xstate: '^5.0.0', mobx: '^7.0.0' }, devDependencies: { vite: '^8.0.0' } },
+      'index.html': VITE_HTML,
+      'src/main.tsx': '',
+    });
+    expect(app(dir).state).toEqual(['xstate', 'mobx', 'context']);
+    const text = guide(dir);
+    expect(text).toContain("import { watchXState } from '@capybara-devtools/web';\n\nif (import.meta.env.DEV) watchXState(actor);");
+    expect(text).toContain("import { watchMobX } from '@capybara-devtools/web';\nimport * as mobx from 'mobx';\n\nif (import.meta.env.DEV) watchMobX(cartStore, mobx, { name: 'cart' });");
+  });
+
   it('uses the packageManager field first, and tells Yarn 1 from later versions', () => {
     const yarn1 = project({ 'package.json': { dependencies: { vite: '*' } }, 'yarn.lock': '# yarn lockfile v1\n' });
     expect(findPackageManager(yarn1)).toMatchObject({ name: 'yarn', berry: false });

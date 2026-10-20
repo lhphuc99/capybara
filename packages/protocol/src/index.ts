@@ -89,6 +89,13 @@ export interface LogPayload {
   level: LogLevel;
   source: LogSource;
   args: SerializedValue[];
+  /** How many `console.group()` calls the entry was logged in; absent outside any. */
+  depth?: number;
+  /**
+   * Console methods shown differently from a plain log. `table` has the data as its first argument and the
+   * columns, if given, as its second; `trace` ends with an error value named Trace that holds the stack.
+   */
+  method?: 'table' | 'group' | 'groupCollapsed' | 'trace';
 }
 
 /** Through Metro, `other` is a request reported without the JS stack that tells fetch from XHR, as Expo Go reports them. */
@@ -189,7 +196,7 @@ export interface StorageChangePayload {
   key?: string;
 }
 
-export type StateLibrary = 'redux' | 'zustand' | 'tanstack-query' | 'swr' | 'context';
+export type StateLibrary = 'redux' | 'zustand' | 'xstate' | 'mobx' | 'tanstack-query' | 'swr' | 'context';
 
 /** Keys from the root of a store's state or an entry's data, e.g. `['todos', 0, 'title']`. */
 export type StatePath = Array<string | number>;

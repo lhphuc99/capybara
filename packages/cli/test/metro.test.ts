@@ -280,6 +280,37 @@ describe('Metro discovery and CDP event relay', () => {
     expect(f.events().map((e) => e.seq)).toEqual([1, 2, 3, 4]);
   });
 
+  it('keeps console groups, tables and traces apart from plain logs', async () => {
+    const f = await fixture();
+    f.start();
+    await until(() => expect(f.sessions()).toHaveLength(1));
+    f.log([{ type: 'string', value: 'Loading' }], 'startGroup');
+    f.log([{ type: 'string', value: 'inside' }]);
+    f.log([], 'startGroupCollapsed');
+    f.log([{ type: 'object', objectId: 'user' }], 'table');
+    f.log([], 'endGroup');
+    f.log([], 'endGroup');
+    f.log([{ type: 'string', value: 'outside' }]);
+    f.event('Runtime.consoleAPICalled', {
+      type: 'trace', args: [], executionContextId: 1, timestamp: 1_800_000_000_000,
+      stackTrace: { callFrames: [{ functionName: 'load', url: 'http://localhost:8081/index.bundle', lineNumber: 9, columnNumber: 4 }] },
+    });
+    await until(() => expect(f.events()).toHaveLength(6));
+    expect(f.events().map((e) => e.payload)).toEqual([
+      { level: 'log', source: 'console', args: ['Loading'], method: 'group' },
+      { level: 'log', source: 'console', args: ['inside'], depth: 1 },
+      { level: 'log', source: 'console', args: ['console.groupCollapsed'], depth: 1, method: 'groupCollapsed' },
+      { level: 'log', source: 'console', args: [{ name: 'Ada', roles: ['admin'] }], depth: 2, method: 'table' },
+      { level: 'log', source: 'console', args: ['outside'] },
+      {
+        level: 'log',
+        source: 'console',
+        args: ['console.trace', { $t: 'error', name: 'Trace', message: '', stack: 'Trace\n    at load (http://localhost:8081/index.bundle:10:5)' }],
+        method: 'trace',
+      },
+    ]);
+  });
+
   it('captures POST headers/body, 404 responses, base64 bodies, failed and aborted requests', async () => {
     const f = await fixture();
     f.start();

@@ -1,9 +1,10 @@
 import type { LogLevel } from '@capybara-devtools/protocol';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { memo, useMemo, useRef, useState } from 'react';
+import { memo, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { CopyButton } from '../components/CopyButton';
 import { EmptyMessage } from '../components/EmptyMessage';
 import { JsonTree } from '../components/JsonTree';
+import { LogTable } from '../components/LogTable';
 import { SearchInput } from '../components/SearchInput';
 import { useFollow } from '../follow';
 import { formatLogMessage, formatTime, isExpandable, LOG_SOURCE_LABELS, logEntryText, makeMatcher } from '../format';
@@ -16,6 +17,10 @@ const LEVELS: Array<{ level: LogLevel; label: string }> = [
   { level: 'log', label: 'Logs' },
   { level: 'debug', label: 'Debug' },
 ];
+
+const isGroup = (entry: LogEntry) => entry.method === 'group' || entry.method === 'groupCollapsed';
+/** `toggled` holds the groups opened or closed by hand; console.groupCollapsed() starts closed. */
+const groupOpen = (entry: LogEntry, toggled: ReadonlySet<number>) => (entry.method === 'group') !== toggled.has(entry.seq);
 
 // Entries are immutable, so the text used for filtering is built once per entry.
 const searchTexts = new WeakMap<LogEntry, string>();
@@ -32,6 +37,7 @@ export function LogsPanel({ session }: { session: SessionState }) {
   const [query, setQuery] = useState('');
   const [hidden, setHidden] = useState<ReadonlySet<LogLevel>>(() => new Set());
   const [expanded, setExpanded] = useState<ReadonlySet<number>>(() => new Set());
+  const [toggledGroups, setToggledGroups] = useState<ReadonlySet<number>>(() => new Set());
   const listRef = useRef<HTMLDivElement>(null);
   const { logs } = session;
 
@@ -41,10 +47,21 @@ export function LogsPanel({ session }: { session: SessionState }) {
     for (const entry of logs) result[entry.level]++;
     return result;
   }, [logs]);
-  const visible = useMemo(
-    () => logs.filter((entry) => !hidden.has(entry.level) && (!matcher || matcher.test(searchText(entry)))),
-    [logs, hidden, matcher],
-  );
+  const visible = useMemo(() => {
+    const shown: LogEntry[] = [];
+    // The entries after a closed group's line and deeper than it are in the group. A search shows every match.
+    let closedAt: number | undefined;
+    for (const entry of logs) {
+      const depth = entry.depth ?? 0;
+      if (closedAt !== undefined && !matcher) {
+        if (depth > closedAt) continue;
+        closedAt = undefined;
+      }
+      if (isGroup(entry) && !groupOpen(entry, toggledGroups)) closedAt = depth;
+      if (!hidden.has(entry.level) && (!matcher || matcher.test(searchText(entry)))) shown.push(entry);
+    }
+    return shown;
+  }, [logs, hidden, matcher, toggledGroups]);
 
   const virtualizer = useVirtualizer({
     count: visible.length,
@@ -70,6 +87,13 @@ export function LogsPanel({ session }: { session: SessionState }) {
     if (next.has(seq)) next.delete(seq);
     else next.add(seq);
     setExpanded(next);
+  };
+
+  const toggleGroup = (seq: number) => {
+    const next = new Set(toggledGroups);
+    if (next.has(seq)) next.delete(seq);
+    else next.add(seq);
+    setToggledGroups(next);
   };
 
   return (
@@ -123,9 +147,20 @@ export function LogsPanel({ session }: { session: SessionState }) {
                     data-index={item.index}
                     ref={virtualizer.measureElement}
                     className={`log-row level-${entry.level}`}
-                    style={{ position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${item.start}px)` }}
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      width: '100%',
+                      transform: `translateY(${item.start}px)`,
+                      ...(entry.depth && ({ '--depth': entry.depth } as CSSProperties)),
+                    }}
                   >
-                    <LogRow entry={entry} expanded={expanded.has(entry.seq)} onToggle={toggleRow} />
+                    <LogRow
+                      entry={entry}
+                      expanded={isGroup(entry) ? groupOpen(entry, toggledGroups) : expanded.has(entry.seq)}
+                      onToggle={isGroup(entry) ? toggleGroup : toggleRow}
+                    />
                   </div>
                 );
               })}
@@ -142,6 +177,7 @@ export function LogsPanel({ session }: { session: SessionState }) {
   );
 }
 
+/** `expanded` opens a group's entries for a group, and the objects of any other entry. */
 const LogRow = memo(function LogRow({
   entry,
   expanded,
@@ -151,18 +187,28 @@ const LogRow = memo(function LogRow({
   expanded: boolean;
   onToggle: (seq: number) => void;
 }) {
-  const canExpand = entry.args.some(isExpandable);
+  const group = isGroup(entry);
+  // A table shows its data already.
+  const canExpand = group || (entry.method !== 'table' && entry.args.some(isExpandable));
   const source = LOG_SOURCE_LABELS[entry.source];
   return (
     <>
-      <div className={`log-line${canExpand ? ' clickable' : ''}`} onClick={canExpand ? () => onToggle(entry.seq) : undefined}>
+      <div
+        className={`log-line${canExpand ? ' clickable' : ''}${group ? ' log-group' : ''}`}
+        onClick={canExpand ? () => onToggle(entry.seq) : undefined}
+      >
         <span className="log-time">{formatTime(entry.ts)}</span>
         {canExpand ? <span className={`caret${expanded ? ' open' : ''}`} /> : <span className="caret-space" />}
         <span className="log-message">{formatLogMessage(entry.args)}</span>
         {source && <span className="log-source">{source}</span>}
         <CopyButton label="Copy this log entry" text={() => logEntryText(entry)} />
       </div>
-      {expanded && (
+      {entry.method === 'table' && (
+        <div className="log-details">
+          <LogTable data={entry.args[0]} columns={entry.args[1]} />
+        </div>
+      )}
+      {expanded && !group && (
         <div className="log-details">
           {entry.args.filter(isExpandable).map((arg, index) => (
             <JsonTree key={index} value={arg} expandDepth={1} />

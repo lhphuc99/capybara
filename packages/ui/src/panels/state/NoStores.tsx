@@ -19,7 +19,7 @@ export function NoStores({
       return (
         <EmptyPanel title="State needs the SDK">
           <p>
-            Without the SDK, Capybara reads logs, network and storage through Metro, but not Redux, Zustand, TanStack Query, SWR or
+            Without the SDK, Capybara reads logs, network and storage through Metro, but not Redux, Zustand, XState, MobX, TanStack Query, SWR or
             React Context state. Add it to the app to see its stores:
           </p>
           <Code>{`import { init } from '@capybara-devtools/react-native';\n\nif (__DEV__) init();`}</Code>
@@ -30,7 +30,7 @@ export function NoStores({
       return (
         <EmptyPanel title="Update the SDK to see state">
           <p>
-            {info.appName} uses {info.sdk.name} {info.sdk.version}, which does not report Redux, Zustand, TanStack Query, SWR or React
+            {info.appName} uses {info.sdk.name} {info.sdk.version}, which does not report Redux, Zustand, XState, MobX, TanStack Query, SWR or React
             Context state.
           </p>
           <pre className="code">npm install {info.sdk.name}@latest</pre>
@@ -89,7 +89,7 @@ watchZustand(useCartStore, { name: 'cart' });
   return (
     <EmptyPanel title="No state stores yet" className="state-empty">
       <p>
-        Redux, Zustand, TanStack Query, SWR and React Context show up here once the app registers them.
+        Redux, Zustand, XState, MobX, TanStack Query, SWR and React Context show up here once the app registers them.
         <br />
         Keep <code>init()</code> in the first file your app imports,{' '}
         {web ? 'before your store modules and react-dom load.' : 'before your store modules load.'}

@@ -33,7 +33,8 @@ export const LOG_SOURCE_LABELS: Record<LogSource, string | null> = {
 /** A log entry as copied text: the line as the list shows it, then each object or error in full. */
 export function logEntryText(entry: LogEntry): string {
   const source = LOG_SOURCE_LABELS[entry.source];
-  const head = `${formatTime(entry.ts)} ${entry.level.toUpperCase().padEnd(5)} ${source ? `(${source}) ` : ''}${formatLogMessage(entry.args)}`;
+  const indent = '  '.repeat(entry.depth ?? 0);
+  const head = `${formatTime(entry.ts)} ${entry.level.toUpperCase().padEnd(5)} ${indent}${source ? `(${source}) ` : ''}${formatLogMessage(entry.args)}`;
   const details = entry.args
     .filter((arg) => isExpandable(arg) || (isSpecial(arg) && arg.$t === 'string'))
     .map((arg) => valueText(arg).replace(/^/gm, '  '));

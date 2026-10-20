@@ -86,6 +86,7 @@ interface Run {
   mmkv?: ReturnType<typeof watchMetroMMKV>;
   sockets?: ReturnType<typeof watchMetroWebSockets>;
   requests: Map<string, Request>;
+  groups: { depth: number };
 }
 
 /**
@@ -227,6 +228,7 @@ function watchApp(
       recheck: false,
       sawRunning: false,
       requests: new Map(),
+      groups: { depth: 0 },
     };
     run = current;
     void decide(current);
@@ -358,6 +360,7 @@ function watchApp(
       release,
       contextId: current.contextId,
       requests: current.requests,
+      groups: current.groups,
       metroPort,
       label,
     });

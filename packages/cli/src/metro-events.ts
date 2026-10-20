@@ -1,11 +1,10 @@
 import { serialize } from '@capybara-devtools/core';
-import type { BodyPreview, SerializedValue } from '@capybara-devtools/protocol';
+import { isUnhandledRejection, type BodyPreview, type LogPayload, type SerializedValue } from '@capybara-devtools/protocol';
 import {
   headerValue,
   initiatorOf,
   isDevServerRequest,
   isTextual,
-  isUnhandledRejection,
   logLevel,
   primitiveValue,
   responseBody,
@@ -36,7 +35,16 @@ export interface ConsoleCall {
   args: RemoteObject[];
   executionContextId: number;
   timestamp?: number;
+  stackTrace?: { callFrames?: Array<{ functionName?: string; url?: string; lineNumber?: number; columnNumber?: number }> };
 }
+
+/** CDP console types shown differently from a plain log, as the SDK names them. */
+const METHODS: Record<string, LogPayload['method']> = {
+  table: 'table',
+  startGroup: 'group',
+  startGroupCollapsed: 'groupCollapsed',
+  trace: 'trace',
+};
 
 interface ExceptionThrown {
   timestamp?: number;
@@ -86,6 +94,8 @@ export interface EventContext {
   release(objects: RemoteObject[]): void;
   contextId: number;
   requests: Map<string, Request>;
+  /** Open `console.group()` calls of this run. */
+  groups: { depth: number };
   metroPort: number;
   /** Names the app in debug lines. */
   label(): string;
@@ -105,15 +115,25 @@ export async function relayEvent(event: CdpEvent, context: EventContext): Promis
   const { session } = context;
   switch (event.method) {
     case 'Runtime.consoleAPICalled': {
-      const { type, args, executionContextId, timestamp } = event.params as ConsoleCall;
+      const { type, args, executionContextId, timestamp, stackTrace } = event.params as ConsoleCall;
+      const { groups } = context;
+      if (type === 'endGroup') groups.depth = Math.max(0, groups.depth - 1);
       const level = logLevel(type);
       if (!level) {
         context.release(args);
         return;
       }
+      const method = METHODS[type];
       const values = await serializeArgs(args, executionContextId ?? context.contextId, context);
+      if ((method === 'group' || method === 'groupCollapsed') && values.length === 0) values.push(`console.${method}`);
+      if (method === 'trace') {
+        if (values.length === 0) values.push('console.trace');
+        values.push({ $t: 'error', name: 'Trace', message: '', stack: traceStack(stackTrace) });
+      }
       const source = level === 'error' && isUnhandledRejection(values) ? 'unhandledrejection' : 'console';
-      session.emit('log', { level, source, args: values }, epochMs(timestamp));
+      const depth = groups.depth;
+      if (method === 'group' || method === 'groupCollapsed') groups.depth++;
+      session.emit('log', { level, source, args: values, ...(depth > 0 && { depth }), ...(method && { method }) }, epochMs(timestamp));
       return;
     }
     case 'Runtime.bindingCalled': {
@@ -255,6 +275,14 @@ async function readBody(
     },
   );
   return result ? responseBody(result, contentType) : undefined;
+}
+
+/** A stack in the format of V8 and Hermes, which the server maps to the app's sources. CDP lines and columns count from 0. */
+function traceStack(stackTrace: ConsoleCall['stackTrace']): string {
+  const frames = (stackTrace?.callFrames ?? []).map(
+    (frame) => `    at ${frame.functionName || 'anonymous'} (${frame.url ?? ''}:${(frame.lineNumber ?? 0) + 1}:${(frame.columnNumber ?? 0) + 1})`,
+  );
+  return ['Trace', ...frames].join('\n');
 }
 
 /** CDP console and exception timestamps are milliseconds since the epoch. */

@@ -173,6 +173,19 @@ export function formatLogMessage(args: SerializedValue[]): string {
   return parts.join(' ');
 }
 
+/** React Native reports an unhandled promise rejection through `console.error`, with an error as the first argument. */
+export function isUnhandledRejection(args: SerializedValue[]): boolean {
+  const first = args[0];
+  return (
+    typeof first === 'object' &&
+    first !== null &&
+    isSpecial(first) &&
+    first.$t === 'error' &&
+    typeof first.message === 'string' &&
+    first.message.startsWith('Uncaught (in promise')
+  );
+}
+
 function applyFormat(format: string, args: SerializedValue[]): { text: string; used: number } {
   let used = 0;
   const text = format.replace(/%([sdifoOc%])/g, (match, spec: string) => {
@@ -233,6 +246,8 @@ export function formatBytes(bytes: number | undefined): string {
 const LIBRARY_TITLES: Record<string, string> = {
   redux: 'Redux',
   zustand: 'Zustand',
+  xstate: 'XState',
+  mobx: 'MobX',
   'tanstack-query': 'TanStack Query',
   swr: 'SWR',
   context: 'React Context',

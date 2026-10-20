@@ -42,7 +42,9 @@ export function filterLogs(logs: LogEntry[], query: LogQuery, redact: Redactor):
 export function logText(entry: LogEntry, redact: Redactor, full: boolean): string {
   const args = entry.args.map(redact.value);
   const source = SOURCE_LABELS[entry.source];
-  const head = `#${entry.seq} ${clock(entry.ts)} ${entry.level.toUpperCase().padEnd(5)} ${source ? `(${source}) ` : ''}${formatLogMessage(args)}`;
+  // Entries in console.group() calls are indented under the group's line, as browsers show them.
+  const lead = `${'  '.repeat(entry.depth ?? 0)}${entry.method === 'group' || entry.method === 'groupCollapsed' ? '▸ ' : ''}`;
+  const head = `#${entry.seq} ${clock(entry.ts)} ${entry.level.toUpperCase().padEnd(5)} ${lead}${source ? `(${source}) ` : ''}${formatLogMessage(args)}`;
   const details = full
     ? args.filter((arg) => isExpandable(arg) || (isSpecial(arg) && arg.$t === 'string')).map((arg) => valueText(arg))
     : args.flatMap((arg) => (isSpecial(arg) && arg.$t === 'error' && arg.stack ? [stackTop(arg.stack, arg.message)] : []));

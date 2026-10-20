@@ -2,7 +2,7 @@
 
 # Capybara
 
-Debug React Native and web apps from one place: logs, network (including WebSockets), storage and state (Redux, Zustand, TanStack Query, SWR, React Context), streamed live to a local UI.
+Debug React Native and web apps from one place: logs, network (including WebSockets), storage and state (Redux, Zustand, XState, MobX, TanStack Query, SWR, React Context), streamed live to a local UI.
 
 **[Website](https://capybara-devtools.chanieshop.com)** · [Download](https://capybara-devtools.chanieshop.com/#download)
 
@@ -100,7 +100,7 @@ On older versions, call it at the top of a client component rendered from the ro
 
 ### State (Redux, Zustand, TanStack Query, SWR, React Context)
 
-With the web or React Native SDK, the **State** tab shows the app's stores, grouped by library. Redux, Zustand and React Context have a timeline of changes with their diffs, and the current state as a tree; Redux stores and zustand's `devtools()` stores also name the action behind each change. TanStack Query and SWR list their entries by status with each one's data, and buttons to refetch, invalidate, reset, cancel or remove a query, or to revalidate, clear or reset an SWR key. Apart from those buttons the tab only reads: no dispatching, editing or time travel yet. Update the CLI or the desktop app together with the SDK; an older one keeps state events in the same history as logs, which can push logs out.
+With the web or React Native SDK, the **State** tab shows the app's stores, grouped by library. Redux, Zustand, XState, MobX and React Context have a timeline of changes with their diffs, and the current state as a tree; Redux stores, zustand's `devtools()` stores and MobX stores also name the action behind each change, and XState actors the event behind each transition. TanStack Query and SWR list their entries by status with each one's data, and buttons to refetch, invalidate, reset, cancel or remove a query, or to revalidate, clear or reset an SWR key. Apart from those buttons the tab only reads: no dispatching, editing or time travel yet. Update the CLI or the desktop app together with the SDK; an older one keeps state events in the same history as logs, which can push logs out.
 
 `init()` turns it on, and has to run before your store modules load: Redux Toolkit looks for the Redux DevTools extension once, when it is imported, and zustand's `devtools()` when it creates the store. Calling `init()` in a file of its own, imported on the first line of the entry file as shown for [the web](#web-react-vite-nextjs-client) and [React Native](#optional-react-native-sdk-storage-editing), does that. In Next.js, `instrumentation-client.ts` runs early enough (checked with the App Router of Next.js 16.4, on Turbopack and webpack). With Expo Router, give the app an entry file that imports it first:
 
@@ -115,15 +115,20 @@ These show up on their own: Redux Toolkit's `configureStore()`, plain Redux stor
 The rest take one line each. These can run before or after `init()`, do nothing on the server, return a function that stops watching, and also come from `@capybara-devtools/react-native`:
 
 ```ts
-import { watchQueryClient, watchSWR, watchZustand } from '@capybara-devtools/web';
+import { watchMobX, watchQueryClient, watchSWR, watchXState, watchZustand } from '@capybara-devtools/web';
+import * as mobx from 'mobx';
 import { SWRConfig } from 'swr';
 
 if (import.meta.env.DEV) {
   watchZustand(useCounterStore, { name: 'counter' }); // without devtools(): diffs, no action names
+  watchXState(checkoutActor); // from createActor(machine); named after the machine's id
+  watchMobX(cartStore, mobx, { name: 'cart' }); // the mobx module is passed in, so the SDK does not depend on it
   watchQueryClient(queryClient); // give each client a name when there are several
   watchSWR(SWRConfig); // SWR's default cache
 }
 ```
+
+An XState actor shows its state value, context and status; without XState's inspection API (before 5.x), transitions come without their events. A MobX store shows what `toJS()` makes of it, and the actions behind its changes come from MobX's `spy`, which works in development builds.
 
 Watch a `QueryClient` made in a component, as in Next.js, from an effect: StrictMode runs `useState` initializers twice, and the client it throws away would show up too.
 
@@ -164,7 +169,7 @@ export const store = configureStore({
 - `context: false` turns React Context off.
 - `maxActionsPerSecond` (default 30): changes to a store beyond that are folded into its next record, marked as skipped.
 - `actionsDenylist`: action types kept off the timeline, as strings (the whole type) or regular expressions. Their changes show in the next record.
-- `sanitizeState(state, store)` and `sanitizeAction(action, store)`: only what they return leaves the app. `sanitizeState` does not apply to TanStack Query or SWR data.
+- `sanitizeState(state, store)` and `sanitizeAction(action, store)`: only what they return leaves the app. For the data of TanStack Query and SWR entries, use `sanitizeEntry(data, { store, key })`. Entry summaries show the shape of the data, never its values.
 - `hideFunctions` (default true) leaves out keys that hold functions, such as zustand actions.
 
 The Redux DevTools options that hold data back (`stateSanitizer`, `actionSanitizer`, `actionsDenylist`, `actionsAllowlist`, `predicate`) apply too, given in Redux Toolkit's `devTools` or in the options of zustand's `devtools()`.

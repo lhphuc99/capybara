@@ -1,14 +1,11 @@
-import type { BodyPreview, CapybaraEvent, LogLevel, LogSource, NetworkErrorPayload, NetworkInitiator, SerializedValue } from './index.js';
+import type { BodyPreview, CapybaraEvent, LogPayload, NetworkErrorPayload, NetworkInitiator } from './index.js';
 import { applyStateEvent, emptyStateSlice, type StateLimits, type StateSlice } from './state-model.js';
 
 // What a session's events add up to, as the UI shows it and `capybara mcp` reports it.
 
-export interface LogEntry {
+export interface LogEntry extends LogPayload {
   seq: number;
   ts: number;
-  level: LogLevel;
-  source: LogSource;
-  args: SerializedValue[];
 }
 
 export interface NetworkEntry {

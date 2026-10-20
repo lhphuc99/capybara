@@ -57,6 +57,8 @@ export interface StatePluginOptions {
   /** Runs before a state is diffed or read, e.g. to blank out tokens; only what it returns leaves the app. */
   sanitizeState?: (state: unknown, store: StateStoreInfo) => unknown;
   sanitizeAction?: (action: unknown, store: StateStoreInfo) => unknown;
+  /** Runs before the data of a TanStack Query or SWR entry is read; only what it returns leaves the app. */
+  sanitizeEntry?: (data: unknown, entry: { store: StateStoreInfo; key: string }) => unknown;
   /** Leave out keys that hold functions, such as Zustand actions. Default true. */
   hideFunctions?: boolean;
   /**

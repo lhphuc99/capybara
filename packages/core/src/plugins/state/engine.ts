@@ -30,6 +30,8 @@ export interface StateEngineOptions {
   /** Runs before a state is diffed or read; only what it returns leaves the app. */
   sanitizeState?(state: unknown, store: StateStoreInfo): unknown;
   sanitizeAction?(action: unknown, store: StateStoreInfo): unknown;
+  /** Runs before the data of an entry is read; only what it returns leaves the app. */
+  sanitizeEntry?(data: unknown, entry: { store: StateStoreInfo; key: string }): unknown;
   /** Leave out keys that hold functions, such as Zustand actions. Default true. */
   hideFunctions?: boolean;
 }
@@ -321,6 +323,14 @@ export function createStateEngine(
     } catch (error) {
       // Never fall back to the state the sanitizer was meant to filter.
       return `[sanitizeState threw: ${message(error)}]`;
+    }
+  };
+  const cleanEntry = (t: Tracked, key: string, data: unknown): unknown => {
+    if (!options.sanitizeEntry) return data;
+    try {
+      return options.sanitizeEntry(data, { store: t.info, key });
+    } catch (error) {
+      return `[sanitizeEntry threw: ${message(error)}]`;
     }
   };
   const actionType = (action: unknown): string => {
@@ -635,7 +645,7 @@ export function createStateEngine(
     if (typeof driver.keys !== 'function') throw new Error(`${t.info.label} has no entries`);
     const summary = summarize(driver, String(key));
     if (!summary) return null;
-    const data = typeof driver.data === 'function' ? driver.data(String(key)) : undefined;
+    const data = cleanEntry(t, String(key), typeof driver.data === 'function' ? driver.data(String(key)) : undefined);
     const { value, truncated } = fit(at(data, path));
     return { summary, data: value, truncated };
   };

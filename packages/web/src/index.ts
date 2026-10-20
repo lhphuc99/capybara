@@ -87,6 +87,8 @@ export {
   swrProvider,
   watchQueryClient,
   watchSWR,
+  watchMobX,
+  watchXState,
   watchZustand,
 } from '@capybara-devtools/core';
 export type {
@@ -103,7 +105,11 @@ export type {
   SWRHandle,
   WatchQueryClientOptions,
   WatchSWROptions,
+  MobxLike,
+  WatchMobXOptions,
+  WatchXStateOptions,
   WatchZustandOptions,
+  XStateActorLike,
   ZustandStoreLike,
 } from '@capybara-devtools/core';
 export { cookieStorage, webStorage } from './storage.js';
