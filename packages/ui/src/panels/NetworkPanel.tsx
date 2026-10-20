@@ -1,10 +1,11 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { EmptyMessage } from '../components/EmptyMessage';
 import { ColumnHandle, ResizeHandle, useColumnWidth, usePaneWidth } from '../components/ResizeHandle';
 import { SearchInput } from '../components/SearchInput';
 import { useFollow } from '../follow';
 import { formatBytes, formatDuration, isFetchOrXhr, makeMatcher, responseSize, splitUrl, statusTone } from '../format';
+import { useListKeys } from '../listKeys';
 import { clearSession, type NetworkEntry, type SessionState } from '../store';
 import { RequestDetail } from './network/RequestDetail';
 import { SocketDetail, type SocketEntry } from './network/SocketDetail';
@@ -84,6 +85,17 @@ export function NetworkPanel({ session }: { session: SessionState }) {
   });
 
   const { onScroll, onWheel } = useFollow(bodyRef, virtualizer.getTotalSize(), ROW_HEIGHT);
+
+  const keys = useMemo(() => visible.map((entry) => entry.id), [visible]);
+  const onRowKey = useListKeys({
+    listRef: bodyRef,
+    keys,
+    scrollToIndex: (index) => virtualizer.scrollToIndex(index),
+    onMove: setSelectedId,
+    onActivate: (id) => setSelectedId((current) => (current === id ? null : id)),
+  });
+  // The one row in the tab order: the selected one, else the first.
+  const tabbable = selectedId !== null && keys.includes(selectedId) ? selectedId : keys[0];
 
   useEffect(() => {
     if (!selected) return;
@@ -177,6 +189,7 @@ export function NetworkPanel({ session }: { session: SessionState }) {
                 onChange={host.setWidth}
                 onCommit={host.save}
                 onReset={host.reset}
+                value={host.width}
                 label="Resize the path and host columns"
               />
             </span>
@@ -189,7 +202,7 @@ export function NetworkPanel({ session }: { session: SessionState }) {
               <p>Requests made with fetch, XMLHttpRequest or axios, and WebSocket connections, show up here.</p>
             </EmptyMessage>
           ) : (
-            <div className="net-body" ref={bodyRef} onScroll={onScroll} onWheel={onWheel}>
+            <div className="net-body" ref={bodyRef} role="listbox" aria-label="Requests" onScroll={onScroll} onWheel={onWheel}>
               <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
                 {virtualizer.getVirtualItems().map((item) => {
                   const entry = visible[item.index]!;
@@ -197,9 +210,12 @@ export function NetworkPanel({ session }: { session: SessionState }) {
                     <NetworkRow
                       key={item.key}
                       entry={entry}
+                      index={item.index}
                       top={item.start}
                       selected={entry.id === selectedId}
+                      tabbable={entry.id === tabbable}
                       onSelect={() => setSelectedId(entry.id === selectedId ? null : entry.id)}
+                      onKey={onRowKey}
                     />
                   );
                 })}
@@ -221,22 +237,33 @@ export function NetworkPanel({ session }: { session: SessionState }) {
 
 function NetworkRow({
   entry,
+  index,
   top,
   selected,
+  tabbable,
   onSelect,
+  onKey,
 }: {
   entry: NetworkEntry;
+  index: number;
   top: number;
   selected: boolean;
+  tabbable: boolean;
   onSelect: () => void;
+  onKey: (event: ReactKeyboardEvent, index: number) => void;
 }) {
   const { path, host } = splitUrl(entry.url);
   const tone = statusTone(entry);
   return (
     <div
+      role="option"
+      aria-selected={selected}
+      tabIndex={tabbable ? 0 : -1}
+      data-row={entry.id}
       className={`net-row tone-${tone}${selected ? ' selected' : ''}`}
       style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: ROW_HEIGHT, transform: `translateY(${top}px)` }}
       onClick={onSelect}
+      onKeyDown={(event) => onKey(event, index)}
       title={entry.url}
     >
       <span className="net-status">

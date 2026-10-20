@@ -101,7 +101,7 @@ function DiagnosisView({ diagnosis, onRetry }: { diagnosis: NetworkDiagnosis; on
         <ul className="checks">
           {diagnosis.checks.map((check, index) => (
             <li key={index} className={`check ${check.outcome}`}>
-              <span className="check-mark" aria-label={check.outcome}>
+              <span className="check-mark" role="img" aria-label={check.outcome}>
                 {check.outcome === 'pass' ? '✓' : check.outcome === 'fail' ? '✕' : '•'}
               </span>
               <span className="check-label">{check.label}</span>

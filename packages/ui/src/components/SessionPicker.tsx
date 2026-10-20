@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { describeSession, formatClock, platformLabel } from '../format';
+import { useListKeys } from '../listKeys';
 import { removeSession, selectSession, type SessionState } from '../store';
 
 interface Props {
@@ -9,7 +10,10 @@ interface Props {
 
 export function SessionPicker({ sessions, selectedId }: Props) {
   const [open, setOpen] = useState(false);
+  const [focusedId, setFocusedId] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -35,11 +39,26 @@ export function SessionPicker({ sessions, selectedId }: Props) {
     [sessions],
   );
   const current = selectedId ? sessions[selectedId] : undefined;
+  const ids = useMemo(() => list.map((session) => session.meta.info.id), [list]);
+  const choose = (id: string) => {
+    selectSession(id);
+    setOpen(false);
+    buttonRef.current?.focus();
+  };
+  const onItemKey = useListKeys({ listRef: menuRef, keys: ids, onMove: setFocusedId, onActivate: choose });
+  const tabbable = focusedId !== null && ids.includes(focusedId) ? focusedId : selectedId && ids.includes(selectedId) ? selectedId : ids[0];
+
+  // The keyboard lands on the open menu, on the chosen app.
+  useEffect(() => {
+    if (open) menuRef.current?.querySelector<HTMLElement>('[tabindex="0"]')?.focus();
+  }, [open]);
+
   if (list.length === 0) return null;
 
   return (
     <div className="picker" ref={ref}>
       <button
+        ref={buttonRef}
         type="button"
         className="picker-button"
         aria-haspopup="listbox"
@@ -62,19 +81,19 @@ export function SessionPicker({ sessions, selectedId }: Props) {
       </button>
 
       {open && (
-        <div className="picker-menu" role="listbox">
-          {list.map((session) => {
+        <div className="picker-menu" role="listbox" aria-label="Apps" ref={menuRef}>
+          {list.map((session, index) => {
             const { info, connected } = session.meta;
             return (
               <div
                 key={info.id}
                 role="option"
                 aria-selected={info.id === selectedId}
+                tabIndex={info.id === tabbable ? 0 : -1}
+                data-row={info.id}
                 className="picker-item"
-                onClick={() => {
-                  selectSession(info.id);
-                  setOpen(false);
-                }}
+                onClick={() => choose(info.id)}
+                onKeyDown={(event) => onItemKey(event, index)}
               >
                 <span className={`dot ${connected ? 'on' : 'off'}`} />
                 <span className="picker-text">

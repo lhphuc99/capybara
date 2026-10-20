@@ -13,6 +13,8 @@ export function SearchInput({
   return (
     <input
       className={`search${invalid ? ' invalid' : ''}`}
+      aria-keyshortcuts="/ Control+F Meta+F"
+      aria-label={placeholder}
       placeholder={placeholder}
       value={value}
       onChange={(event) => onChange(event.target.value)}

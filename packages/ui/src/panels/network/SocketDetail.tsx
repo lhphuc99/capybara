@@ -1,8 +1,9 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { useMemo, useRef, useState, type ReactNode } from 'react';
+import { useMemo, useRef, useState, type ReactNode, type KeyboardEvent } from 'react';
 import { SearchInput } from '../../components/SearchInput';
 import { useFollow } from '../../follow';
 import { decodeSocketIo, formatBytes, formatDuration, formatTime, makeMatcher } from '../../format';
+import { useListKeys } from '../../listKeys';
 import type { NetworkEntry, SocketInfo, SocketMessage } from '../../store';
 import { BodyView, KeyValues } from './DetailSections';
 
@@ -70,6 +71,16 @@ function SocketMessages({ entry }: { entry: SocketEntry }) {
 
   const { onScroll, onWheel } = useFollow(listRef, virtualizer.getTotalSize(), MESSAGE_ROW_HEIGHT);
 
+  const seqs = useMemo(() => visible.map((message) => message.seq), [visible]);
+  const onRowKey = useListKeys({
+    listRef,
+    keys: seqs,
+    scrollToIndex: (index) => virtualizer.scrollToIndex(index),
+    onMove: setSelectedSeq,
+    onActivate: (seq) => setSelectedSeq((current) => (current === seq ? null : seq)),
+  });
+  const tabbable = selectedSeq !== null && seqs.includes(selectedSeq) ? selectedSeq : seqs.at(-1);
+
   return (
     <div className="ws-pane">
       <div className="ws-toolbar">
@@ -98,7 +109,7 @@ function SocketMessages({ entry }: { entry: SocketEntry }) {
           <strong>{socket.messages.length === 0 ? 'No messages yet' : 'No matching messages'}</strong>
         </div>
       ) : (
-        <div className="ws-list" ref={listRef} onScroll={onScroll} onWheel={onWheel}>
+        <div className="ws-list" ref={listRef} role="listbox" aria-label="Messages" onScroll={onScroll} onWheel={onWheel}>
           <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
             {virtualizer.getVirtualItems().map((item) => {
               const message = visible[item.index]!;
@@ -106,10 +117,13 @@ function SocketMessages({ entry }: { entry: SocketEntry }) {
                 <MessageRow
                   key={item.key}
                   message={message}
+                  index={item.index}
                   top={item.start}
                   socketIo={socketIo}
                   selected={message.seq === selectedSeq}
+                  tabbable={message.seq === tabbable}
                   onSelect={() => setSelectedSeq(message.seq === selectedSeq ? null : message.seq)}
+                  onKey={onRowKey}
                 />
               );
             })}
@@ -123,16 +137,22 @@ function SocketMessages({ entry }: { entry: SocketEntry }) {
 
 function MessageRow({
   message,
+  index,
   top,
   socketIo,
   selected,
+  tabbable,
   onSelect,
+  onKey,
 }: {
   message: SocketMessage;
+  index: number;
   top: number;
   socketIo: boolean;
   selected: boolean;
+  tabbable: boolean;
   onSelect: () => void;
+  onKey: (event: KeyboardEvent, index: number) => void;
 }) {
   const { data } = message;
   const decoded = socketIo && data.text !== undefined ? decodeSocketIo(data.text) : undefined;
@@ -144,11 +164,16 @@ function MessageRow({
         : data.text;
   return (
     <div
+      role="option"
+      aria-selected={selected}
+      tabIndex={tabbable ? 0 : -1}
+      data-row={message.seq}
       className={`ws-row ${message.direction}${selected ? ' selected' : ''}`}
       style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: MESSAGE_ROW_HEIGHT, transform: `translateY(${top}px)` }}
       onClick={onSelect}
+      onKeyDown={(event) => onKey(event, index)}
     >
-      <span className="ws-dir" aria-label={message.direction}>
+      <span className="ws-dir" role="img" aria-label={message.direction}>
         {message.direction === 'sent' ? '↑' : '↓'}
       </span>
       <span className="ws-preview">{preview.slice(0, 300)}</span>

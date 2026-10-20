@@ -43,17 +43,6 @@
         "noArguments": "off",
         // Tests match aligned columns.
         "noAdjacentSpacesInRegex": "off"
-      },
-      "a11y": {
-        // Rows are clickable elements without keyboard support yet.
-        "noStaticElementInteractions": "off",
-        "useKeyWithClickEvents": "off",
-        "useSemanticElements": "off",
-        "useAriaPropsSupportedByRole": "off",
-        "useAriaPropsForRole": "off",
-        "useFocusableInteractive": "off",
-        "noNoninteractiveElementToInteractiveRole": "off",
-        "noAutofocus": "off"
       }
     }
   }

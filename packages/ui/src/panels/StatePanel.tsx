@@ -245,6 +245,7 @@ function StateBrowser({ session }: { session: SessionState }) {
             onChange={nav.setWidth}
             onCommit={nav.save}
             onReset={nav.reset}
+            value={nav.width}
             label="Resize the list of stores"
           />
         </div>
@@ -336,7 +337,7 @@ function StoreNav({
                 key={view.info.id}
                 type="button"
                 className={`state-store${view.info.disposed ? ' disposed' : ''}`}
-                aria-selected={view === selected}
+                aria-current={view === selected ? 'true' : undefined}
                 onClick={() => onSelect(view)}
               >
                 <span className="state-store-name">

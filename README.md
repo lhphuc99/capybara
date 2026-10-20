@@ -227,6 +227,8 @@ To share what you see, **Copy all** in the Logs tab copies the entries that matc
 
 Drag the line between the request list and its details (or between the keys and the value in the Storage tab) to resize them; double-click it to reset. The same goes for the line between the Path and Host columns, between a store's keys and values, and beside the list of stores in the Storage and State tabs, so long URLs, keys and names show in full. With a line focused, the arrow keys move it too. Widths are remembered.
 
+From the keyboard, `1` to `4` open the Logs, Network, Storage and State tabs, and `/` or Cmd/Ctrl+F moves to the tab's filter. In a list, the arrow keys, Page Up/Down, Home and End move between rows, selecting each request, key, change or cache entry on the way; in the Logs tab they move between the entries that open, and Enter or Space opens and closes one. In a JSON tree, Up and Down move between rows, and Right and Left open and close a branch.
+
 The **Appearance** button at the top right switches between System (the default, following your OS), Light and Dark. In the macOS desktop app the window's title bar follows it too.
 
 The SDK finds your machine from the Metro bundle URL, so simulators and phones on the same Wi-Fi connect without configuration. For Android devices over USB the CLI and the desktop app run `adb reverse` for you, again whenever a device reconnects. Pass `host` to `init()` to override, and `port` when Capybara runs on another port (`--port`, or `CAPYBARA_PORT`).

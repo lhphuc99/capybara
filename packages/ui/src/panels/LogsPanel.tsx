@@ -1,12 +1,13 @@
 import type { LogLevel } from '@capybara-devtools/protocol';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { memo, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { memo, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
 import { CopyButton } from '../components/CopyButton';
 import { EmptyMessage } from '../components/EmptyMessage';
 import { JsonTree } from '../components/JsonTree';
 import { LogTable } from '../components/LogTable';
 import { SearchInput } from '../components/SearchInput';
 import { useFollow } from '../follow';
+import { useListKeys } from '../listKeys';
 import { formatLogMessage, formatTime, isExpandable, LOG_SOURCE_LABELS, logEntryText, makeMatcher } from '../format';
 import { clearSession, type LogEntry, type SessionState } from '../store';
 
@@ -21,6 +22,8 @@ const LEVELS: Array<{ level: LogLevel; label: string }> = [
 const isGroup = (entry: LogEntry) => entry.method === 'group' || entry.method === 'groupCollapsed';
 /** `toggled` holds the groups opened or closed by hand; console.groupCollapsed() starts closed. */
 const groupOpen = (entry: LogEntry, toggled: ReadonlySet<number>) => (entry.method === 'group') !== toggled.has(entry.seq);
+/** A group opens its entries and other entries their objects; a table shows its data already. */
+const canExpand = (entry: LogEntry) => isGroup(entry) || (entry.method !== 'table' && entry.args.some(isExpandable));
 
 // Entries are immutable, so the text used for filtering is built once per entry.
 const searchTexts = new WeakMap<LogEntry, string>();
@@ -75,6 +78,12 @@ export function LogsPanel({ session }: { session: SessionState }) {
 
   const { follow, setFollow, onScroll, onWheel } = useFollow(listRef, virtualizer.getTotalSize(), 32);
 
+  // The keyboard moves between the entries that open, and only the current one is in the tab order.
+  const [activeSeq, setActiveSeq] = useState<number | null>(null);
+  const openable = useMemo(() => visible.flatMap((entry, index) => (canExpand(entry) ? [{ seq: entry.seq, index }] : [])), [visible]);
+  const openableSeqs = useMemo(() => openable.map(({ seq }) => seq), [openable]);
+  const openableIndex = useMemo(() => new Map(openableSeqs.map((seq, index) => [seq, index])), [openableSeqs]);
+
   const toggleLevel = (level: LogLevel) => {
     const next = new Set(hidden);
     if (next.has(level)) next.delete(level);
@@ -95,6 +104,19 @@ export function LogsPanel({ session }: { session: SessionState }) {
     else next.add(seq);
     setToggledGroups(next);
   };
+
+  const onLineKey = useListKeys({
+    listRef,
+    keys: openableSeqs,
+    scrollToIndex: (index) => virtualizer.scrollToIndex(openable[index]!.index),
+    onMove: setActiveSeq,
+    onActivate: (seq) => {
+      const entry = visible.find((candidate) => candidate.seq === seq);
+      if (entry && isGroup(entry)) toggleGroup(seq);
+      else toggleRow(seq);
+    },
+  });
+  const tabbable = activeSeq !== null && openableIndex.has(activeSeq) ? activeSeq : openableSeqs[0];
 
   return (
     <section className="panel">
@@ -158,8 +180,15 @@ export function LogsPanel({ session }: { session: SessionState }) {
                   >
                     <LogRow
                       entry={entry}
+                      index={openableIndex.get(entry.seq) ?? -1}
                       expanded={isGroup(entry) ? groupOpen(entry, toggledGroups) : expanded.has(entry.seq)}
-                      onToggle={isGroup(entry) ? toggleGroup : toggleRow}
+                      tabbable={entry.seq === tabbable}
+                      onToggle={(seq) => {
+                        setActiveSeq(seq);
+                        if (isGroup(entry)) toggleGroup(seq);
+                        else toggleRow(seq);
+                      }}
+                      onKey={onLineKey}
                     />
                   </div>
                 );
@@ -177,32 +206,52 @@ export function LogsPanel({ session }: { session: SessionState }) {
   );
 }
 
-/** `expanded` opens a group's entries for a group, and the objects of any other entry. */
+/** `expanded` opens a group's entries for a group, and the objects of any other entry. `index` counts the entries that open. */
 const LogRow = memo(function LogRow({
   entry,
+  index,
   expanded,
+  tabbable,
   onToggle,
+  onKey,
 }: {
   entry: LogEntry;
+  index: number;
   expanded: boolean;
+  tabbable: boolean;
   onToggle: (seq: number) => void;
+  onKey: (event: KeyboardEvent, index: number) => void;
 }) {
   const group = isGroup(entry);
-  // A table shows its data already.
-  const canExpand = group || (entry.method !== 'table' && entry.args.some(isExpandable));
+  const openable = canExpand(entry);
   const source = LOG_SOURCE_LABELS[entry.source];
+  const line = (
+    <>
+      <span className="log-time">{formatTime(entry.ts)}</span>
+      {openable ? <span className={`caret${expanded ? ' open' : ''}`} /> : <span className="caret-space" />}
+      <span className="log-message">{formatLogMessage(entry.args)}</span>
+      {source && <span className="log-source">{source}</span>}
+      <CopyButton label="Copy this log entry" text={() => logEntryText(entry)} />
+    </>
+  );
   return (
     <>
-      <div
-        className={`log-line${canExpand ? ' clickable' : ''}${group ? ' log-group' : ''}`}
-        onClick={canExpand ? () => onToggle(entry.seq) : undefined}
-      >
-        <span className="log-time">{formatTime(entry.ts)}</span>
-        {canExpand ? <span className={`caret${expanded ? ' open' : ''}`} /> : <span className="caret-space" />}
-        <span className="log-message">{formatLogMessage(entry.args)}</span>
-        {source && <span className="log-source">{source}</span>}
-        <CopyButton label="Copy this log entry" text={() => logEntryText(entry)} />
-      </div>
+      {openable ? (
+        // biome-ignore lint/a11y/useSemanticElements: it holds the entry's copy button, which a <button> cannot
+        <div
+          className={`log-line clickable${group ? ' log-group' : ''}`}
+          role="button"
+          aria-expanded={expanded}
+          tabIndex={tabbable ? 0 : -1}
+          data-row={entry.seq}
+          onClick={() => onToggle(entry.seq)}
+          onKeyDown={(event) => onKey(event, index)}
+        >
+          {line}
+        </div>
+      ) : (
+        <div className="log-line">{line}</div>
+      )}
       {entry.method === 'table' && (
         <div className="log-details">
           <LogTable data={entry.args[0]} columns={entry.args[1]} />

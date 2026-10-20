@@ -1,6 +1,7 @@
 import type { SerializedValue, StatePath } from '@capybara-devtools/protocol';
-import { useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { useMemo, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react';
 import { formatKey, isSpecial, preview, valueText } from '../format';
+import { movedIndex } from '../listKeys';
 import { ancestorKeys, pathKey } from '../state';
 import { CopyButton } from './CopyButton';
 
@@ -32,11 +33,29 @@ interface Tree {
 
 export function JsonTree({ value, raw = false, expandDepth = 1, path, onLoad, highlight }: Props) {
   const above = useMemo(() => highlight && ancestorKeys(highlight), [highlight]);
+  // Up, Down, Home and End move between the rows shown; each row opens and closes itself.
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const rows = [...event.currentTarget.querySelectorAll<HTMLElement>('[role="treeitem"]')];
+    const index = rows.indexOf(document.activeElement as HTMLElement);
+    const next = index < 0 ? undefined : movedIndex(event.key, index, rows.length);
+    if (next === undefined) return;
+    event.preventDefault();
+    rows[next]?.focus();
+  };
   return (
-    <div className="tree">
+    <div className="tree" role="tree" tabIndex={-1} onKeyDown={onKeyDown}>
       <TreeNode value={value} depth={0} path={path} tree={{ raw, expandDepth, onLoad, highlight, above }} />
     </div>
   );
+}
+
+/** What a branch row does with the keys that open and close it. */
+function toggleKeys(event: KeyboardEvent, open: boolean, setOpen: (open: boolean) => void) {
+  if (event.key === 'Enter' || event.key === ' ') setOpen(!open);
+  else if (event.key === 'ArrowRight' && !open) setOpen(true);
+  else if (event.key === 'ArrowLeft' && open) setOpen(false);
+  else return;
+  event.preventDefault();
 }
 
 interface NodeProps {
@@ -55,6 +74,8 @@ function TreeNode({ name, value, depth, path, tree }: NodeProps) {
   const children = childrenOf(value, tree.raw);
   const indent = { paddingLeft: depth * 14 };
   const changed = id !== undefined && tree.highlight!.has(id) ? ' changed' : '';
+  // The root row is where the keyboard enters the tree.
+  const tabIndex = depth === 0 ? 0 : -1;
   const label =
     name === undefined ? null : (
       <>
@@ -72,6 +93,8 @@ function TreeNode({ name, value, depth, path, tree }: NodeProps) {
           value={value}
           indent={indent}
           changed={changed}
+          level={depth + 1}
+          tabIndex={tabIndex}
           onLoad={() => {
             setOpen(true);
             return onLoad(path);
@@ -80,7 +103,7 @@ function TreeNode({ name, value, depth, path, tree }: NodeProps) {
       );
     }
     return (
-      <div className={`tree-row${changed}`} style={indent}>
+      <div className={`tree-row${changed}`} style={indent} role="treeitem" aria-level={depth + 1} tabIndex={tabIndex}>
         <span className="caret-space" />
         <span>
           {label}
@@ -97,7 +120,16 @@ function TreeNode({ name, value, depth, path, tree }: NodeProps) {
 
   return (
     <>
-      <div className={`tree-row tree-branch${changed}`} style={indent} onClick={() => setOpen(!open)}>
+      <div
+        className={`tree-row tree-branch${changed}`}
+        style={indent}
+        role="treeitem"
+        aria-level={depth + 1}
+        aria-expanded={open}
+        tabIndex={tabIndex}
+        onClick={() => setOpen(!open)}
+        onKeyDown={(event) => toggleKeys(event, open, setOpen)}
+      >
         <span className={`caret${open ? ' open' : ''}`} />
         <span>
           {label}
@@ -155,26 +187,36 @@ function LimitRow({
   value,
   indent,
   changed,
+  level,
+  tabIndex,
   onLoad,
 }: {
   label: ReactNode;
   value: SerializedValue;
   indent: CSSProperties;
   changed: string;
+  level: number;
+  tabIndex: number;
   onLoad: () => void | Promise<unknown>;
 }) {
   const [loading, setLoading] = useState(false);
   const done = () => setLoading(false);
+  const load = () => {
+    if (loading) return;
+    setLoading(true);
+    Promise.resolve(onLoad()).then(done, done);
+  };
   return (
     <div
       className={`tree-row tree-branch${changed}`}
       style={indent}
+      role="treeitem"
+      aria-level={level}
+      aria-expanded={false}
+      tabIndex={tabIndex}
       title="Not read yet. Click to load it from the app."
-      onClick={() => {
-        if (loading) return;
-        setLoading(true);
-        Promise.resolve(onLoad()).then(done, done);
-      }}
+      onClick={load}
+      onKeyDown={(event) => toggleKeys(event, false, load)}
     >
       <span className="caret" />
       <span>

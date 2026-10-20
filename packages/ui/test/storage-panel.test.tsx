@@ -112,4 +112,22 @@ describe('StoragePanel', () => {
     expect(reads()).toBe(2);
     expect(shown()).toBe('v2');
   });
+
+  it('moves through the keys with the arrow keys, selecting each one', async () => {
+    const entries: StorageEntries = {
+      entries: ['a', 'b', 'c'].map((key) => ({ key, value: `value of ${key}`, size: 10, truncated: false })),
+      total: 3,
+    };
+    storageCommand.mockImplementation(async (_session: string, method: string) => (method === 'list' ? ADAPTERS : entries));
+    await render(0);
+    await wait(0);
+    const rows = () => [...container.querySelectorAll<HTMLElement>('[role="option"]')];
+    expect(rows().map((row) => row.tabIndex)).toEqual([0, -1, -1]);
+    const press = (key: string) => act(() => void rows().find((row) => row.tabIndex === 0)!.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true })));
+    await press('ArrowDown');
+    expect(rows().map((row) => row.getAttribute('aria-selected'))).toEqual(['false', 'true', 'false']);
+    await press('End');
+    expect(rows()[2]!.getAttribute('aria-selected')).toBe('true');
+    expect(rows().map((row) => row.tabIndex)).toEqual([-1, -1, 0]);
+  });
 });

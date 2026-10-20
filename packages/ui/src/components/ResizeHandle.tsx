@@ -34,6 +34,7 @@ export function ResizeHandle({ container, width, min, max, onChange, onCommit, o
   const clamp = (value: number) => Math.min(max, Math.max(min, value));
 
   return (
+    // biome-ignore lint/a11y/useSemanticElements: a separator you drag or move with the keyboard, which an <hr> cannot be
     <div
       className={`resize-handle${dragging ? ' dragging' : ''}`}
       role="separator"
@@ -114,10 +115,12 @@ interface ColumnHandleProps {
   onCommit: (width: number) => void;
   onReset: () => void;
   label: string;
+  /** The width set by hand, if any. */
+  value?: number;
 }
 
 /** Like ResizeHandle, for a column with a width in pixels: a table column or a side list. */
-export function ColumnHandle({ target, edge, inset = 0, min, max, onChange, onCommit, onReset, label }: ColumnHandleProps) {
+export function ColumnHandle({ target, edge, inset = 0, min, max, onChange, onCommit, onReset, label, value }: ColumnHandleProps) {
   const [dragging, setDragging] = useState(false);
   const direction = edge === 'end' ? 1 : -1;
   const measure = () => target.current?.getBoundingClientRect().width;
@@ -125,12 +128,15 @@ export function ColumnHandle({ target, edge, inset = 0, min, max, onChange, onCo
   const offset = -(4 + inset);
 
   return (
+    // biome-ignore lint/a11y/useSemanticElements: a separator you drag or move with the keyboard, which an <hr> cannot be
     <div
       className={`resize-handle${dragging ? ' dragging' : ''}`}
       style={edge === 'end' ? { left: 'auto', right: offset } : { left: offset }}
       role="separator"
       aria-orientation="vertical"
       aria-label={label}
+      aria-valuenow={value}
+      aria-valuemin={min}
       tabIndex={0}
       title="Drag to resize. Double-click to reset."
       onPointerDown={(event) => {
