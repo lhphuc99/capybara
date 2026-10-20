@@ -80,6 +80,34 @@ describe('createClient', () => {
     expect(client.connected).toBe(true);
   });
 
+  it('sends at once from a hidden page, whose timers the browser holds back', async () => {
+    const { client, sockets } = setup([], { flushInterval: 50 });
+    const socket = sockets[0]!;
+    socket.open();
+    socket.receive({ t: 'welcome', lastSeq: 0 });
+    const page = { visibilityState: 'visible' };
+    (globalThis as { document?: unknown }).document = page;
+    try {
+      client.log('log', 'visible');
+      await settle();
+      expect(socket.events()).toEqual([]);
+
+      // A batch waiting on its timer goes out too once the page is hidden.
+      page.visibilityState = 'hidden';
+      client.log('log', 'hidden');
+      client.log('log', 'same task');
+      expect(socket.events()).toEqual([]);
+      await settle();
+      expect(socket.events().map((e: any) => e.payload.args[0])).toEqual(['visible', 'hidden', 'same task']);
+      expect(socket.sent.filter((m) => m.t === 'events')).toHaveLength(1);
+
+      vi.advanceTimersByTime(50);
+      expect(socket.sent.filter((m) => m.t === 'events')).toHaveLength(1);
+    } finally {
+      delete (globalThis as { document?: unknown }).document;
+    }
+  });
+
   it('names its plugins in the hello', () => {
     const { sockets } = setup([{ name: 'network' }, { name: 'state' }]);
     sockets[0]!.open();

@@ -98,6 +98,7 @@ export function createClient(options: ClientOptions): CapybaraClient {
   let ready = false;
   let stopped = false;
   let flushTimer: ReturnType<typeof setTimeout> | null = null;
+  let flushQueued = false;
 
   const serializeValue = (value: unknown) => serialize(value, options.serializeOptions);
 
@@ -121,8 +122,18 @@ export function createClient(options: ClientOptions): CapybaraClient {
   };
 
   const scheduleFlush = () => {
-    if (!ready || flushTimer !== null) return;
-    flushTimer = setTimeout(flush, flushInterval);
+    if (!ready || flushQueued) return;
+    // Browsers run the timers of a hidden tab once a second at most, Chrome once a minute after a while, and the
+    // developer reading Capybara in another tab hides the app's. A microtask is not held back, and still sends what
+    // one task records together.
+    if (isPageHidden()) {
+      if (flushTimer !== null) clearTimeout(flushTimer);
+      flushTimer = null;
+      flushQueued = true;
+      queueMicrotask(flush);
+    } else if (flushTimer === null) {
+      flushTimer = setTimeout(flush, flushInterval);
+    }
   };
 
   const indexAfter = (afterSeq: number) => {
@@ -133,6 +144,7 @@ export function createClient(options: ClientOptions): CapybaraClient {
 
   const flush = () => {
     flushTimer = null;
+    flushQueued = false;
     if (!ready) return;
     let i = indexAfter(sentSeq);
     while (i < buffer.length) {
@@ -244,4 +256,9 @@ export function createClient(options: ClientOptions): CapybaraClient {
   (globalThis as Record<string, unknown>)[CLIENT_GLOBAL] = client;
   connection.start();
   return client;
+}
+
+/** React Native has no document, and its timers keep their pace. */
+function isPageHidden(): boolean {
+  return (globalThis as { document?: { visibilityState?: string } }).document?.visibilityState === 'hidden';
 }
