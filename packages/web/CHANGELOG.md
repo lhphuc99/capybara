@@ -1,5 +1,33 @@
 # @capybara-devtools/web
 
+## 0.5.1
+
+### Patch Changes
+
+- 86c0ffc: The Logs tab shows the other console methods the way browsers print them: entries logged inside `console.group()` are indented under the group's line, which opens and closes on a click (`console.groupCollapsed()` starts closed), `console.table()` shows a table, `console.trace()` the stack it was called from, and `console.count()`, `console.time()`/`timeLog()`/`timeEnd()` and a failed `console.assert()` the line the browser prints. This works through Metro too, where a trace starts at the app's call as LogBox shows it, without the console wrappers of React Native and React DevTools, and `capybara mcp` indents grouped entries. In React Native apps with the SDK, an unhandled promise rejection is now marked as one, as it already was through Metro.
+- 4c5dcdd: Events from a web app whose tab is in the background reach Capybara right away. The SDK sent them on a 50 ms timer, which browsers run at most once a second in a hidden tab (Chrome once a minute after a while), so with the app in one tab and Capybara in another, logs, requests and storage changes came in bursts. While the page is hidden, the SDK now sends at the end of the task that recorded them.
+- 97535b1: In the Network tab, **Headers & bodies** makes the filter match headers, bodies and WebSocket messages too, and **Pause** keeps the list still while new requests are counted for **Resume**. A response whose body is still arriving after half a second, such as a streamed AI answer or a long poll, shows its status and headers as `streaming` instead of staying pending; with `fetch`, its Response tab shows what has come so far. `get_network` in `capybara mcp` takes `inContent` for the same search. A search such as `/api/users` is now taken as text rather than as a regular expression with invalid flags.
+- 2427732: A reused `XMLHttpRequest` is recorded right. When an app opened the same XHR again for the next request, the earlier request's listeners stayed on it, so the earlier request also got the later one's response. Each request now ends with its own result: one cut off by opening the XHR again while it was on its way shows as aborted, and one opened again from its `onload` is recorded before the `loadend` the browser still sends for it.
+- 86c0ffc: `init({ state: { sanitizeEntry(data, { store, key }) } })` runs before the data of a TanStack Query or SWR entry leaves the app, as `sanitizeState` does for other stores, e.g. to blank out tokens.
+- 86c0ffc: The State tab shows XState actors and MobX stores. `watchXState(actor)` records each transition with the event behind it, and the actor's state value, context and status. `watchMobX(store, mobx)` records each change as a diff with the action that made it; the mobx module is passed in, so the SDK does not depend on MobX. The setup guide adds these lines for apps that use XState or MobX.
+- 0fbe91d: Stopping the SDK no longer removes what other tools installed after it. `stop()` put back the original `XMLHttpRequest` methods, `console` methods and AsyncStorage methods even when Sentry, Reactotron or LogBox had wrapped them since, which took their wrappers away too. It now puts back only what is still its own; a wrapper of the SDK's left under another one only passes calls on.
+- Updated dependencies [ab2f49e]
+- Updated dependencies [b08c751]
+- Updated dependencies [86c0ffc]
+- Updated dependencies [ea11af6]
+- Updated dependencies [4c5dcdd]
+- Updated dependencies [6eb376c]
+- Updated dependencies [5394dda]
+- Updated dependencies [1ec7ad5]
+- Updated dependencies [97535b1]
+- Updated dependencies [2427732]
+- Updated dependencies [86c0ffc]
+- Updated dependencies [39a9f21]
+- Updated dependencies [86c0ffc]
+- Updated dependencies [0fbe91d]
+  - @capybara-devtools/protocol@0.5.1
+  - @capybara-devtools/core@0.5.1
+
 ## 0.5.0
 
 ### Patch Changes
