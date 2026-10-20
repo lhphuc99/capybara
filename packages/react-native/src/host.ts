@@ -19,7 +19,3 @@ export function devToolSockets(metroPort: string | undefined): RegExp[] {
   }
   return patterns;
 }
-
-export function formatHost(host: string): string {
-  return host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
-}

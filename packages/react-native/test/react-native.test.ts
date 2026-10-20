@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import { devToolSockets, hostFromUrl, portFromUrl } from '../src/host.js';
 import { asyncStorage, mmkvStorage, type MMKVLike } from '../src/storage.js';
@@ -226,5 +227,18 @@ describe('mmkvStorage', () => {
     const v3 = { ...fakeMmkv(), remove: undefined, delete: vi.fn() };
     await mmkvStorage(v3).remove!('k');
     expect(v3.delete).toHaveBeenCalledWith('k');
+  });
+});
+
+describe('entry', () => {
+  it('re-exports the same API from core as the web SDK, so apps on both find the same names', () => {
+    const fromCore = (file: string) => {
+      const source = readFileSync(new URL(file, import.meta.url), 'utf8');
+      const blocks = [...source.matchAll(/export (?:type )?\{([^}]*)\} from '@capybara-devtools\/core';/g)];
+      return blocks.flatMap((block) => block[1]!.split(',').map((name) => name.trim()).filter(Boolean)).sort();
+    };
+    const native = fromCore('../src/index.ts');
+    expect(native.length).toBeGreaterThan(10);
+    expect(native).toEqual(fromCore('../../web/src/index.ts'));
   });
 });

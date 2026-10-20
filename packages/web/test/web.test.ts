@@ -1,17 +1,23 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getActiveClient, networkPlugin, type NetworkPluginOptions } from '@capybara-devtools/core';
+import { getActiveClient, initClient } from '@capybara-devtools/core';
 import { cookieStorage, init, webStorage } from '../src/index.js';
 
 vi.mock('@capybara-devtools/core', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@capybara-devtools/core')>();
-  return { ...actual, networkPlugin: vi.fn(actual.networkPlugin) };
+  return { ...actual, initClient: vi.fn(actual.initClient) };
 });
 
 afterEach(() => {
   getActiveClient()?.stop();
   localStorage.clear();
 });
+
+/** Whether the last init() leaves a URL out of the Network tab as dev tool traffic. */
+function ignoredAsDevTools(): (url: string) => boolean {
+  const { networkNoise } = vi.mocked(initClient).mock.calls.at(-1)![2]();
+  return (url) => networkNoise.some((pattern) => pattern.test(url));
+}
 
 describe('webStorage', () => {
   it('reads and writes through to the Storage object', async () => {
@@ -114,14 +120,11 @@ describe('init', () => {
     expect(init()).toBe(client);
   });
 
-  it("skips the dev server's own tooling requests and keeps custom ignores", () => {
-    init({ port: 1, network: { ignoreUrls: ['/health'] } });
-    const options = vi.mocked(networkPlugin).mock.calls.at(-1)![0] as NetworkPluginOptions;
-    const ignored = (url: string) =>
-      options.ignoreUrls!.some((pattern) => (typeof pattern === 'string' ? url.includes(pattern) : pattern.test(url)));
+  it("skips the dev server's own tooling requests", () => {
+    init({ port: 1 });
+    const ignored = ignoredAsDevTools();
     expect(ignored('http://localhost:3000/__nextjs_original-stack-frames')).toBe(true);
     expect(ignored('http://localhost:3000/__nextjs_launch-editor?file=app%2Fpage.tsx')).toBe(true);
-    expect(ignored('http://localhost:3000/health')).toBe(true);
     expect(ignored('http://localhost:3000/api/hello')).toBe(false);
     expect(ignored('ws://localhost:3000/_next/webpack-hmr?id=x')).toBe(true);
   });
@@ -129,9 +132,7 @@ describe('init', () => {
   it("skips Metro's sockets on the page's own origin (Expo web)", () => {
     vi.stubGlobal('location', { host: 'localhost:8081', hostname: 'localhost', href: 'http://localhost:8081/' });
     init({ port: 1 });
-    const options = vi.mocked(networkPlugin).mock.calls.at(-1)![0] as NetworkPluginOptions;
-    const ignored = (url: string) =>
-      options.ignoreUrls!.some((pattern) => (typeof pattern === 'string' ? url.includes(pattern) : pattern.test(url)));
+    const ignored = ignoredAsDevTools();
     expect(ignored('ws://localhost:8081/hot')).toBe(true);
     expect(ignored('ws://localhost:8081/message?role=x')).toBe(true);
     expect(ignored('ws://localhost:8081/socket')).toBe(false);
