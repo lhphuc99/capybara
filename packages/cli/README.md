@@ -16,6 +16,6 @@ The UI opens at http://localhost:7357, on this computer only; apps connect from 
 
 Update the SDK in your app along with the CLI: the State tab needs both.
 
-Run `npx capybara-devtools --help` for the options. With `--port`, pass the same `port` to `init()` in apps that use the SDK. Requires Node 20.19 or later.
+Run `npx capybara-devtools --help` for the options. With `--port`, pass the same `port` to `init()` in apps that use the SDK. Requires Node 22.12 or later.
 
 Documentation: [github.com/lhphuc99/capybara](https://github.com/lhphuc99/capybara#readme)
