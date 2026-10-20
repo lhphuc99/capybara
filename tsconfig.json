@@ -1,12 +1,17 @@
 {
-  // `tsc -b` builds and checks every package, each after the ones it imports.
+  // `tsc -b` builds and checks every package, each after the ones it imports, then checks its tests.
   "files": [],
   "references": [
     { "path": "packages/protocol" },
+    { "path": "packages/protocol/test" },
     { "path": "packages/core" },
+    { "path": "packages/core/test" },
     { "path": "packages/web" },
+    { "path": "packages/web/test" },
     { "path": "packages/react-native" },
+    { "path": "packages/react-native/test" },
     { "path": "packages/cli" },
+    { "path": "packages/cli/test" },
     { "path": "packages/ui" },
     { "path": "apps/desktop" }
   ]

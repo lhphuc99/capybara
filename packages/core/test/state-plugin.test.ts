@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { StateEntrySummary, StateLibrary } from '@capybara-devtools/protocol';
+import type { StateCommands, StateEntrySummary, StateLibrary } from '@capybara-devtools/protocol';
 import {
   CLIENT_GLOBAL,
   createClient,
@@ -105,13 +105,18 @@ function fakeCache() {
   };
 }
 
+/** The state plugin's commands as the protocol types them; the plugin itself only promises `unknown`. */
+type Commands = {
+  [M in keyof StateCommands]: (params: StateCommands[M]['params']) => M extends 'act' ? Promise<StateCommands[M]['result']> : StateCommands[M]['result'];
+};
+
 function harness(options: StatePluginOptions = {}) {
   const events: Recorded[] = [];
   const ctx: PluginContext = { emit: (kind, payload) => events.push({ kind, payload }), serialize, console };
   const plugin = statePlugin(options);
   const teardown = plugin.setup!(ctx) as () => void;
   const of = (kind: string) => events.filter((e) => e.kind === kind).map((e) => e.payload);
-  return { commands: plugin.commands!, events, of, teardown };
+  return { commands: plugin.commands as unknown as Commands, events, of, teardown };
 }
 
 /** The engine reads the connection from the active client; the harness has none, so fake one. */

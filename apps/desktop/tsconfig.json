@@ -4,6 +4,6 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["src"],
+  "include": ["src", "test"],
   "references": [{ "path": "../../packages/protocol" }, { "path": "../../packages/cli" }]
 }

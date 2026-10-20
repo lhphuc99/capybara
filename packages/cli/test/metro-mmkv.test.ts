@@ -193,10 +193,10 @@ describe('MMKV CDP lifecycle', () => {
   it('serializes a standalone tracker, refreshes the same lease, and stops after an in-flight refresh', async () => {
     const app = runtime('expose(1, { MMKV });');
     let finish!: () => void;
-    const call = vi.fn(async <T>(_method: string, params?: any): Promise<T> => {
+    const call = vi.fn(async (_method: string, params?: any): Promise<any> => {
       app.run(params.expression);
       if (params.expression.endsWith(')') && call.mock.calls.length === 1) await new Promise<void>(resolve => { finish = resolve; });
-      return {} as T;
+      return {};
     });
     const watcher = watchMetroMMKV(call, 7);
     expect(call.mock.calls[0]?.[1]).toMatchObject({ contextId: 7, returnByValue: true });

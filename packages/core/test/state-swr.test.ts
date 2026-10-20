@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import vm from 'node:vm';
+import type { StateCommands } from '@capybara-devtools/protocol';
 import { act, createElement, StrictMode, Suspense, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import useSWR, { SWRConfig, mutate, unload, useSWRConfig } from 'swr';
@@ -19,6 +20,11 @@ const cleanups: Array<() => unknown> = [];
 const defaultCache = SWRConfig.defaultValue.cache as Map<string, any>;
 const quiet: StateSink = { record: () => {}, dirty: () => {}, removed: () => {} };
 
+/** The state plugin's commands as the protocol types them; the plugin itself only promises `unknown`. */
+type Commands = {
+  [M in keyof StateCommands]: (params: StateCommands[M]['params']) => M extends 'act' ? Promise<StateCommands[M]['result']> : StateCommands[M]['result'];
+};
+
 function harness() {
   const events: Recorded[] = [];
   const ctx: PluginContext = { emit: (kind, payload) => events.push({ kind, payload }), serialize, console };
@@ -26,7 +32,7 @@ function harness() {
   const teardown = plugin.setup!(ctx) as () => void;
   cleanups.push(teardown);
   const of = (kind: string) => events.filter((e) => e.kind === kind).map((e) => e.payload);
-  return { commands: plugin.commands!, of, teardown };
+  return { commands: plugin.commands as unknown as Commands, of, teardown };
 }
 
 /** The module remembers watched caches, so each test untracks its own. */
@@ -539,7 +545,7 @@ describe('watchSWR with React', () => {
     const { commands, of } = harness();
     const made: Array<Map<string, unknown>> = [];
     const provider = () => {
-      const cache = new Map<string, unknown>();
+      const cache = new Map();
       made.push(cache);
       return cache;
     };
