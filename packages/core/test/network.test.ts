@@ -252,6 +252,43 @@ describe('networkPlugin: XMLHttpRequest', () => {
     teardown();
   });
 
+  it('leaves wrappers installed after its own on teardown, and records nothing through them', async () => {
+    const fakeOpen = FakeXHR.prototype.open;
+    const fakeSend = FakeXHR.prototype.send;
+    (globalThis as Record<string, unknown>).XMLHttpRequest = FakeXHR;
+    const fetched: string[] = [];
+    globalThis.fetch = (async (url: string) => {
+      fetched.push(url);
+      return new Response('ok');
+    }) as unknown as typeof fetch;
+    const { of, teardown } = harness();
+    // Another library wraps open and fetch after Capybara, as Sentry does.
+    const ourOpen = FakeXHR.prototype.open;
+    const ourFetch = globalThis.fetch;
+    const theirOpen = function (this: FakeXHR, method: string, url: string) {
+      return ourOpen.call(this, method, url);
+    };
+    const theirFetch = ((input: string) => ourFetch(input)) as typeof fetch;
+    FakeXHR.prototype.open = theirOpen;
+    globalThis.fetch = theirFetch;
+    try {
+      teardown();
+      expect(FakeXHR.prototype.open).toBe(theirOpen);
+      expect(globalThis.fetch).toBe(theirFetch);
+      expect(FakeXHR.prototype.send).toBe(fakeSend);
+
+      const xhr = new FakeXHR();
+      xhr.open('GET', 'https://api.test/after');
+      xhr.send(null);
+      xhr.respond(200, 'ok', 'Content-Type: text/plain\r\n');
+      await fetch('https://api.test/after-fetch');
+      expect(fetched).toEqual(['https://api.test/after-fetch']);
+      expect(of('network.request')).toEqual([]);
+    } finally {
+      FakeXHR.prototype.open = fakeOpen;
+    }
+  });
+
   it('restores the prototype on teardown', () => {
     const { open, send, setRequestHeader } = FakeXHR.prototype;
     (globalThis as Record<string, unknown>).XMLHttpRequest = FakeXHR;

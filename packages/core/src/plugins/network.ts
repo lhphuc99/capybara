@@ -174,8 +174,10 @@ function patchFetch(ctx: PluginContext, settings: Settings): () => void {
   const g = globalThis as { fetch?: typeof fetch };
   const original = g.fetch;
   if (typeof original !== 'function') return () => {};
+  let active = true;
 
   const patched = function fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+    if (!active) return original.call(globalThis, input, init);
     let request: ReturnType<typeof describeFetch>;
     try {
       request = describeFetch(input, init, settings.maxBody);
@@ -237,6 +239,8 @@ function patchFetch(ctx: PluginContext, settings: Settings): () => void {
 
   g.fetch = patched as typeof fetch;
   return () => {
+    // A wrapper installed after ours stays; ours, still under it, then only passes calls on.
+    active = false;
     if (g.fetch === patched) g.fetch = original;
   };
 }
@@ -341,6 +345,7 @@ function patchXhr(ctx: PluginContext, settings: Settings, fetchOverXhr: boolean)
   const nativeErrors = new WeakMap<XMLHttpRequest, string>();
   // Ends the request an XHR is on; apps may open the same XHR again for the next one.
   const inFlight = new WeakMap<XMLHttpRequest, (cutOff?: boolean) => void>();
+  let active = true;
   const internals = proto as unknown as Record<string, unknown>;
   const originalComplete = internals.__didCompleteResponse;
   if (typeof originalComplete === 'function') {
@@ -439,7 +444,7 @@ function patchXhr(ctx: PluginContext, settings: Settings, fetchOverXhr: boolean)
 
   proto.send = function send(this: XMLHttpRequest, body?: Document | XMLHttpRequestBodyInit | null) {
     const info = requests.get(this);
-    if (info && !settings.isIgnored(info.url)) {
+    if (active && info && !settings.isIgnored(info.url)) {
       try {
         track(this, info, body);
       } catch {
@@ -449,11 +454,21 @@ function patchXhr(ctx: PluginContext, settings: Settings, fetchOverXhr: boolean)
     return originalSend.call(this, body);
   };
 
+  const patched = {
+    open: proto.open,
+    send: proto.send,
+    setRequestHeader: proto.setRequestHeader,
+    complete: internals.__didCompleteResponse,
+  };
   return () => {
-    proto.open = originalOpen;
-    proto.send = originalSend;
-    proto.setRequestHeader = originalSetRequestHeader;
-    if (typeof originalComplete === 'function') internals.__didCompleteResponse = originalComplete;
+    // Wrappers installed after ours (Sentry, Reactotron) stay; ours, still under them, then only pass calls on.
+    active = false;
+    if (proto.open === patched.open) proto.open = originalOpen;
+    if (proto.send === patched.send) proto.send = originalSend;
+    if (proto.setRequestHeader === patched.setRequestHeader) proto.setRequestHeader = originalSetRequestHeader;
+    if (typeof originalComplete === 'function' && internals.__didCompleteResponse === patched.complete) {
+      internals.__didCompleteResponse = originalComplete;
+    }
     if (taggedFetch && g.fetch === taggedFetch) g.fetch = originalFetch;
   };
 }

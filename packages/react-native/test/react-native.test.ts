@@ -81,6 +81,22 @@ describe('asyncStorage', () => {
     unsubscribe();
     expect(store.setItem).toBe(originalSetItem);
   });
+
+  it('leaves a wrapper installed after its own when unsubscribed, and reports nothing through it', async () => {
+    const store = fakeAsyncStorage();
+    const onChange = vi.fn();
+    const unsubscribe = asyncStorage(store).watch!(onChange);
+    const ours = store.setItem;
+    const theirs = (key: string, value: string) => ours(key, value);
+    store.setItem = theirs;
+
+    unsubscribe();
+    expect(store.setItem).toBe(theirs);
+    await store.setItem('a', '1');
+    await Promise.resolve();
+    expect(store.data.get('a')).toBe('1');
+    expect(onChange).not.toHaveBeenCalled();
+  });
 });
 
 /** Native MMKV keeps untyped bytes that every getter decodes; same model as the Metro reader's tests. */

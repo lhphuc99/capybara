@@ -15,16 +15,16 @@ export function consolePlugin(options: ConsolePluginOptions = {}): Plugin {
     name: 'console',
     setup(ctx) {
       const target = console as unknown as Record<LogLevel, (...args: unknown[]) => void>;
-      const originals = new Map<LogLevel, (...args: unknown[]) => void>();
+      const patches = new Map<LogLevel, { original: (...args: unknown[]) => void; patched: (...args: unknown[]) => void }>();
       // A getter or toJSON hit during serialization may log; recording that would recurse.
       let capturing = false;
+      let active = true;
 
       for (const level of LEVELS) {
         const original = target[level];
         if (typeof original !== 'function') continue;
-        originals.set(level, original);
-        target[level] = function (this: unknown, ...args: unknown[]) {
-          if (!capturing && !ignored(args)) {
+        const patched = function (this: unknown, ...args: unknown[]) {
+          if (active && !capturing && !ignored(args)) {
             capturing = true;
             try {
               ctx.emit('log', { level, source: 'console', args: args.map((arg) => ctx.serialize(arg)) });
@@ -36,10 +36,14 @@ export function consolePlugin(options: ConsolePluginOptions = {}): Plugin {
           }
           return original.apply(this, args);
         };
+        target[level] = patched;
+        patches.set(level, { original, patched });
       }
 
       return () => {
-        for (const [level, original] of originals) target[level] = original;
+        // A wrapper installed after ours (LogBox, Sentry) stays; ours, still under it, then only passes calls on.
+        active = false;
+        for (const [level, { original, patched }] of patches) if (target[level] === patched) target[level] = original;
       };
     },
   };

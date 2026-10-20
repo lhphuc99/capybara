@@ -192,6 +192,25 @@ describe('createClient', () => {
     }
   });
 
+  it('leaves a console wrapper installed after its own on stop', () => {
+    const calls: unknown[][] = [];
+    const realError = console.error;
+    console.error = (...args: unknown[]) => calls.push(args);
+    try {
+      const { client } = setup([consolePlugin()]);
+      // LogBox and Sentry wrap console.error this way.
+      const ours = console.error;
+      const theirs = (...args: unknown[]) => ours(...args);
+      console.error = theirs;
+      client.stop();
+      expect(console.error).toBe(theirs);
+      console.error('after stop');
+      expect(calls).toEqual([['after stop']]);
+    } finally {
+      console.error = realError;
+    }
+  });
+
   it('prints but does not record console calls that match an ignore pattern', () => {
     const calls: unknown[][] = [];
     const realInfo = console.info;
