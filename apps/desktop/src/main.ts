@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { DEFAULT_PORT } from '@capybara-devtools/protocol';
 import { fetchLatestVersions, reverseAndroidPorts, startMetroBridge, type MetroBridge, type ServerOptions } from 'capybara-devtools';
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, shell, type MenuItemConstructorOptions } from 'electron';
-import { listen, PortInUseError, startOrReuse, type Started } from './server.js';
+import { listen, PortInUseError, portFromEnv, startOrReuse, type Started } from './server.js';
 import { checkForUpdates, startUpdateChecks } from './updater.js';
 
 const TAKEOVER_INTERVAL_MS = 2_000;
@@ -76,9 +76,27 @@ async function main() {
     ]),
   );
 
+  const port = portFromEnv(process.env.CAPYBARA_PORT);
+  if (port === undefined) {
+    // Otherwise listening fails with a RangeError, and Try Again fails the same way.
+    const { response } = await dialog.showMessageBox({
+      type: 'warning',
+      message: 'CAPYBARA_PORT is not a port',
+      detail:
+        `It is set to "${process.env.CAPYBARA_PORT}"; a port is a whole number up to 65535. ` +
+        `Capybara can use port ${DEFAULT_PORT} instead, but apps set to another port will not reach it.`,
+      buttons: [`Use ${DEFAULT_PORT}`, 'Quit'],
+      defaultId: 0,
+      cancelId: 1,
+    });
+    if (response === 1) {
+      app.quit();
+      return;
+    }
+  }
   const checkUpdates = !process.env.CAPYBARA_NO_UPDATE_CHECK;
   const options: ServerOptions = {
-    port: Number(process.env.CAPYBARA_PORT || DEFAULT_PORT),
+    port: port ?? DEFAULT_PORT,
     uiDir: join(app.getAppPath(), 'dist', 'ui'),
     remoteUi: process.env.CAPYBARA_REMOTE_UI === '1',
     onHint: (hint) => console.log(hint),

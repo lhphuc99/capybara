@@ -1,7 +1,7 @@
 import http from 'node:http';
 import net, { type AddressInfo, type Socket } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
-import { isCapybaraServer, listen, PortInUseError, startOrReuse } from '../src/server.js';
+import { isCapybaraServer, listen, PortInUseError, portFromEnv, startOrReuse } from '../src/server.js';
 
 const cleanup: Array<() => Promise<void>> = [];
 
@@ -22,6 +22,18 @@ async function otherServer() {
   cleanup.push(() => new Promise((resolve) => server.close(() => resolve())));
   return (server.address() as AddressInfo).port;
 }
+
+describe('portFromEnv', () => {
+  it('reads CAPYBARA_PORT as the CLI does, and says when it is not a port', () => {
+    expect(portFromEnv(undefined)).toBe(7357);
+    expect(portFromEnv('')).toBe(7357);
+    expect(portFromEnv('7400')).toBe(7400);
+    expect(portFromEnv('0')).toBe(0);
+    expect(portFromEnv('abc')).toBeUndefined();
+    expect(portFromEnv('73.5')).toBeUndefined();
+    expect(portFromEnv('70000')).toBeUndefined();
+  });
+});
 
 describe('startOrReuse', () => {
   it('starts its own server on a free port', async () => {

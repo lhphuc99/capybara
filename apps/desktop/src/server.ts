@@ -1,5 +1,5 @@
 import net from 'node:net';
-import { VIEWER_PATH } from '@capybara-devtools/protocol';
+import { DEFAULT_PORT, VIEWER_PATH } from '@capybara-devtools/protocol';
 import { createServer, type CapybaraServer, type ServerOptions } from 'capybara-devtools';
 import { WebSocket, type RawData } from 'ws';
 
@@ -13,6 +13,13 @@ export interface Started {
   port: number;
   /** Null when another Capybara process (e.g. `npx capybara-devtools`) already serves the port. */
   server: CapybaraServer | null;
+}
+
+/** `CAPYBARA_PORT` read as the CLI reads it; undefined when it is set to something that is not a port. */
+export function portFromEnv(value: string | undefined): number | undefined {
+  if (!value) return DEFAULT_PORT;
+  const port = Number(value);
+  return Number.isInteger(port) && port >= 0 && port <= 65_535 ? port : undefined;
 }
 
 /** Starts a server, or reuses the Capybara server that already has the port. */
