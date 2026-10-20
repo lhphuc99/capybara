@@ -1858,10 +1858,12 @@ code {
     display: none;
   }
 
+  /* With auto, a window that is short as well squeezed the list of stores to nothing: the column's min-height: 0
+     let the two rows below take all the height. */
   .storage,
   .state-layout {
     grid-template-columns: minmax(0, 1fr);
-    grid-auto-rows: auto minmax(200px, 1fr) minmax(240px, 1fr);
+    grid-auto-rows: max-content minmax(200px, 1fr) minmax(240px, 1fr);
     overflow: auto;
   }
 
@@ -1869,6 +1871,7 @@ code {
   .state-nav {
     display: flex;
     flex-wrap: wrap;
+    max-height: 40vh;
     border-right: 0;
     border-bottom: 1px solid var(--border);
   }
