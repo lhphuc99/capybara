@@ -32,6 +32,10 @@ function StorageBrowser({ session }: { session: SessionState }) {
   const navRef = useRef<HTMLDivElement>(null);
   const entriesRef = useRef<HTMLDivElement>(null);
   const keyRef = useRef<HTMLSpanElement>(null);
+  const requestRef = useRef(0);
+  const shownRef = useRef(0);
+  const timerRef = useRef<number | undefined>(undefined);
+  const seenRef = useRef<{ adapterId: string | null; reloadToken: number }>({ adapterId: null, reloadToken: 0 });
   const adapter = adapters?.find((a) => a.id === adapterId);
   const version = adapterId ? (session.storageVersions[adapterId] ?? 0) : 0;
 
@@ -58,32 +62,57 @@ function StorageBrowser({ session }: { session: SessionState }) {
   }, [sessionId, connected, scanToken]);
 
   useEffect(() => {
-    if (!connected || !adapterId) return;
-    let cancelled = false;
-    // Persisted stores can write many times a second; refresh at most every 250 ms after the first load.
-    const delay = version === 0 && reloadToken === 0 ? 0 : 250;
-    const timer = window.setTimeout(() => {
-      setLoading(true);
-      storageCommand(sessionId, 'entries', { adapter: adapterId })
-        .then(
-          (result) => {
-            if (cancelled) return;
+    const seen = seenRef.current;
+    const active = connected ? adapterId : null;
+    seenRef.current = { adapterId: active, reloadToken };
+    const load = (adapter: string, quiet: boolean) => {
+      const request = ++requestRef.current;
+      if (!quiet) setLoading(true);
+      const settle = (show: () => void) => {
+        // Newer than what is shown, if not the newest: replies slower than the writes still show up.
+        if (request > shownRef.current) {
+          shownRef.current = request;
+          show();
+        }
+        if (request === requestRef.current) setLoading(false);
+      };
+      storageCommand(sessionId, 'entries', { adapter }).then(
+        (result) =>
+          settle(() => {
             setListing(result);
             setError(null);
-          },
-          (reason: Error) => {
-            if (!cancelled) setError(reason.message);
-          },
-        )
-        .finally(() => {
-          if (!cancelled) setLoading(false);
-        });
-    }, delay);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
+          }),
+        (reason: Error) => settle(() => setError(reason.message)),
+      );
     };
+    if (active !== seen.adapterId) {
+      // Replies on their way belong to the adapter shown before.
+      shownRef.current = requestRef.current;
+      window.clearTimeout(timerRef.current);
+      timerRef.current = undefined;
+      if (active) load(active, false);
+      else setLoading(false);
+    } else if (active && reloadToken !== seen.reloadToken) {
+      window.clearTimeout(timerRef.current);
+      timerRef.current = undefined;
+      load(active, false);
+    } else if (active && timerRef.current === undefined) {
+      // Persisted stores can write many times a second. The timer is not reset by later writes, so a store written
+      // all the time is still read every 250 ms.
+      timerRef.current = window.setTimeout(() => {
+        timerRef.current = undefined;
+        load(active, true);
+      }, 250);
+    }
   }, [sessionId, connected, adapterId, version, reloadToken]);
+
+  useEffect(
+    () => () => {
+      window.clearTimeout(timerRef.current);
+      timerRef.current = undefined;
+    },
+    [],
+  );
 
   const matcher = useMemo(() => makeMatcher(query), [query]);
   const visible = useMemo(
