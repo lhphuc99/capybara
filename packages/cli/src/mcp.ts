@@ -185,7 +185,8 @@ export function createMcpServer(connection: ViewerConnection, options: McpOption
     'list_sessions',
     {
       title: 'List apps',
-      description: 'Lists the apps connected to Capybara, newest first, with their session ids.',
+      description:
+        'Lists the apps connected to Capybara, newest first, with their session ids, and what Capybara noticed, e.g. an app it cannot read through Metro.',
       annotations: reads,
     },
     () =>
@@ -193,13 +194,15 @@ export function createMcpServer(connection: ViewerConnection, options: McpOption
         const { server: info, sessions } = await connection.listSessions();
         const sorted = [...sessions].sort((a, b) => Number(b.connected) - Number(a.connected) || b.info.startedAt - a.info.startedAt);
         const header = `Capybara ${info.version} on port ${info.port}.`;
-        if (sorted.length === 0) return `${header} No app has connected yet.`;
+        // Often why an app is missing, e.g. one Metro cannot read.
+        const hints = info.hints?.length ? ['Capybara noticed:', ...info.hints.map((hint) => `- ${hint}`)] : [];
+        if (sorted.length === 0) return [`${header} No app has connected yet.`, ...hints].join('\n');
         // Reloads leave many closed sessions behind; only the recent ones with data are worth reading.
         const shown = [...sorted.filter((meta) => meta.connected), ...sorted.filter((meta) => !meta.connected && meta.eventCount > 0).slice(0, 5)];
         const hidden = sorted.length - shown.length;
         const lines = [header, 'Sessions, newest first:', ...shown.map(sessionLine)];
         if (hidden > 0) lines.push(`${hidden} older or empty disconnected sessions not listed.`);
-        return lines.join('\n');
+        return [...lines, ...hints].join('\n');
       }),
   );
 

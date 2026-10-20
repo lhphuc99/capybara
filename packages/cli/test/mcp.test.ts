@@ -291,6 +291,15 @@ describe('capybara mcp', () => {
     expect(sessions.text).toContain('- web-1: Shop (web, localhost:6868) · connected');
   });
 
+  it('lists what Capybara noticed with the apps, such as one Metro cannot read', async () => {
+    const { call } = await connect();
+    const hint = "Expo Go on Android (Pixel 9) can't be read through Metro: its JavaScript engine does not support debugging.";
+    server.hint(hint);
+    const { text } = await until(() => call('list_sessions'), (result) => result.text.includes('Capybara noticed:'));
+    expect(text).toContain(`- web-1: Shop (web, localhost:6868) · connected`);
+    expect(text).toContain(`Capybara noticed:\n- ${hint}`);
+  });
+
   it('filters logs by level, text, regex and seq, and hides credentials in their values', async () => {
     const { call } = await ready();
     const all = (await call('get_logs')).text;

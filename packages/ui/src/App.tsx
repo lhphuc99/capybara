@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { AppearanceMenu } from './components/AppearanceMenu';
 import { EmptyState } from './components/EmptyState';
+import { HintBanner } from './components/HintBanner';
 import { RemoteAccess } from './components/RemoteAccess';
 import { SessionPicker } from './components/SessionPicker';
 import { Toaster } from './components/Toaster';
@@ -80,6 +81,7 @@ export function App() {
       </header>
       <main className="main">
         <UpdateBanner server={server} session={session?.meta.info} />
+        <HintBanner server={server} />
         {!session ? (
           <EmptyState status={status} server={server} />
         ) : !session.loaded ? (

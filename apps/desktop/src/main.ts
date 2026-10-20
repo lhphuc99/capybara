@@ -92,9 +92,10 @@ async function main() {
   }
   url = `http://localhost:${started.port}`;
   if (started.server) {
+    const server = started.server;
     console.log(`Capybara server on port ${started.port}`);
     reverseAndroidPorts(started.port, findAdb());
-    metroBridge = startMetroBridge({ port: started.port, version: app.getVersion() });
+    metroBridge = startMetroBridge({ port: started.port, version: app.getVersion(), onHint: (hint) => server.hint(hint) });
   } else {
     console.log(`Using the Capybara server already running on port ${started.port}`);
     takeOverWhenFree(options);
@@ -139,7 +140,7 @@ function takeOverWhenFree(options: ServerOptions) {
     }
     console.log(`Took over port ${own.port}`);
     reverseAndroidPorts(own.port, findAdb());
-    metroBridge = startMetroBridge({ port: own.port, version: app.getVersion() });
+    metroBridge = startMetroBridge({ port: own.port, version: app.getVersion(), onHint: (hint) => own.server.hint(hint) });
     // The page came from the other server, which may be a different version.
     if (mainWindow) load(mainWindow);
   }, TAKEOVER_INTERVAL_MS);

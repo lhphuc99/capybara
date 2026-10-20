@@ -670,7 +670,8 @@ code {
   margin: 4px 0 0;
 }
 
-.update-banner {
+.update-banner,
+.hint-banner {
   display: flex;
   flex: none;
   flex-wrap: wrap;
@@ -686,7 +687,13 @@ code {
   background: var(--bg);
 }
 
-.update-banner .dismiss {
+/* Hints run long: the text wraps beside the dismiss button instead of pushing it to a line of its own. */
+.hint-banner > span {
+  flex: 1;
+}
+
+.update-banner .dismiss,
+.hint-banner .dismiss {
   margin-left: auto;
   font-size: 15px;
   line-height: 1;

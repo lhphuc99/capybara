@@ -365,6 +365,32 @@ describe('diagnosing failed requests', () => {
   });
 });
 
+describe('hints', () => {
+  const unreadable = "Expo Go on Android (Pixel 9) can't be read through Metro: its JavaScript engine does not support debugging.";
+
+  it('shows each hint in the UI once, and passes it on', async () => {
+    const printed: string[] = [];
+    await start({ onHint: (hint) => printed.push(hint) });
+    const before = viewer();
+    await before.opened;
+    server!.hint(unreadable);
+    server!.hint(unreadable);
+    expect((await before.next((m) => m.t === 'server')).server.hints).toEqual([unreadable]);
+    expect(printed).toEqual([unreadable]);
+
+    // A UI opened later gets them with the rest of the server info.
+    const after = viewer();
+    expect((await after.next((m) => m.t === 'init')).server.hints).toEqual([unreadable]);
+  });
+
+  it('keeps the newest ten', async () => {
+    await start();
+    for (let i = 1; i <= 12; i++) server!.hint(`Hint ${i}`);
+    const ui = viewer();
+    expect((await ui.next((m) => m.t === 'init')).server.hints).toEqual(Array.from({ length: 10 }, (_, i) => `Hint ${i + 3}`));
+  });
+});
+
 describe('access control', () => {
   it('refuses viewer sockets from other origins', async () => {
     await start();
@@ -392,16 +418,20 @@ describe('access control', () => {
   it.skipIf(!lan)('shows the UI and what apps sent only to this machine, while apps connect from anywhere', async () => {
     const hints: string[] = [];
     await start({ onHint: (hint) => hints.push(hint) });
+    const ui = viewer();
+    await ui.opened;
     const elsewhere = { localAddress: lan };
     await expect(connect('/viewer', { origin: `http://127.0.0.1:${port}` }, elsewhere).opened).rejects.toThrow('HTTP 403');
     expect(await statusOf(elsewhere)).toBe(403);
     await expect(connect('/client', {}, elsewhere).opened).resolves.toBeUndefined();
     expect(await statusOf()).toBe(200);
 
-    // The device is told how to get in, and the terminal once which device was turned away.
+    // The device is told how to get in, and the terminal and the UI once which device was turned away.
     expect(await bodyOf(elsewhere)).toContain('--remote-ui');
     expect(hints).toEqual([expect.stringContaining(`${lan} was turned away`)]);
     expect(hints[0]).toContain('--remote-ui');
+    expect(hints[0]).toContain('CAPYBARA_REMOTE_UI=1');
+    expect((await ui.next((m) => m.t === 'server')).server.hints).toEqual(hints);
   });
 
   it.skipIf(!lan)('lets other devices open the UI with remoteUi', async () => {

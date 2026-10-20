@@ -41,7 +41,7 @@ export interface ServerOptions {
    * apps send, tokens included. Default false: only this machine; apps connect from anywhere either way.
    */
   remoteUi?: boolean;
-  /** Told once per device that was refused the UI, with how to let it in. */
+  /** Told once per device that was refused the UI, with how to let it in, and of each `hint()`. */
   onHint?: (message: string) => void;
   /** Disconnected sessions beyond this are dropped, oldest first. Default 20. */
   maxSessions?: number;
@@ -66,6 +66,8 @@ export interface CapybaraServer {
   /** `address` is the one the server listens on, `::` or `0.0.0.0` for all interfaces. */
   start(): Promise<{ port: number; address: string }>;
   close(): Promise<void>;
+  /** Shows a hint in the UI and passes it to `onHint`, e.g. one from the Metro bridge. */
+  hint(message: string): void;
 }
 
 interface Session {
@@ -96,6 +98,7 @@ interface PendingCommand {
 const HEARTBEAT_MS = 15_000;
 const LATEST_REFRESH_MS = 12 * 60 * 60 * 1_000;
 const MAX_PINNED_STORES = 200;
+const MAX_HINTS = 10;
 
 export function createServer(options: ServerOptions): CapybaraServer {
   const maxSessions = options.maxSessions ?? 20;
@@ -115,6 +118,15 @@ export function createServer(options: ServerOptions): CapybaraServer {
   let closed = false;
   const closing = new AbortController();
 
+  const hints: string[] = [];
+  const hint = (message: string) => {
+    if (hints.includes(message)) return;
+    options.onHint?.(message);
+    hints.push(message);
+    if (hints.length > MAX_HINTS) hints.shift();
+    broadcast({ t: 'server', server: serverInfo() });
+  };
+
   const mayView = (req: http.IncomingMessage) => options.remoteUi === true || isLocalConnection(req.socket);
   const hinted = new Set<string>();
   // Whoever tried probably sits at this computer too, and may not know about --remote-ui.
@@ -122,9 +134,10 @@ export function createServer(options: ServerOptions): CapybaraServer {
     const address = unmapped(req.socket.remoteAddress) ?? 'A device';
     if (hinted.has(address)) return;
     hinted.add(address);
-    options.onHint?.(
+    hint(
       `${address} was turned away: only this computer can open the UI or read it with capybara mcp. ` +
-        'Restart with --remote-ui to let other devices in; they then see everything apps send, tokens included.',
+        'Restart with --remote-ui (for the desktop app, set CAPYBARA_REMOTE_UI=1) to let other devices in; ' +
+        'they then see everything apps send, tokens included.',
     );
   };
 
@@ -204,6 +217,7 @@ export function createServer(options: ServerOptions): CapybaraServer {
     addresses: reachableAddresses(bound),
     remoteUi: options.remoteUi === true,
     latest,
+    hints: [...hints],
   });
 
   const refreshLatest = async () => {
@@ -506,6 +520,8 @@ export function createServer(options: ServerOptions): CapybaraServer {
         httpServer.close(() => resolve());
         httpServer.closeAllConnections();
       }),
+
+    hint,
   };
 }
 

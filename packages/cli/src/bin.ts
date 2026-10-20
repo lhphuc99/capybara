@@ -115,7 +115,7 @@ try {
   printBanner(actual, address);
   reverseAndroidPorts(actual);
   if (metroPorts.length > 0) {
-    metroBridge = startMetroBridge({ port: actual, metroPorts, version, onHint: (hint) => console.log(`  ${hint}\n`) });
+    metroBridge = startMetroBridge({ port: actual, metroPorts, version, onHint: (hint) => server.hint(hint) });
   }
   if (values.open) openBrowser(`http://${hostOf(address)}:${actual}`);
 } catch (error) {

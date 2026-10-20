@@ -388,6 +388,11 @@ export interface ServerInfo {
   remoteUi?: boolean;
   /** Newest versions on npm, once the server has looked them up. Missing when the check is off or failed. */
   latest?: LatestVersions;
+  /**
+   * What the person at this computer should know, oldest first: a device was refused the UI, an app cannot be read
+   * through Metro. The CLI also prints them; the desktop app has nowhere else to show them. Missing from older servers.
+   */
+  hints?: string[];
 }
 
 /** One step of a diagnosis: a browser rule that passed or failed, or something the server saw on the way. */
