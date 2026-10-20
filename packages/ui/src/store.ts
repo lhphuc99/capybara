@@ -16,6 +16,7 @@ import type {
 import { useSyncExternalStore } from 'react';
 import { send, type ConnectionStatus } from './connection';
 import { applyStateEvent, clearStateRecords, emptyStateSlice, type StateEvent, type StateSlice } from './state';
+import { showToast } from './toast';
 
 export interface LogEntry {
   seq: number;
@@ -214,16 +215,21 @@ export function selectSession(id: string): void {
 }
 
 export function clearSession(id: string): void {
-  send({ t: 'clear', sessionId: id });
+  sendAction({ t: 'clear', sessionId: id });
 }
 
 /** Clears the recorded state changes and leaves logs and requests alone. */
 export function clearStateTimeline(id: string): void {
-  send({ t: 'clear', sessionId: id, scope: 'state' });
+  sendAction({ t: 'clear', sessionId: id, scope: 'state' });
 }
 
 export function removeSession(id: string): void {
-  send({ t: 'remove', sessionId: id });
+  sendAction({ t: 'remove', sessionId: id });
+}
+
+/** The server does these, so while it is unreachable the button would seem to do nothing. */
+function sendAction(message: Parameters<typeof send>[0]): void {
+  if (!send(message)) showToast('The Capybara server is offline. Try again once it reconnects.', 'error');
 }
 
 /** Adds or updates stores the `stores` command found, e.g. ones the server lost when it restarted. */

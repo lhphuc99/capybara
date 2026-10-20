@@ -104,6 +104,9 @@ function StateBrowser({ session }: { session: SessionState }) {
   const [recordTab, setRecordTab] = useState<RecordTab>('diff');
   const [entryTab, setEntryTab] = useState<EntryTab>('data');
   const [totals, setTotals] = useState<Record<string, number>>({});
+  // The panel still shows what it has, which may be missing stores or entries the app was asked for.
+  const [storesError, setStoresError] = useState<string | null>(null);
+  const [entriesError, setEntriesError] = useState<{ store: string; message: string } | null>(null);
   const [libraryContexts, setLibraryContexts] = useState(readLibraryContexts);
   const layoutRef = useRef<HTMLDivElement>(null);
   const pane = usePaneWidth('capybara:pane:state', 44);
@@ -122,9 +125,13 @@ function StateBrowser({ session }: { session: SessionState }) {
     let cancelled = false;
     stateCommand(sessionId, 'stores', undefined).then(
       (stores) => {
-        if (!cancelled) mergeStateStores(sessionId, stores);
+        if (cancelled) return;
+        mergeStateStores(sessionId, stores);
+        setStoresError(null);
       },
-      () => {},
+      (reason: Error) => {
+        if (!cancelled) setStoresError(reason.message);
+      },
     );
     return () => {
       cancelled = true;
@@ -140,8 +147,11 @@ function StateBrowser({ session }: { session: SessionState }) {
         if (cancelled) return;
         loadStateEntries(sessionId, storeId, result.entries);
         setTotals((current) => ({ ...current, [storeId]: result.total }));
+        setEntriesError(null);
       },
-      () => {},
+      (reason: Error) => {
+        if (!cancelled) setEntriesError({ store: storeId, message: reason.message });
+      },
     );
     return () => {
       cancelled = true;
@@ -182,7 +192,15 @@ function StateBrowser({ session }: { session: SessionState }) {
     saveLibraryContexts(show);
   };
 
-  if (!store) return <NoStores session={session} libraryContexts={libraryCount} onShowLibraryContexts={() => toggleLibraryContexts(true)} />;
+  const storesCallout = storesError && <p className="callout error inline">Could not ask the app for its stores: {storesError}</p>;
+  if (!store) {
+    return (
+      <>
+        {storesCallout}
+        <NoStores session={session} libraryContexts={libraryCount} onShowLibraryContexts={() => toggleLibraryContexts(true)} />
+      </>
+    );
+  }
 
   const selectStore = (view: StoreView) => {
     const next = { sessionId, id: view.info.id, library: view.info.library, label: view.info.label };
@@ -250,6 +268,12 @@ function StateBrowser({ session }: { session: SessionState }) {
             Clear
           </button>
         </div>
+      )}
+      {storesCallout}
+      {entryStore && entriesError?.store === store.info.id && (
+        <p className="callout error inline">
+          Could not read the {store.info.library === 'tanstack-query' ? 'queries' : 'keys'} from the app: {entriesError.message}
+        </p>
       )}
 
       <div

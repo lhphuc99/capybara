@@ -68,8 +68,11 @@ export function connect(handlers: Handlers): void {
   open();
 }
 
-export function send(message: ViewerToServer): void {
-  if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
+/** False when the server is unreachable, and the message was dropped. */
+export function send(message: ViewerToServer): boolean {
+  if (socket?.readyState !== WebSocket.OPEN) return false;
+  socket.send(JSON.stringify(message));
+  return true;
 }
 
 function request<T>(message: (id: string) => ViewerToServer, timeout = 15_000): Promise<T> {
