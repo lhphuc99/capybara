@@ -14,7 +14,7 @@ export { storagePlugin } from './plugins/storage.js';
 export type { StorageAdapter } from './plugins/storage.js';
 export { statePlugin } from './plugins/state/index.js';
 export type { StatePluginOptions, StateSink, StoreDriver } from './plugins/state/index.js';
-export { walkProviders } from './plugins/state/context.js';
+export { walkProviders } from './plugins/state/fibers.js';
 export type {
   Fiber as ReactFiber,
   FiberRoot as ReactFiberRoot,
@@ -22,7 +22,7 @@ export type {
   WalkCursor,
   WalkProvidersOptions,
   WalkProvidersResult,
-} from './plugins/state/context.js';
+} from './plugins/state/fibers.js';
 export { capybaraReduxEnhancer, connectReduxStore } from './plugins/state/redux.js';
 export type { ReduxStoreEnhancer, ReduxStoreLike, ReduxStoreOptions } from './plugins/state/redux.js';
 export { watchZustand } from './plugins/state/zustand.js';

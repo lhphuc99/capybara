@@ -5,47 +5,37 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import { readPort } from './config.js';
 import { ViewerConnection } from './mcp-connection.js';
+import { readEvents, readStateEvents, type StateHistory, type StoreEntry } from './mcp-history.js';
+import { filterLogs, logText } from './mcp-logs.js';
 import {
-  adapterLine,
-  changeDetail,
-  changeLines,
   diagnosisText,
-  entryDetail,
-  entryLine,
-  filterChanges,
-  filterEntries,
-  filterLogs,
   filterMessages,
   filterRequests,
+  messageLine,
+  requestDetail,
+  requestLine,
+} from './mcp-network.js';
+import { entryDetail, entryLine, filterEntries, type EntryQuery } from './mcp-queries.js';
+import { redactor } from './mcp-redact.js';
+import {
+  changeDetail,
+  changeLines,
+  filterChanges,
   findStore,
   isCache,
   listStores,
-  logText,
   mergeStores,
-  messageLine,
-  newest,
   noStoresText,
-  pickSession,
   readAsOf,
-  readEvents,
-  readStateEvents,
   readValueText,
-  redactor,
   reportsState,
-  requestDetail,
-  requestLine,
-  sessionHeader,
-  sessionLine,
   stateReadError,
-  storageEntryLines,
-  storageEntryText,
   storeListText,
   storeTitle,
   unknownStore,
-  type EntryQuery,
-  type StateHistory,
-  type StoreEntry,
-} from './mcp-data.js';
+} from './mcp-state.js';
+import { adapterLine, storageEntryLines, storageEntryText } from './mcp-storage.js';
+import { newest, pickSession, sessionHeader, sessionLine } from './mcp-text.js';
 import { resolveProjectDir, setupGuide } from './setup-guide.js';
 
 const INSTRUCTIONS = `Capybara records what a React Native or web app in development is doing: console logs, network requests (fetch, XHR, WebSocket), storage (localStorage, sessionStorage, cookies, AsyncStorage, MMKV) and state (Redux, Zustand, TanStack Query, SWR, React Context). These tools read the Capybara server running on this computer. To add Capybara to an app, call get_setup_guide, which works before Capybara runs, and make the changes it lists.

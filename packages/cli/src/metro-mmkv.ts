@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
-
-type CdpCall = <T>(method: string, params?: object) => Promise<T>;
+import type { CdpCall } from './metro-debugger.js';
 
 /** Refresh the runtime lease and discover MMKV modules loaded after the connection was made. */
 export function watchMetroMMKV(call: CdpCall, contextId: number) {

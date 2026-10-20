@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { hookWebSockets, type WebSocketEventKind, type WebSocketHookOptions } from '@capybara-devtools/core';
-
-type CdpCall = <T>(method: string, params?: object) => Promise<T>;
+import type { CdpCall } from './metro-debugger.js';
 
 /** React Native's inspector forwards calls of this runtime function as Runtime.bindingCalled. */
 export const WEBSOCKET_BINDING = '__capybaraWebSocket';

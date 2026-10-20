@@ -1,36 +1,14 @@
 import { randomUUID } from 'node:crypto';
-import { CLIENT_GLOBAL, serialize } from '@capybara-devtools/core';
-import {
-  CLIENT_PATH,
-  MAX_SOCKET_MESSAGE_SIZE,
-  METRO_SDK,
-  PROTOCOL_VERSION,
-  type BodyPreview,
-  type EventKind,
-  type EventPayloads,
-  type SerializedValue,
-  type ServerToClient,
-  type SessionInfo,
-} from '@capybara-devtools/protocol';
-import { WebSocket, type RawData } from 'ws';
+import { CLIENT_GLOBAL } from '@capybara-devtools/core';
+import { CLIENT_PATH, MAX_SOCKET_MESSAGE_SIZE, METRO_SDK, type SessionInfo } from '@capybara-devtools/protocol';
+import { platformOf } from './cdp.js';
 import { debug } from './debug.js';
-import { readMetroStorage } from './metro-storage.js';
+import { CdpClient, CdpError, connect, METHOD_NOT_FOUND, type CdpEvent, type EvaluateResult } from './metro-debugger.js';
+import { relayEvent, releaseEvent, type ConsoleCall, type Request } from './metro-events.js';
 import { watchMetroMMKV } from './metro-mmkv.js';
-import { parseWebSocketReport, watchMetroWebSockets, WEBSOCKET_BINDING } from './metro-websocket.js';
-import {
-  headerValue,
-  initiatorOf,
-  isDevServerRequest,
-  isTextual,
-  isUnhandledRejection,
-  logLevel,
-  platformOf,
-  primitiveValue,
-  responseBody,
-  textBody,
-  type RemoteObject,
-  type RequestInitiator,
-} from './cdp.js';
+import { MAX_HELD_EVENTS, openSession, type Session } from './metro-relay.js';
+import { readMetroStorage } from './metro-storage.js';
+import { watchMetroWebSockets } from './metro-websocket.js';
 
 /** Expo moves to 8082 when 8081 is taken. */
 export const DEFAULT_METRO_PORTS = [8081, 8082];
@@ -51,28 +29,11 @@ export interface MetroBridge {
   stop(): void;
 }
 
-const CALL_TIMEOUT_MS = 3_000;
-/** JSON-RPC "method not found". */
-const METHOD_NOT_FOUND = -32601;
-/** Expo's dev server accepts a debugger socket and drops it right away when the Origin isn't its own address. */
-const ORIGIN_CHECK_MS = 300;
 const RETRY_AFTER_FAILURE_MS = 30_000;
 /** A starting app is checked this often for the SDK until its entry file has run. */
 const STARTUP_CHECK_MS = 1_000;
 const STARTUP_LIMIT_MS = 30_000;
-const MAX_BODY_FETCH = 4 * 1024 * 1024;
-const MAX_HELD_EVENTS = 2_000;
 
-const SERIALIZER_GLOBAL = '__CAPYBARA_SERIALIZE__';
-const INSTALL_SERIALIZER = `globalThis.${SERIALIZER_GLOBAL} = ${serialize.toString()}`;
-/** Returns null until the serializer is installed in this JS context, e.g. right after a reload. */
-const SERIALIZE_ARGS = `function () {
-  var serialize = globalThis.${SERIALIZER_GLOBAL};
-  if (typeof serialize !== 'function') return null;
-  var out = [];
-  for (var i = 0; i < arguments.length; i++) out.push(serialize(arguments[i]));
-  return JSON.stringify(out);
-}`;
 /**
  * `sdk`: the app reports itself and is left alone. `ready`: the entry file has run, so an SDK would
  * be set up by now (React Native only loads AppRegistry once the app registers its root component).
@@ -107,78 +68,6 @@ interface AppMetadata {
   deviceName?: string;
   platform?: string;
   reactNativeVersion?: string;
-}
-
-interface CdpEvent {
-  method: string;
-  params: unknown;
-}
-
-interface CdpReply {
-  result?: unknown;
-  error?: { message: string; code?: number };
-}
-
-class CdpError extends Error {
-  constructor(message: string, readonly code: number | undefined) {
-    super(message);
-  }
-}
-
-interface EvaluateResult {
-  result?: { value?: unknown };
-}
-
-interface ConsoleCall {
-  type: string;
-  args: RemoteObject[];
-  executionContextId: number;
-  timestamp?: number;
-}
-
-interface ExceptionThrown {
-  timestamp?: number;
-  exceptionDetails: { text?: string; exception?: RemoteObject; executionContextId?: number };
-}
-
-interface RequestSent {
-  requestId: string;
-  type?: string;
-  initiator?: RequestInitiator;
-  timestamp: number;
-  wallTime?: number;
-  request: { url: string; method: string; headers?: Record<string, string>; postData?: string };
-}
-
-interface ResponseReceived {
-  requestId: string;
-  timestamp: number;
-  response: { status: number; statusText?: string; headers?: Record<string, string>; mimeType?: string };
-}
-
-interface LoadingFinished {
-  requestId: string;
-  timestamp: number;
-  encodedDataLength?: number;
-}
-
-interface LoadingFailed {
-  requestId: string;
-  timestamp: number;
-  errorText?: string;
-  canceled?: boolean;
-}
-
-interface Session {
-  emit<K extends EventKind>(kind: K, payload: EventPayloads[K], ts?: number): void;
-  close(): void;
-}
-
-interface Request {
-  start: number;
-  ignored: boolean;
-  response?: ResponseReceived['response'];
-  responseAt?: number;
 }
 
 /** One JS context of the app: a launch or a reload. */
@@ -267,9 +156,6 @@ function watchApp(
   onEnd: () => void,
   onUnreadable: (hint: string) => void,
 ): { close(): void } {
-  let socket: WebSocket | undefined;
-  let nextId = 0;
-  const calls = new Map<number, (reply: CdpReply) => void>();
   let metadata: AppMetadata = {};
   let run: Run | undefined;
   // Processing is sequential so events reach the UI in the order the app produced them.
@@ -277,40 +163,8 @@ function watchApp(
   let retryTimer: ReturnType<typeof setTimeout> | undefined;
   let ended = false;
   const controller = new AbortController();
-
-  const call = <T>(method: string, params: object = {}): Promise<T> =>
-    new Promise((resolve, reject) => {
-      if (!socket || socket.readyState !== WebSocket.OPEN) {
-        reject(new Error('Not connected'));
-        return;
-      }
-      const id = ++nextId;
-      const timer = setTimeout(() => {
-        calls.delete(id);
-        reject(new Error(`${method} timed out`));
-      }, CALL_TIMEOUT_MS);
-      calls.set(id, (reply) => {
-        clearTimeout(timer);
-        if (reply.error) reject(new CdpError(reply.error.message, reply.error.code));
-        else resolve(reply.result as T);
-      });
-      socket.send(JSON.stringify({ id, method, params }));
-    });
-
-  // Object handles stay alive in the app until released.
-  const release = (objects: RemoteObject[]) => {
-    for (const object of objects) {
-      if (object.objectId) call('Runtime.releaseObject', { objectId: object.objectId }).catch(() => {});
-    }
-  };
-
-  const releaseEvent = (event: CdpEvent) => {
-    if (event.method === 'Runtime.consoleAPICalled') release((event.params as ConsoleCall).args);
-    if (event.method === 'Runtime.exceptionThrown') {
-      const exception = (event.params as ExceptionThrown).exceptionDetails.exception;
-      if (exception) release([exception]);
-    }
-  };
+  const cdp = new CdpClient((event) => onEvent(event));
+  const { call, release } = cdp;
 
   const end = () => {
     if (ended) return;
@@ -320,9 +174,7 @@ function watchApp(
     // Give the runtime a chance to restore its methods before closing CDP. A lease in the app
     // also expires the hooks if the socket has already disappeared or the process is killed.
     void endRun().finally(() => {
-      socket?.close();
-      for (const reply of calls.values()) reply({ error: { message: 'Closed' } });
-      calls.clear();
+      cdp.close();
       onEnd();
     });
   };
@@ -385,7 +237,7 @@ function watchApp(
     if (!current) return Promise.resolve();
     run = undefined;
     clearTimeout(current.retry);
-    for (const event of current.held) releaseEvent(event);
+    for (const event of current.held) releaseEvent(event, release);
     current.held = [];
     current.session?.close();
     current.requests.clear();
@@ -416,7 +268,7 @@ function watchApp(
     if (probe === 'unreadable' || probe?.sdk) {
       if (probe !== 'unreadable') debug(`${label()} runs the SDK, so Metro leaves it to the SDK`);
       current.state = 'skipped';
-      for (const event of current.held) releaseEvent(event);
+      for (const event of current.held) releaseEvent(event, release);
       current.held = [];
       if (probe === 'unreadable') onUnreadable(unreadableHint());
       return;
@@ -480,9 +332,9 @@ function watchApp(
     const current = run;
     if (!relevant || !current) return;
     if (current.state === 'skipped') {
-      releaseEvent(event);
+      releaseEvent(event, release);
     } else if (current.state === 'deciding') {
-      if (current.held.length >= MAX_HELD_EVENTS) releaseEvent(current.held.shift()!);
+      if (current.held.length >= MAX_HELD_EVENTS) releaseEvent(current.held.shift()!, release);
       current.held.push(event);
       // React Native logs `Running "<app>"` right after the entry file has run.
       if (event.method === 'Runtime.consoleAPICalled' && isRunningLog(event.params as ConsoleCall)) {
@@ -494,179 +346,21 @@ function watchApp(
     }
   };
 
-  const onMessage = (data: RawData) => {
-    let message: CdpReply & { id?: number; method?: string; params?: unknown };
-    try {
-      message = JSON.parse(data.toString()) as typeof message;
-    } catch {
-      return;
-    }
-    if (!message || typeof message !== 'object') return;
-    if (typeof message.id === 'number') {
-      calls.get(message.id)?.(message);
-      calls.delete(message.id);
-    } else if (typeof message.method === 'string') {
-      onEvent({ method: message.method, params: message.params ?? {} });
-    }
-  };
-
-  const serializeInApp = async (objects: RemoteObject[], contextId: number): Promise<SerializedValue[]> => {
-    const params = {
-      executionContextId: contextId,
-      functionDeclaration: SERIALIZE_ARGS,
-      arguments: objects.map((object) => ({ objectId: object.objectId })),
-      returnByValue: true,
-    };
-    let reply = await call<EvaluateResult>('Runtime.callFunctionOn', params);
-    if (reply.result?.value === null) {
-      await call('Runtime.evaluate', { expression: INSTALL_SERIALIZER, contextId });
-      reply = await call<EvaluateResult>('Runtime.callFunctionOn', params);
-    }
-    const json = reply.result?.value;
-    if (typeof json !== 'string') throw new Error('The app could not serialize the values');
-    return JSON.parse(json) as SerializedValue[];
-  };
-
-  const serializeArgs = async (args: RemoteObject[], contextId: number): Promise<SerializedValue[]> => {
-    const objects = args.filter((arg) => arg.objectId);
-    const inApp =
-      objects.length > 0
-        ? await serializeInApp(objects, contextId).catch((error: unknown) => {
-            debug(`Could not read logged values in ${label()}, so they show as descriptions`, error);
-            return undefined;
-          })
-        : undefined;
-    release(objects);
-    let next = 0;
-    // Without the in-app values, objects keep the one-line description CDP gave.
-    return args.map((arg) => (arg.objectId && inApp ? inApp[next++]! : primitiveValue(arg)));
-  };
-
-  const readBody = async (
-    requestId: string,
-    contentType: string | undefined,
-    size: number | undefined,
-  ): Promise<BodyPreview | undefined> => {
-    if (contentType && /^text\/event-stream/i.test(contentType)) {
-      return { kind: 'stream', contentType, summary: 'Event stream' };
-    }
-    if (!isTextual(contentType)) return { kind: 'binary', contentType, size, summary: contentType ?? 'Binary' };
-    if (size !== undefined && size > MAX_BODY_FETCH) {
-      return { kind: 'unknown', contentType, size, summary: 'Too large to capture' };
-    }
-    const result = await call<{ body: string; base64Encoded: boolean }>('Network.getResponseBody', { requestId }).catch(
-      (error: unknown) => {
-        debug(`No body for request ${requestId} of ${label()}`, error);
-        return undefined;
-      },
-    );
-    return result ? responseBody(result, contentType) : undefined;
-  };
-
   const handle = async (current: Run, event: CdpEvent) => {
     const session = current.session;
     if (!session || current !== run) {
-      releaseEvent(event);
+      releaseEvent(event, release);
       return;
     }
-    switch (event.method) {
-      case 'Runtime.consoleAPICalled': {
-        const { type, args, executionContextId, timestamp } = event.params as ConsoleCall;
-        const level = logLevel(type);
-        if (!level) {
-          release(args);
-          return;
-        }
-        const values = await serializeArgs(args, executionContextId ?? current.contextId);
-        const source = level === 'error' && isUnhandledRejection(values) ? 'unhandledrejection' : 'console';
-        session.emit('log', { level, source, args: values }, epochMs(timestamp));
-        return;
-      }
-      case 'Runtime.bindingCalled': {
-        const { name, payload } = event.params as { name?: string; payload?: unknown };
-        if (name !== WEBSOCKET_BINDING) return;
-        const report = parseWebSocketReport(payload);
-        if (report) session.emit(report.kind, report.payload as never, report.ts);
-        return;
-      }
-      case 'Runtime.exceptionThrown': {
-        const { exceptionDetails: details, timestamp } = event.params as ExceptionThrown;
-        const args = details.exception
-          ? await serializeArgs([details.exception], details.executionContextId ?? current.contextId)
-          : [details.text ?? 'Uncaught exception'];
-        session.emit('log', { level: 'error', source: 'uncaught', args }, epochMs(timestamp));
-        return;
-      }
-      case 'Network.requestWillBeSent': {
-        const { requestId, request, type, initiator, timestamp, wallTime } = event.params as RequestSent;
-        // Redirects reuse the id; the first request stands for the chain.
-        if (current.requests.has(requestId)) return;
-        const ignored = isDevServerRequest(request.url, metroPort);
-        current.requests.set(requestId, { start: timestamp, ignored });
-        if (ignored) return;
-        const headers = request.headers ?? {};
-        session.emit(
-          'network.request',
-          {
-            id: requestId,
-            initiator: initiatorOf(type, initiator),
-            method: request.method,
-            url: request.url,
-            headers,
-            body: request.postData ? textBody(request.postData, headerValue(headers, 'content-type')) : undefined,
-          },
-          wallTime ? Math.round(wallTime * 1000) : undefined,
-        );
-        return;
-      }
-      case 'Network.responseReceived': {
-        const { requestId, response, timestamp } = event.params as ResponseReceived;
-        const request = current.requests.get(requestId);
-        if (!request || request.ignored) return;
-        request.response = response;
-        request.responseAt = timestamp;
-        return;
-      }
-      case 'Network.loadingFinished': {
-        const { requestId, timestamp, encodedDataLength } = event.params as LoadingFinished;
-        const request = current.requests.get(requestId);
-        current.requests.delete(requestId);
-        if (!request || request.ignored) return;
-        const response = request.response;
-        if (!response) {
-          session.emit('network.error', {
-            id: requestId,
-            message: 'The app reported no response',
-            duration: elapsed(request.start, timestamp),
-          });
-          return;
-        }
-        const headers = response.headers ?? {};
-        const contentType = headerValue(headers, 'content-type') || response.mimeType || undefined;
-        session.emit('network.response', {
-          id: requestId,
-          status: response.status,
-          statusText: response.statusText || undefined,
-          headers,
-          body: await readBody(requestId, contentType, encodedDataLength),
-          duration: elapsed(request.start, request.responseAt ?? timestamp),
-        });
-        return;
-      }
-      case 'Network.loadingFailed': {
-        const { requestId, timestamp, errorText, canceled } = event.params as LoadingFailed;
-        const request = current.requests.get(requestId);
-        current.requests.delete(requestId);
-        if (!request || request.ignored) return;
-        session.emit('network.error', {
-          id: requestId,
-          message: errorText || 'Request failed',
-          duration: elapsed(request.start, timestamp),
-          aborted: canceled || undefined,
-        });
-        return;
-      }
-    }
+    await relayEvent(event, {
+      session,
+      call,
+      release,
+      contextId: current.contextId,
+      requests: current.requests,
+      metroPort,
+      label,
+    });
   };
 
   void (async () => {
@@ -682,10 +376,9 @@ function watchApp(
       retryTimer.unref();
       return;
     }
-    socket = connected;
-    socket.on('message', onMessage);
-    socket.on('close', end);
-    socket.on('error', (error) => debug(`Lost the debugger connection to ${label()}`, error));
+    cdp.attach(connected);
+    connected.on('close', end);
+    connected.on('error', (error) => debug(`Lost the debugger connection to ${label()}`, error));
     // Metadata first, so it is there when the JS context shows up.
     for (const domain of ['ReactNativeApplication', 'Runtime', 'Network']) {
       await call(`${domain}.enable`).catch((error: unknown) => debug(`${domain}.enable failed for ${label()}`, error));
@@ -693,120 +386,6 @@ function watchApp(
   })();
 
   return { close: end };
-}
-
-/** Expo checks the Origin against its own address (127.0.0.1); plain Metro accepts any localhost origin. */
-async function connect(url: string, metroPort: number, signal: AbortSignal): Promise<WebSocket | undefined> {
-  for (const host of ['127.0.0.1', 'localhost']) {
-    if (signal.aborted) return undefined;
-    const socket = await openSocket(url, `http://${host}:${metroPort}`, signal);
-    if (socket) return socket;
-  }
-  return undefined;
-}
-
-function openSocket(url: string, origin: string, signal: AbortSignal): Promise<WebSocket | undefined> {
-  return new Promise((resolve) => {
-    let socket: WebSocket;
-    try {
-      socket = new WebSocket(url, { origin, perMessageDeflate: false, handshakeTimeout: CALL_TIMEOUT_MS });
-    } catch {
-      resolve(undefined);
-      return;
-    }
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const fail = () => {
-      signal.removeEventListener('abort', fail);
-      clearTimeout(timer);
-      socket.removeAllListeners();
-      socket.on('error', () => {});
-      socket.terminate();
-      resolve(undefined);
-    };
-    signal.addEventListener('abort', fail, { once: true });
-    socket.once('error', fail);
-    socket.once('close', fail);
-    socket.once('open', () => {
-      timer = setTimeout(() => {
-        socket.off('error', fail);
-        socket.off('close', fail);
-        signal.removeEventListener('abort', fail);
-        // Keep an error listener while the awaiting caller takes ownership.
-        socket.on('error', () => {});
-        resolve(socket);
-      }, ORIGIN_CHECK_MS);
-    });
-  });
-}
-
-/** A lost relay ends the watcher; discovery reconnects it and starts a fresh session. */
-function openSession(
-  url: string,
-  info: SessionInfo,
-  onDisconnect: () => void,
-  onCommand: (command: Extract<ServerToClient, { t: 'command' }>) => Promise<unknown>,
-): Session {
-  const socket = new WebSocket(url, { handshakeTimeout: CALL_TIMEOUT_MS });
-  let seq = 0;
-  let ready = false;
-  let queued: string[] = [];
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  let closed = false;
-
-  const flush = () => {
-    timer = undefined;
-    if (!ready || queued.length === 0 || socket.readyState !== WebSocket.OPEN) return;
-    socket.send(`{"t":"events","events":[${queued.join(',')}]}`);
-    queued = [];
-  };
-
-  socket.on('open', () => socket.send(JSON.stringify({ t: 'hello', protocol: PROTOCOL_VERSION, session: info })));
-  socket.on('message', (data) => {
-    let message: ServerToClient;
-    try {
-      message = JSON.parse(data.toString()) as ServerToClient;
-    } catch {
-      return;
-    }
-    if (!message || typeof message !== 'object') return;
-    if (message.t === 'welcome') {
-      ready = true;
-      flush();
-    } else if (message.t === 'command' && socket.readyState === WebSocket.OPEN) {
-      const sendResult = (result: object) => {
-        if (!closed && socket.readyState === WebSocket.OPEN) {
-          socket.send(JSON.stringify({ t: 'result', id: message.id, ...result }));
-        }
-      };
-      void onCommand(message).then(
-        (result) => sendResult({ ok: true, result }),
-        (error: unknown) => sendResult({ ok: false, error: error instanceof Error ? error.message : String(error) }),
-      );
-    } else if (message.t === 'reject') {
-      socket.close();
-    }
-  });
-  socket.on('error', (error) => debug(`Lost the connection to Capybara for ${info.appName}`, error));
-  socket.on('close', () => {
-    if (!closed) onDisconnect();
-  });
-
-  return {
-    emit(kind, payload, ts = Date.now()) {
-      if (closed) return;
-      if (queued.length >= MAX_HELD_EVENTS) queued.shift();
-      queued.push(JSON.stringify({ seq: ++seq, ts, kind, payload }));
-      if (ready && !timer) timer = setTimeout(flush, 20);
-    },
-    close() {
-      if (closed) return;
-      closed = true;
-      clearTimeout(timer);
-      flush();
-      queued = [];
-      socket.close();
-    },
-  };
 }
 
 function isRunningLog(event: ConsoleCall): boolean {
@@ -820,14 +399,4 @@ function parseProbe(value: unknown): { sdk: boolean; ready: boolean; name: strin
   } catch {
     return undefined;
   }
-}
-
-/** CDP console and exception timestamps are milliseconds since the epoch. */
-function epochMs(timestamp: number | undefined): number {
-  return typeof timestamp === 'number' && timestamp > 1e12 ? Math.round(timestamp) : Date.now();
-}
-
-/** Network timestamps are in seconds. */
-function elapsed(start: number, end: number): number {
-  return Math.max(0, Math.round((end - start) * 1000));
 }

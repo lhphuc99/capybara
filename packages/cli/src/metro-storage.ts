@@ -1,12 +1,11 @@
 import { MAX_STORAGE_KEYS, STORAGE_PREVIEW_LENGTH, STORAGE_VALUE_LENGTH } from '@capybara-devtools/protocol';
 import type { RemoteObject } from './cdp.js';
+import type { CdpCall } from './metro-debugger.js';
 
 interface Evaluation {
   result?: RemoteObject;
   exceptionDetails?: { text?: string; exception?: { description?: string } };
 }
-
-type CdpCall = <T>(method: string, params?: object) => Promise<T>;
 
 /** Hermes fails to compile evaluated source containing characters outside the BMP, such as an emoji in a key. */
 function asciiLiteral(value: unknown): string {

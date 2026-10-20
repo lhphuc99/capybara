@@ -1,17 +1,10 @@
 import type { SessionMeta, StateEntrySummary, StateStoreInfo } from '@capybara-devtools/protocol';
 import { describe, expect, it } from 'vitest';
-import {
-  changeLines,
-  entryLine,
-  filterEntries,
-  listStores,
-  noStoresText,
-  readValueText,
-  redactor,
-  storageValueText,
-  type ChangeEntry,
-  type StoreEntry,
-} from '../src/mcp-data.js';
+import type { ChangeEntry, StoreEntry } from '../src/mcp-history.js';
+import { entryLine, filterEntries } from '../src/mcp-queries.js';
+import { redactor } from '../src/mcp-redact.js';
+import { changeLines, listStores, noStoresText, readValueText } from '../src/mcp-state.js';
+import { storageValueText } from '../src/mcp-storage.js';
 
 const entry = (key: string, extra: Partial<StateEntrySummary>): StateEntrySummary => ({
   key,
