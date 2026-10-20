@@ -139,6 +139,34 @@ describe('event relay', () => {
     expect((await late.next((m) => m.t === 'history')).events).toHaveLength(2);
   });
 
+  it('sends a long history in parts to viewers that ask, and in one message to the others', async () => {
+    await start();
+    const ui = viewer();
+    await ui.opened;
+    const { app } = await connectApp();
+    const body = 'x'.repeat(128 * 1024);
+    const responses = Array.from({ length: 40 }, (_, i) => ({
+      seq: i + 1,
+      ts: i + 1,
+      kind: 'network.response',
+      payload: { id: `r${i + 1}`, status: 200, headers: {}, body: { kind: 'text', text: body }, duration: 1 },
+    }));
+    await deliver(app, ui, responses);
+    const histories = () => ui.messages.filter((m) => m.t === 'history');
+
+    ui.send({ t: 'history', sessionId: 'app-1', parts: true });
+    await ui.next((m) => m.t === 'history' && !m.more);
+    const parts = histories();
+    expect(parts.length).toBeGreaterThan(1);
+    expect(parts.map((part) => part.more)).toEqual([...parts.slice(1).map(() => true), undefined]);
+    expect(parts.flatMap((part) => part.events).map((e: any) => e.seq)).toEqual(responses.map((e) => e.seq));
+
+    // Viewers before 0.5.1 do not ask, and would keep only the first part.
+    ui.send({ t: 'history', sessionId: 'app-1' });
+    const whole = await ui.next((m) => m.t === 'history' && m.events.length === responses.length);
+    expect(whole.more).toBeUndefined();
+  });
+
   it('tells a reconnecting app where to resume and drops replayed events', async () => {
     await start();
     const ui = viewer();

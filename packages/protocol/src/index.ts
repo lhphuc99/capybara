@@ -412,7 +412,8 @@ export interface NetworkDiagnosis {
 }
 
 export type ViewerToServer =
-  | { t: 'history'; sessionId: string }
+  /** `parts` asks for the history in parts; servers before 0.5.1 send it in one message whatever its size. */
+  | { t: 'history'; sessionId: string; parts?: true }
   | { t: 'command'; id: string; sessionId: string; plugin: string; method: string; params?: unknown }
   /** Answered with a CommandResult whose `result` is a NetworkDiagnosis. */
   | { t: 'diagnose'; id: string; sessionId: string; requestId: string }
@@ -426,7 +427,8 @@ export type ServerToViewer =
   | { t: 'server'; server: ServerInfo }
   | { t: 'session'; session: SessionMeta }
   | { t: 'session.removed'; sessionId: string }
-  | { t: 'history'; sessionId: string; events: CapybaraEvent[] }
+  /** Every part but the last has `more`. */
+  | { t: 'history'; sessionId: string; events: CapybaraEvent[]; more?: true }
   | { t: 'events'; sessionId: string; events: CapybaraEvent[] }
   | { t: 'cleared'; sessionId: string; scope?: 'state' }
   | CommandResult;

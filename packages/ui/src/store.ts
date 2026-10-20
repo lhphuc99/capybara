@@ -137,8 +137,9 @@ export function receive(message: Exclude<ServerToViewer, CommandResult>): void {
       for (const meta of message.sessions) sessions[meta.info.id] = emptySession(meta);
       const keep = state.selectedId && sessions[state.selectedId] ? state.selectedId : undefined;
       const selectedId = keep ?? pickDefault(sessions);
+      historyParts.clear();
       setState({ ...state, server: message.server, sessions, selectedId });
-      if (selectedId) send({ t: 'history', sessionId: selectedId });
+      if (selectedId) requestHistory(selectedId);
       break;
     }
     case 'server':
@@ -161,23 +162,26 @@ export function receive(message: Exclude<ServerToViewer, CommandResult>): void {
         selectedId = id;
       }
       setState({ ...state, sessions, selectedId });
-      if (selectedId === id && !sessions[id]!.loaded) send({ t: 'history', sessionId: id });
+      if (selectedId === id && !sessions[id]!.loaded) requestHistory(id);
       break;
     }
     case 'session.removed': {
       const { [message.sessionId]: _removed, ...sessions } = state.sessions;
       const selectedId = state.selectedId === message.sessionId ? pickDefault(sessions) : state.selectedId;
       setState({ ...state, sessions, selectedId });
-      if (selectedId && selectedId !== state.selectedId && !sessions[selectedId]!.loaded) {
-        send({ t: 'history', sessionId: selectedId });
-      }
+      if (selectedId && selectedId !== state.selectedId && !sessions[selectedId]!.loaded) requestHistory(selectedId);
       break;
     }
     case 'history': {
       const session = state.sessions[message.sessionId];
       if (!session) break;
-      const reset: SessionState = { ...session, loaded: true, lastSeq: 0, logs: [], network: [], state: emptyStateSlice() };
-      updateSession(applyEvents(reset, message.events));
+      // The first part starts over; the session shows once the last is in.
+      const base: SessionState = historyParts.has(message.sessionId)
+        ? session
+        : { ...session, lastSeq: 0, logs: [], network: [], state: emptyStateSlice() };
+      if (message.more) historyParts.add(message.sessionId);
+      else historyParts.delete(message.sessionId);
+      updateSession(applyEvents({ ...base, loaded: !message.more }, message.events));
       break;
     }
     case 'events': {
@@ -211,7 +215,15 @@ export function selectSession(id: string): void {
   const session = state.sessions[id];
   if (!session) return;
   setState({ ...state, selectedId: id });
-  if (!session.loaded) send({ t: 'history', sessionId: id });
+  if (!session.loaded) requestHistory(id);
+}
+
+/** Sessions whose history came in part and has more to come. */
+const historyParts = new Set<string>();
+
+/** In parts: in one message, a busy session's history can be more than a string can hold. */
+function requestHistory(id: string): void {
+  send({ t: 'history', sessionId: id, parts: true });
 }
 
 export function clearSession(id: string): void {

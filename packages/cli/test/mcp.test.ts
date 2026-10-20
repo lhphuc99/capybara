@@ -300,6 +300,23 @@ describe('capybara mcp', () => {
     expect(text).toContain(`Capybara noticed:\n- ${hint}`);
   });
 
+  it('reads a session whose history comes in parts', async () => {
+    const body = 'x'.repeat(128 * 1024);
+    const events = Array.from({ length: 40 }, (_, i) => [
+      { seq: 2 * i + 1, ts: 1_700_000_000_000 + i, kind: 'network.request', payload: { id: `b${i}`, initiator: 'fetch', method: 'GET', url: `https://api.test/big/${i}`, headers: {} } },
+      { seq: 2 * i + 2, ts: 1_700_000_000_000 + i, kind: 'network.response', payload: { id: `b${i}`, status: 200, headers: {}, body: { kind: 'text', text: body }, duration: 1 } },
+    ]).flat();
+    const big = await otherApp({ id: 'web-big', appName: 'Big', platform: 'web', sdk: { name: 'test', version: '0' }, startedAt: 3 }, events);
+    try {
+      const { call } = await connect();
+      const { text } = await until(() => call('get_network', { session: 'web-big' }), (result) => result.text.includes('40 of 40'));
+      expect(text).toContain('https://api.test/big/39');
+    } finally {
+      // Connected, it would be the newest app the other tests read by default.
+      big.close();
+    }
+  });
+
   it('filters logs by level, text, regex and seq, and hides credentials in their values', async () => {
     const { call } = await ready();
     const all = (await call('get_logs')).text;

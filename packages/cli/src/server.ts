@@ -99,6 +99,8 @@ const HEARTBEAT_MS = 15_000;
 const LATEST_REFRESH_MS = 12 * 60 * 60 * 1_000;
 const MAX_PINNED_STORES = 200;
 const MAX_HINTS = 10;
+/** Characters of events per part of a history sent in parts. */
+const HISTORY_PART_CHARS = 4 * 1024 * 1024;
 
 export function createServer(options: ServerOptions): CapybaraServer {
   const maxSessions = options.maxSessions ?? 20;
@@ -424,6 +426,38 @@ export function createServer(options: ServerOptions): CapybaraServer {
     }
   };
 
+  /**
+   * A busy session's history can pass what a client takes in one message (ws stops at 100 MiB) and even what one
+   * string can hold, so viewers that ask get it in parts.
+   */
+  const sendHistory = (ws: WebSocket, sessionId: string, inParts: boolean) => {
+    const session = sessions.get(sessionId);
+    const events = session ? history(session) : [];
+    if (!inParts) {
+      try {
+        send(ws, { t: 'history', sessionId, events });
+        return;
+      } catch {
+        // Longer than a string can be: an older viewer still gets the first part rather than a crashed server.
+      }
+    }
+    const head = `{"t":"history","sessionId":${JSON.stringify(sessionId)},"events":[`;
+    let part: string[] = [];
+    let chars = 0;
+    const flush = (more: boolean) => {
+      if (ws.readyState === WebSocket.OPEN) ws.send(`${head}${part.join(',')}]${more ? ',"more":true' : ''}}`);
+      part = [];
+      chars = 0;
+    };
+    for (const event of events) {
+      const json = JSON.stringify(event);
+      if (part.length > 0 && chars + json.length > HISTORY_PART_CHARS) flush(true);
+      part.push(json);
+      chars += json.length;
+    }
+    flush(false);
+  };
+
   const acceptViewer = (ws: WebSocket) => {
     watch(ws);
     viewers.add(ws);
@@ -433,11 +467,9 @@ export function createServer(options: ServerOptions): CapybaraServer {
       const message = parse<ViewerToServer>(raw);
       if (!message) return;
       switch (message.t) {
-        case 'history': {
-          const session = sessions.get(message.sessionId);
-          send(ws, { t: 'history', sessionId: message.sessionId, events: session ? history(session) : [] });
+        case 'history':
+          sendHistory(ws, message.sessionId, message.parts === true);
           break;
-        }
         case 'command':
           forward(ws, message);
           break;

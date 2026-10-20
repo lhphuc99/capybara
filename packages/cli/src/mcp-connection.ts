@@ -13,6 +13,8 @@ import {
 import { WebSocket } from 'ws';
 
 const TIMEOUT_MS = 10_000;
+/** Longer than the server waits for the app (10 s), so its "The app did not answer" comes first, as in the UI. */
+const COMMAND_TIMEOUT_MS = 15_000;
 /** The server may wait 8 s for each request a diagnosis sends again. */
 const DIAGNOSE_TIMEOUT_MS = 60_000;
 
@@ -27,6 +29,8 @@ export class ViewerConnection {
   private readonly sessions = new Map<string, SessionMeta>();
   private readonly results = new Map<string, (result: CommandResult) => void>();
   private readonly histories = new Map<string, Array<{ resolve: (events: CapybaraEvent[]) => void; reject: (error: Error) => void }>>();
+  /** Parts of histories that have more to come. */
+  private readonly parts = new Map<string, CapybaraEvent[]>();
   private counter = 0;
 
   constructor(
@@ -55,16 +59,17 @@ export class ViewerConnection {
         },
       });
       this.histories.set(sessionId, waiting);
-      if (waiting.length === 1) this.send({ t: 'history', sessionId });
+      // In one message, a busy session's history can pass the 100 MiB a ws client takes.
+      if (waiting.length === 1) this.send({ t: 'history', sessionId, parts: true });
     });
   }
 
   storage<M extends keyof StorageCommands>(sessionId: string, method: M, params: StorageCommands[M]['params']): Promise<StorageCommands[M]['result']> {
-    return this.request((id) => ({ t: 'command', id, sessionId, plugin: 'storage', method, params }), TIMEOUT_MS);
+    return this.request((id) => ({ t: 'command', id, sessionId, plugin: 'storage', method, params }), COMMAND_TIMEOUT_MS);
   }
 
   state<M extends keyof StateCommands>(sessionId: string, method: M, params: StateCommands[M]['params']): Promise<StateCommands[M]['result']> {
-    return this.request((id) => ({ t: 'command', id, sessionId, plugin: 'state', method, params }), TIMEOUT_MS);
+    return this.request((id) => ({ t: 'command', id, sessionId, plugin: 'state', method, params }), COMMAND_TIMEOUT_MS);
   }
 
   diagnose(sessionId: string, requestId: string): Promise<NetworkDiagnosis> {
@@ -138,6 +143,7 @@ export class ViewerConnection {
         this.results.clear();
         for (const waiting of this.histories.values()) for (const { reject } of waiting) reject(new Error(error));
         this.histories.clear();
+        this.parts.clear();
       });
     });
     this.opening = opening;
@@ -162,9 +168,16 @@ export class ViewerConnection {
         this.sessions.delete(message.sessionId);
         break;
       case 'history': {
+        const events = this.parts.get(message.sessionId) ?? [];
+        for (const event of message.events) events.push(event);
+        if (message.more) {
+          this.parts.set(message.sessionId, events);
+          break;
+        }
+        this.parts.delete(message.sessionId);
         const waiting = this.histories.get(message.sessionId) ?? [];
         this.histories.delete(message.sessionId);
-        for (const { resolve } of waiting) resolve(message.events);
+        for (const { resolve } of waiting) resolve(events);
         break;
       }
       case 'result': {
