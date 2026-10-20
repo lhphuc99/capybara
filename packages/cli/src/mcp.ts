@@ -485,7 +485,7 @@ export function createMcpServer(connection: ViewerConnection, options: McpOption
         }
         const matched = filterChanges(scope, args);
         const { shown, omitted } = newest(matched, args.limit ?? 50);
-        const noun = store && store.info.actions ? 'actions' : 'changes';
+        const noun = store?.info.actions ? 'actions' : 'changes';
         const lines = [`${where}: ${matched.length} of ${scope.length} ${noun} match.`];
         if (omitted > 0) lines.push(`Showing the newest ${shown.length}; pass before: ${shown[0]!.seq} for older ones.`);
         const tagged = new Set(shown.map((change) => change.store)).size > 1;

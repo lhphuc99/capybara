@@ -46,7 +46,9 @@ function fakeAsyncStorage(initial: Record<string, string> = {}) {
     mergeItem: async (key: string, value: string) =>
       void data.set(key, JSON.stringify({ ...JSON.parse(data.get(key) ?? '{}'), ...JSON.parse(value) })),
     multiGet: async (keys: readonly string[]) => keys.map((k) => [k, data.get(k) ?? null] as const),
-    multiSet: async (pairs: [string, string][]) => pairs.forEach(([k, v]) => data.set(k, v)),
+    multiSet: async (pairs: [string, string][]) => {
+      for (const [k, v] of pairs) data.set(k, v);
+    },
     clear: async () => data.clear(),
   };
 }

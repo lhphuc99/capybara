@@ -521,6 +521,7 @@ describe('watchSWR with React', () => {
     function Profile() {
       rendering = true;
       try {
+        // biome-ignore lint/correctness/useHookAtTopLevel: called on every render; the try only notes when rendering ends
         const { data } = useSWR('/api/profile', async () => ({ name: 'Ann' }), { suspense: true });
         return createElement('b', null, data.name);
       } finally {

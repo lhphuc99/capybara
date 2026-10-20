@@ -28,7 +28,7 @@ const sdk = (await sdkBundle.generate({ format: 'iife', name: 'CapybaraWeb' })).
 await sdkBundle.close();
 
 const report = { url, checks: [] };
-const pass = (name) => { report.checks.push(name); console.log('PASS ' + name); };
+const pass = (name) => { report.checks.push(name); console.log(`PASS ${name}`); };
 const server = createServer({ port: 0, host: '127.0.0.1' });
 const { port } = await server.start();
 const viewer = new WebSocket(`ws://127.0.0.1:${port}/viewer`, { origin: `http://127.0.0.1:${port}` });
@@ -105,7 +105,7 @@ try {
   });
   pass('logs and fetch from the same page are captured');
   report.completedAt = new Date().toISOString();
-  if (reportFile) writeFileSync(reportFile, JSON.stringify(report, null, 2) + '\n');
+  if (reportFile) writeFileSync(reportFile, `${JSON.stringify(report, null, 2)}\n`);
   console.log(JSON.stringify(report, null, 2));
 } finally {
   cdp?.close();

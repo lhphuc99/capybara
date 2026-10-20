@@ -317,7 +317,10 @@ Each example has a store of each state library and a React Context, with buttons
 ```bash
 npm test
 npm run typecheck
+npm run lint
 ```
+
+`npm run lint` runs [Biome](https://biomejs.dev)'s linter (formatting is left as it is); `biome.jsonc` says why the rules it turns off are off.
 
 To work on the UI with hot reload, run the server with the Vite origin allowed, then start Vite:
 

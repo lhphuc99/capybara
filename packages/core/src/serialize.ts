@@ -177,7 +177,7 @@ export function serialize(value: unknown, options?: SerializeOptions): Serialize
     }
   }
 
-  function functionName(fn: Function): string {
+  function functionName(fn: { name: string }): string {
     try {
       return fn.name || 'anonymous';
     } catch {

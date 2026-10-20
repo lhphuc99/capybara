@@ -226,7 +226,7 @@ export function vendorOf(fiber: Fiber, context: object, value: unknown): string 
     const byName =
       LIBRARY_CONTEXTS.get(name ?? '') ??
       LIBRARY_COMPONENTS.get(owner) ??
-      (EXPO_ROUTE.test(owner) || (byOwner !== undefined && byOwner(plain(ownerOfOwnerName(fiber)) ?? '')) ? 'Expo Router' : undefined);
+      (EXPO_ROUTE.test(owner) || byOwner?.(plain(ownerOfOwnerName(fiber)) ?? '') ? 'Expo Router' : undefined);
     return byName ?? sourcePackage(fiber);
   } catch {
     return undefined;

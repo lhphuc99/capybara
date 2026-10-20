@@ -10,11 +10,11 @@
     <title>Capybara</title>
     <script>
       // Runs before the first paint, so a dark page doesn't flash light; appearance.ts keeps it up to date.
-      (function () {
+      (() => {
         var saved = null;
         try {
           saved = localStorage.getItem('capybara:appearance');
-        } catch (e) {}
+        } catch {}
         var dark = saved === 'dark' || (saved !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
         document.documentElement.dataset.theme = dark ? 'dark' : 'light';
       })();

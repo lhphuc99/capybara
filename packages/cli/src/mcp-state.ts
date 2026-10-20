@@ -21,7 +21,7 @@ import {
 } from '@capybara-devtools/protocol';
 import type { ChangeEntry, StateHistory, StoreEntry } from './mcp-history.js';
 import { HIDDEN, isUnset, SECRET_NAME, type Redactor } from './mcp-redact.js';
-import { clock, count, indent, newest, searchMatcher, sessionHeader, truncate } from './mcp-text.js';
+import { clock, count, indent, searchMatcher, sessionHeader, truncate } from './mcp-text.js';
 
 /** The history's stores with the ones the app has now laid over them. */
 export function mergeStores(history: StateHistory, current: StateStoreInfo[]): StoreEntry[] {

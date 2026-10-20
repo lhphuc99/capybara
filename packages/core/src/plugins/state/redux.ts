@@ -503,7 +503,7 @@ function filtersOf(options: unknown): Filters | undefined {
     hidden(action, state) {
       const type = typeOf(action);
       try {
-        return (allow !== undefined && !allow.test(type)) || (deny !== undefined && deny.test(type)) || (predicate !== undefined && !predicate(state, action));
+        return (allow !== undefined && !allow.test(type)) || deny?.test(type) || (predicate !== undefined && !predicate(state, action));
       } catch {
         return false;
       }

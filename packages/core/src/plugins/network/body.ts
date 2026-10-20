@@ -73,7 +73,9 @@ export function headersToRecord(headers: unknown): Record<string, string> {
   if (Array.isArray(headers)) {
     for (const pair of headers) if (Array.isArray(pair) && pair.length >= 2) add(String(pair[0]), String(pair[1]));
   } else if (typeof (headers as Headers).forEach === 'function') {
-    (headers as Headers).forEach((value, name) => add(name, value));
+    (headers as Headers).forEach((value, name) => {
+      add(name, value);
+    });
   } else if (typeof headers === 'object') {
     for (const [name, value] of Object.entries(headers as Record<string, unknown>)) {
       if (value !== undefined) add(name, String(value));

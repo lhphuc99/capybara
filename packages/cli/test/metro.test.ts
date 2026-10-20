@@ -50,7 +50,7 @@ async function fixture(options: {
   let visible = true;
   let sdk = options.sdk ?? false;
   let heldProbes: Array<() => void> | null = null;
-  let ready = options.ready ?? true;
+  const ready = options.ready ?? true;
   let socket: WebSocket | undefined;
   let connections = 0;
   let contextId = 1;
@@ -169,7 +169,9 @@ async function fixture(options: {
     return viewer;
   };
   const viewer = await view();
-  cleanups.push(() => viewers.forEach((ws) => ws.terminate()));
+  cleanups.push(() => {
+    for (const ws of viewers) ws.terminate();
+  });
   let bridge: MetroBridge | undefined;
   cleanups.push(() => bridge?.stop());
   const hints: string[] = [];

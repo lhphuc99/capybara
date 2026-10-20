@@ -11,7 +11,7 @@ function memoryAdapter(initial: Record<string, string>) {
     get: (key) => data.get(key) ?? null,
     set: (key, value) => {
       data.set(key, value);
-      listeners.forEach((l) => l('set', key));
+      for (const l of listeners) l('set', key);
     },
     remove: (key) => data.delete(key),
     clear: () => data.clear(),
