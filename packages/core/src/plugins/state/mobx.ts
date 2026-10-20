@@ -6,7 +6,8 @@ import { register, unregister } from './registry.js';
 export interface MobxLike {
   reaction(expression: () => unknown, effect: (value: any) => void): () => void;
   toJS(value: unknown): unknown;
-  spy?(listener: (event: { type: string; name?: string; spyReportStart?: boolean; spyReportEnd?: boolean }) => void): () => void;
+  // Loose enough for the mobx module itself: in change events, `name` is the key of an object or a map, of any type.
+  spy?(listener: (event: { type: string; name?: unknown; spyReportStart?: boolean; spyReportEnd?: boolean }) => void): () => void;
 }
 
 export interface WatchMobXOptions {
@@ -44,7 +45,9 @@ export function watchMobX(store: object, mobx: MobxLike, options: WatchMobXOptio
         let action: string | undefined;
         let depth = 0;
         const stopSpy = spy?.((event) => {
-          if (event.type === 'action' && depth === 0 && event.name && event.name !== '<unnamed action>') action = event.name;
+          if (event.type === 'action' && depth === 0 && typeof event.name === 'string' && event.name !== '' && event.name !== '<unnamed action>') {
+            action = event.name;
+          }
           if (event.spyReportStart) depth++;
           if (event.spyReportEnd) {
             depth = Math.max(0, depth - 1);
