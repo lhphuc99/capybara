@@ -81,6 +81,8 @@ interface Run {
   /** Something changed while a check was unanswered, so its answer may be out of date. */
   recheck: boolean;
   sawRunning: boolean;
+  /** The first check found the app already running: requests it made before were never reported. */
+  late?: boolean;
   retry?: ReturnType<typeof setTimeout>;
   session?: Session;
   mmkv?: ReturnType<typeof watchMetroMMKV>;
@@ -180,7 +182,7 @@ function watchApp(
     });
   };
 
-  const sessionInfo = (projectName: string | null | undefined): SessionInfo => {
+  const sessionInfo = (projectName: string | null | undefined, late: boolean): SessionInfo => {
     const platform = platformOf(metadata.platform);
     const model = metadata.deviceName || target.deviceName;
     return {
@@ -196,6 +198,7 @@ function watchApp(
       runtime: ['Hermes', metadata.reactNativeVersion && `RN ${metadata.reactNativeVersion}`, 'via Metro']
         .filter(Boolean)
         .join(' · '),
+      ...(late && { attachedLate: true }),
     };
   };
 
@@ -268,6 +271,7 @@ function watchApp(
     );
     current.checking = false;
     if (run !== current || current.state !== 'deciding') return;
+    if (current.late === undefined && probe && probe !== 'unreadable') current.late = probe.ready;
     if (probe === 'unreadable' || probe?.sdk) {
       if (probe !== 'unreadable') debug(`${label()} runs the SDK, so Metro leaves it to the SDK`);
       current.state = 'skipped';
@@ -298,7 +302,7 @@ function watchApp(
       ignoreProtocols: [],
       maxMessage: MAX_SOCKET_MESSAGE_SIZE,
     });
-    current.session = openSession(capybaraUrl, sessionInfo(probe?.name), end, (command) => {
+    current.session = openSession(capybaraUrl, sessionInfo(probe?.name, current.late === true), end, (command) => {
       if (command.plugin !== 'storage') return Promise.reject(new Error('This plugin is unavailable through Metro'));
       return metroStorage(call, current.contextId, () => run === current, command.method, command.params);
     });

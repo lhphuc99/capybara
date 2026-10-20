@@ -398,6 +398,21 @@ describe('Metro discovery and CDP event relay', () => {
     expect(f.events()).toHaveLength(0);
   });
 
+  it('says when it started reading an app that was already running, and not when it saw the app start', async () => {
+    const running = await fixture();
+    running.start();
+    await until(() => expect(running.sessions()).toHaveLength(1));
+    expect(running.sessions()[0].session.info.attachedLate).toBe(true);
+    running.stop();
+
+    const starting = await fixture({ ready: false });
+    starting.start();
+    await until(() => expect(starting.commands.some((c) => c.method === 'Network.enable')).toBe(true));
+    starting.log([{ type: 'string', value: 'Running "App"' }]);
+    await until(() => expect(starting.sessions()).toHaveLength(1));
+    expect(starting.sessions()[0].session.info).not.toHaveProperty('attachedLate');
+  });
+
   it('checks again when the app starts while an earlier check is still unanswered', async () => {
     const f = await fixture({ ready: false });
     f.holdProbes();

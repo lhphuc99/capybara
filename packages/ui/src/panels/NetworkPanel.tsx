@@ -4,7 +4,7 @@ import { EmptyMessage } from '../components/EmptyMessage';
 import { ColumnHandle, ResizeHandle, useColumnWidth, usePaneWidth } from '../components/ResizeHandle';
 import { SearchInput } from '../components/SearchInput';
 import { useFollow } from '../follow';
-import { formatBytes, formatDuration, isFetchOrXhr, makeMatcher, responseSize, splitUrl, statusTone } from '../format';
+import { formatBytes, formatClock, formatDuration, isFetchOrXhr, makeMatcher, responseSize, splitUrl, statusTone } from '../format';
 import { useListKeys } from '../listKeys';
 import { clearSession, type NetworkEntry, type SessionState } from '../store';
 import { RequestDetail } from './network/RequestDetail';
@@ -162,6 +162,12 @@ export function NetworkPanel({ session }: { session: SessionState }) {
           Clear
         </button>
       </div>
+      {session.meta.info.attachedLate && (
+        <p className="callout inline">
+          Capybara started reading this app at {formatClock(session.meta.info.startedAt)}, after it had started, so earlier requests
+          are missing. Reload the app to record them from the start.
+        </p>
+      )}
 
       <div
         ref={layoutRef}

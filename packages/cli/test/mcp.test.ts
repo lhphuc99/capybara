@@ -332,6 +332,18 @@ describe('capybara mcp', () => {
     }
   });
 
+  it('says when requests from before Capybara started reading an app through Metro are missing', async () => {
+    const late = await otherApp({ id: 'rn-late', appName: 'Shop', platform: 'ios', sdk: { name: 'capybara-metro', version: '0' }, startedAt: 4, attachedLate: true });
+    try {
+      const { call } = await connect();
+      await until(() => call('list_sessions'), (result) => result.text.includes('rn-late'));
+      expect((await call('get_network', { session: 'rn-late' })).text).toContain('after it had started, so requests from before then are missing');
+      expect((await call('get_network', { session: 'web-1' })).text).not.toContain('after it had started');
+    } finally {
+      late.close();
+    }
+  });
+
   it('lists what Capybara noticed with the apps, such as one Metro cannot read', async () => {
     const { call } = await connect();
     const hint = "Expo Go on Android (Pixel 9) can't be read through Metro: its JavaScript engine does not support debugging.";

@@ -35,6 +35,11 @@ export interface SessionInfo {
   userAgent?: string;
   /** Names of the plugins the SDK runs, e.g. "network". Older SDKs and Metro sessions leave it out. */
   plugins?: string[];
+  /**
+   * Capybara began reading this app through Metro after the app had started, so requests from before `startedAt`
+   * are missing. Its console logs are not: the engine keeps them for a debugger that attaches later.
+   */
+  attachedLate?: boolean;
 }
 
 // ---------------------------------------------------------------------------

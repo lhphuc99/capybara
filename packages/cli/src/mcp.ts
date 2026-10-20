@@ -35,7 +35,7 @@ import {
   unknownStore,
 } from './mcp-state.js';
 import { adapterLine, storageEntryLines, storageEntryText } from './mcp-storage.js';
-import { newest, pickSession, sessionHeader, sessionLine } from './mcp-text.js';
+import { clock, newest, pickSession, sessionHeader, sessionLine } from './mcp-text.js';
 import { registerWriteTools, WRITE_INSTRUCTIONS } from './mcp-writes.js';
 import { resolveProjectDir, setupGuide } from './setup-guide.js';
 
@@ -272,6 +272,11 @@ export function createMcpServer(connection: ViewerConnection, options: McpOption
         const matched = filterRequests(requests, args, redact);
         const { shown, omitted } = newest(matched, args.limit ?? 50);
         const lines = [`${sessionHeader(meta)}: ${matched.length} of ${requests.length} requests match.`];
+        if (meta.info.attachedLate) {
+          lines.push(
+            `Capybara started reading this app at ${clock(meta.info.startedAt)}, after it had started, so requests from before then are missing; reloading the app records them from the start.`,
+          );
+        }
         if (omitted > 0) lines.push(`Showing the newest ${shown.length}; pass before: ${shown[0]!.seq} for older ones.`);
         if (shown.length > 0) lines.push('id  time  method  status  duration  type  url', ...shown.map((entry) => requestLine(entry, redact)));
         return lines.join('\n');
