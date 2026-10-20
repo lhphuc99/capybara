@@ -1,6 +1,6 @@
 import { createContext, runInContext } from 'node:vm';
 import { describe, expect, it, vi } from 'vitest';
-import { readMetroStorage, storageExpression } from '../src/metro-storage.js';
+import { metroStorage, storageExpression } from '../src/metro-storage.js';
 
 /**
  * Native MMKV keeps untyped bytes and every getter decodes them: a number is 8 bytes, a boolean 1 byte,
@@ -182,12 +182,40 @@ describe('storage discovery inside a separate JS runtime', () => {
     expect((await app.inspect('get', { adapter: store.id, key: 'k0000' })).value).toHaveLength(3000);
   });
 
-  it('surfaces native read errors and rejects writes in the injected reader too', async () => {
+  it('surfaces native read errors, and refuses writes to a store without the methods for them', async () => {
     const app = runtime(`expose(1, { default: { ...asyncStore({}), getAllKeys: async () => { throw new Error('Native storage unavailable'); } } });`);
     const [store] = await app.inspect('list');
     await expect(app.inspect('entries', { adapter: store.id })).rejects.toThrow('Native storage unavailable');
-    await expect(app.inspect('set', { adapter: store.id })).rejects.toThrow('read-only');
-    await expect(app.inspect('clear', { adapter: store.id })).rejects.toThrow('read-only');
+    await expect(app.inspect('set', { adapter: store.id, key: 'a', value: 'b' })).rejects.toThrow('cannot be changed through Metro');
+    await expect(app.inspect('clear', { adapter: store.id })).rejects.toThrow('cannot be changed through Metro');
+  });
+
+  it('sets, removes and clears keys of AsyncStorage and MMKV when the viewer asks', async () => {
+    const app = runtime(`
+      globalThis.data = { user: 'Ada' };
+      expose(1, { default: { ...asyncStore(data),
+        setItem: async (key, value) => { data[key] = value; },
+        removeItem: async (key) => { delete data[key]; },
+        clear: async () => { for (const key of Object.keys(data)) delete data[key]; } } });
+      globalThis.kv = new Map([['flag', 'on']]);
+      expose(2, { storage: { id: 'prefs', getAllKeys: () => [...kv.keys()], getString: (key) => kv.get(key), getNumber: () => undefined,
+        getBoolean: () => undefined, set: (key, value) => kv.set(key, value), remove: (key) => kv.delete(key), clearAll: () => kv.clear() } }, 'mmkv.ts');
+    `);
+    const stores = await app.inspect('list');
+    const async = stores.find((store: { label: string }) => store.label.startsWith('AsyncStorage'));
+    const mmkv = stores.find((store: { label: string }) => store.label === 'MMKV · prefs');
+    expect(async).toMatchObject({ readOnly: false, canClear: true });
+    expect(mmkv).toMatchObject({ readOnly: false, canClear: true });
+    expect(await app.inspect('set', { adapter: async.id, key: 'theme', value: 'dark' })).toBeNull();
+    expect(app.run('JSON.stringify(data)')).toBe('{"user":"Ada","theme":"dark"}');
+    await app.inspect('remove', { adapter: async.id, key: 'user' });
+    expect(app.run('JSON.stringify(data)')).toBe('{"theme":"dark"}');
+    await app.inspect('set', { adapter: mmkv.id, key: 'flag', value: 'off' });
+    expect(app.run('JSON.stringify([...kv])')).toBe('[["flag","off"]]');
+    await app.inspect('clear', { adapter: mmkv.id });
+    expect(app.run('kv.size')).toBe(0);
+    await app.inspect('clear', { adapter: async.id });
+    expect(app.run('JSON.stringify(data)')).toBe('{}');
   });
 
   it('reports unsupported Metro discovery instead of pretending storage is empty', async () => {
@@ -212,7 +240,7 @@ describe('CDP storage command lifecycle', () => {
       handles.delete('result');
       return {} as T;
     };
-    expect(await readMetroStorage(call, 1, () => true, 'get', { adapter: '[1,"default"]', key })).toBeNull();
+    expect(await metroStorage(call, 1, () => true, 'get', { adapter: '[1,"default"]', key })).toBeNull();
     expect(app.run('globalThis.injected')).toBeUndefined();
     expect(handles.size).toBe(0);
     expect(calls.at(-1)).toBe('Runtime.releaseObject');
@@ -231,7 +259,7 @@ describe('CDP storage command lifecycle', () => {
       if (method === 'Runtime.callFunctionOn') return { result: { value: JSON.stringify(result) } } as T;
       return {} as T;
     };
-    expect(await readMetroStorage(call, 1, () => true, 'get', { adapter: '[1,"default"]', key })).toMatchObject({ key, value: 'astral' });
+    expect(await metroStorage(call, 1, () => true, 'get', { adapter: '[1,"default"]', key })).toMatchObject({ key, value: 'astral' });
   });
 
   it('cancels results when the app reloads and releases the old handle', async () => {
@@ -242,13 +270,15 @@ describe('CDP storage command lifecycle', () => {
       if (method === 'Runtime.evaluate') { active = false; return { result: { objectId: 'old-context' } } as T; }
       return {} as T;
     };
-    await expect(readMetroStorage(call, 1, () => active, 'list', {})).rejects.toThrow('reloaded or disconnected');
+    await expect(metroStorage(call, 1, () => active, 'list', {})).rejects.toThrow('reloaded or disconnected');
     expect(calls).toEqual(['Runtime.evaluate', 'Runtime.releaseObject']);
   });
 
-  it('refuses write commands before evaluating anything in the app', async () => {
+  it('refuses unknown or incomplete commands before evaluating anything in the app', async () => {
     const call = vi.fn();
-    await expect(readMetroStorage(call, 1, () => true, 'remove', { key: 'user' })).rejects.toThrow('read-only');
+    await expect(metroStorage(call, 1, () => true, 'remove', { key: 'user' })).rejects.toThrow('Invalid storage command');
+    await expect(metroStorage(call, 1, () => true, 'set', { adapter: '[1,"default"]', key: 'user' })).rejects.toThrow('Invalid storage command');
+    await expect(metroStorage(call, 1, () => true, 'rename', {})).rejects.toThrow('Unknown storage command "rename"');
     expect(call).not.toHaveBeenCalled();
   });
 });

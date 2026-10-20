@@ -7,7 +7,7 @@ import { CdpClient, CdpError, connect, METHOD_NOT_FOUND, type CdpEvent, type Eva
 import { relayEvent, releaseEvent, type ConsoleCall, type Request } from './metro-events.js';
 import { watchMetroMMKV } from './metro-mmkv.js';
 import { MAX_HELD_EVENTS, openSession, type Session } from './metro-relay.js';
-import { readMetroStorage } from './metro-storage.js';
+import { metroStorage } from './metro-storage.js';
 import { watchMetroWebSockets } from './metro-websocket.js';
 
 /** Expo moves to 8082 when 8081 is taken. */
@@ -300,7 +300,7 @@ function watchApp(
     });
     current.session = openSession(capybaraUrl, sessionInfo(probe?.name), end, (command) => {
       if (command.plugin !== 'storage') return Promise.reject(new Error('This plugin is unavailable through Metro'));
-      return readMetroStorage(call, current.contextId, () => run === current, command.method, command.params);
+      return metroStorage(call, current.contextId, () => run === current, command.method, command.params);
     });
     for (const event of current.held) enqueue(current, event);
     current.held = [];

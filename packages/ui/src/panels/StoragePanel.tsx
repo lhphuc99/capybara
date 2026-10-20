@@ -171,7 +171,9 @@ init({ storage: [asyncStorage(AsyncStorage), mmkvStorage(storage)] });`}</pre>
         <span className="spacer" />
         {viaMetro && (
           <>
-            <span className="tag">Read-only via Metro</span>
+            <span className="tag" title="Read through Metro: Refresh shows what the app wrote since">
+              {adapter?.readOnly === false ? 'Via Metro' : 'Read-only via Metro'}
+            </span>
             <button type="button" className="btn" onClick={() => setScanToken((n) => n + 1)}>Find stores</button>
           </>
         )}

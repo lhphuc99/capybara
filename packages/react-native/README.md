@@ -2,7 +2,7 @@
 
 React Native SDK for [Capybara](https://github.com/lhphuc99/capybara#readme): sends your app's logs, network requests (including WebSockets), storage and state to the Capybara UI on your computer, and lets you edit AsyncStorage and MMKV values from it.
 
-On React Native 0.85 or later, Capybara reads logs, network and storage through Metro without this package, except in Expo Go on Android, whose JavaScript engine cannot be debugged. Add it to edit storage, to see storage changes as they happen, to see state, in Expo Go on Android, or on older React Native versions.
+On React Native 0.85 or later, Capybara reads logs, network and storage through Metro without this package, except in Expo Go on Android, whose JavaScript engine cannot be debugged. Add it to see storage changes as they happen, to see state, in Expo Go on Android, or on older React Native versions.
 
 ```bash
 npm install @capybara-devtools/react-native

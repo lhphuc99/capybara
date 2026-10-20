@@ -77,10 +77,12 @@ async function fixture(options: {
     error: new Error('Uncaught (in promise, id: 0) failed'),
     nullObject: null
   };
+  globalThis.saved = { user: '{"name":"Ada"}' };
   globalThis.modules = new Map([[1, {
     isInitialized: true, publicModule: { exports: { default: {
-      getAllKeys: async () => ['user'], getItem: async () => '{"name":"Ada"}',
-      setItem: () => { throw new Error('Must not write'); }
+      getAllKeys: async () => Object.keys(saved), getItem: async (key) => saved[key] ?? null,
+      setItem: async (key, value) => { saved[key] = value; }, removeItem: async (key) => { delete saved[key]; },
+      clear: async () => { saved = {}; }
     } } }
   }]]);
   globalThis.__r = { getModules: () => modules }`, vm);
@@ -502,7 +504,7 @@ describe('Metro discovery and CDP event relay', () => {
     await until(() => expect(f.sessions()).toHaveLength(1));
     expect(f.origins).toEqual([`http://127.0.0.1:${f.metroPort}`, `http://localhost:${f.metroPort}`]);
     f.viewer.send(JSON.stringify({ t: 'command', id: 'storage', sessionId: f.sessions()[0].session.info.id, plugin: 'storage', method: 'clear' }));
-    await until(() => expect(f.messages.find((m) => m.t === 'result')).toMatchObject({ ok: false, error: expect.stringContaining('read-only') }));
+    await until(() => expect(f.messages.find((m) => m.t === 'result')).toMatchObject({ ok: false, error: 'Invalid storage command' }));
   });
 
   it('relays WebSocket traffic, including a socket opened before attaching, then removes the hook', async () => {
@@ -565,7 +567,7 @@ describe('Metro discovery and CDP event relay', () => {
     await until(() => expect(f.commands.some((c) => c.method === 'Runtime.removeBinding')).toBe(true));
   });
 
-  it('routes read-only storage commands from the viewer to the app through CDP', async () => {
+  it('routes storage commands from the viewer to the app through CDP, writes included', async () => {
     const f = await fixture();
     f.start();
     await until(() => expect(f.sessions()).toHaveLength(1));
@@ -574,14 +576,20 @@ describe('Metro discovery and CDP event relay', () => {
     }));
     const result = (id: string) => f.messages.find((m) => m.t === 'result' && m.id === id);
     command('list', 'list');
-    await until(() => expect(result('list')).toMatchObject({ ok: true, result: [{ readOnly: true, canClear: false }] }));
+    await until(() => expect(result('list')).toMatchObject({ ok: true, result: [{ readOnly: false, canClear: true }] }));
     const adapter = result('list').result[0].id;
     command('entries', 'entries', { adapter });
     await until(() => expect(result('entries')).toMatchObject({ ok: true, result: { total: 1, entries: [{ key: 'user', value: '{"name":"Ada"}' }] } }));
     command('get', 'get', { adapter, key: 'user' });
     await until(() => expect(result('get')).toMatchObject({ ok: true, result: { value: '{"name":"Ada"}' } }));
     command('write', 'set', { adapter, key: 'user', value: 'changed' });
-    await until(() => expect(result('write')).toMatchObject({ ok: false, error: expect.stringContaining('read-only') }));
-    expect(f.commands.filter((c) => c.method === 'Runtime.releaseObject')).toHaveLength(3);
+    await until(() => expect(result('write')).toMatchObject({ ok: true, result: null }));
+    command('reread', 'get', { adapter, key: 'user' });
+    await until(() => expect(result('reread')).toMatchObject({ ok: true, result: { value: 'changed' } }));
+    command('remove', 'remove', { adapter, key: 'user' });
+    await until(() => expect(result('remove')).toMatchObject({ ok: true, result: null }));
+    command('empty', 'entries', { adapter });
+    await until(() => expect(result('empty')).toMatchObject({ ok: true, result: { total: 0, entries: [] } }));
+    expect(f.commands.filter((c) => c.method === 'Runtime.releaseObject')).toHaveLength(7);
   });
 });
