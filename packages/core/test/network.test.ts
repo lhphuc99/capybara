@@ -16,19 +16,26 @@ function harness(options?: NetworkPluginOptions) {
 }
 
 class FakeXHR extends EventTarget {
+  readyState = 0;
   status = 0;
   statusText = '';
   responseType: XMLHttpRequestResponseType = '';
   responseText = '';
   response: unknown = null;
   private rawHeaders = '';
-  open(_method: string, _url: string) {}
+  open(_method: string, _url: string) {
+    this.readyState = 1;
+    this.status = 0;
+    this.responseText = '';
+    this.response = null;
+  }
   setRequestHeader(_name: string, _value: string) {}
   send(_body?: unknown) {}
   getAllResponseHeaders() {
     return this.rawHeaders;
   }
   respond(status: number, body: string, rawHeaders: string) {
+    this.readyState = 4;
     this.status = status;
     this.statusText = 'OK';
     this.responseText = body;
@@ -38,6 +45,7 @@ class FakeXHR extends EventTarget {
     this.dispatchEvent(new Event('loadend'));
   }
   fail() {
+    this.readyState = 4;
     this.dispatchEvent(new Event('error'));
     this.dispatchEvent(new Event('loadend'));
   }
@@ -179,6 +187,71 @@ describe('networkPlugin: XMLHttpRequest', () => {
     expect(globalThis.fetch).toBe(polyfill);
   });
 
+  it('records each request of a reused XHR once', () => {
+    (globalThis as Record<string, unknown>).XMLHttpRequest = FakeXHR;
+    const { of, teardown } = harness({ fetch: false });
+    const xhr = new FakeXHR();
+    xhr.open('GET', 'https://api.test/poll?n=1');
+    xhr.send(null);
+    xhr.respond(200, 'first', 'Content-Type: text/plain\r\n');
+    xhr.open('GET', 'https://api.test/poll?n=2');
+    xhr.send(null);
+    xhr.respond(201, 'second', 'Content-Type: text/plain\r\n');
+
+    const [first, second] = of('network.request');
+    expect(of('network.response').map((response) => [response.id, response.status, response.body.text])).toEqual([
+      [first.id, 200, 'first'],
+      [second.id, 201, 'second'],
+    ]);
+    expect(of('network.error')).toEqual([]);
+    teardown();
+  });
+
+  it('records a request cut off by opening its XHR again as aborted', () => {
+    (globalThis as Record<string, unknown>).XMLHttpRequest = FakeXHR;
+    const { of, teardown } = harness({ fetch: false });
+    const xhr = new FakeXHR();
+    xhr.open('GET', 'https://api.test/slow');
+    xhr.send(null);
+    // Browsers fire no event for the request that open() ends.
+    xhr.open('GET', 'https://api.test/next');
+    xhr.send(null);
+    xhr.respond(200, 'next', 'Content-Type: text/plain\r\n');
+
+    const [slow, next] = of('network.request');
+    expect(of('network.error')).toEqual([expect.objectContaining({ id: slow.id, aborted: true, message: 'Request aborted' })]);
+    expect(of('network.response').map((response) => [response.id, response.body.text])).toEqual([[next.id, 'next']]);
+    teardown();
+  });
+
+  it('records a request whose XHR is opened again from onload, before its loadend', () => {
+    (globalThis as Record<string, unknown>).XMLHttpRequest = FakeXHR;
+    const { of, teardown } = harness({ fetch: false });
+    const xhr = new FakeXHR();
+    xhr.addEventListener(
+      'load',
+      () => {
+        xhr.open('GET', 'https://api.test/poll?n=2');
+        xhr.send(null);
+      },
+      { once: true },
+    );
+    xhr.open('GET', 'https://api.test/poll?n=1');
+    xhr.send(null);
+    // The loadend that follows this load belongs to the first request, though the second is on its way by then.
+    xhr.respond(200, 'first', 'Content-Type: text/plain\r\n');
+    expect(of('network.response')).toHaveLength(1);
+    xhr.respond(200, 'second', 'Content-Type: text/plain\r\n');
+
+    const [first, second] = of('network.request');
+    expect(of('network.response').map((response) => [response.id, response.body.text])).toEqual([
+      [first.id, 'first'],
+      [second.id, 'second'],
+    ]);
+    expect(of('network.error')).toEqual([]);
+    teardown();
+  });
+
   it('restores the prototype on teardown', () => {
     const { open, send, setRequestHeader } = FakeXHR.prototype;
     (globalThis as Record<string, unknown>).XMLHttpRequest = FakeXHR;
@@ -262,6 +335,7 @@ describe('networkPlugin: why a request failed', () => {
     // React Native hands the native error text only to this internal method.
     class NativeXHR extends FakeXHR {
       __didCompleteResponse(_requestId: number, _error: string) {
+        this.readyState = 4;
         this.dispatchEvent(new Event('error'));
         this.dispatchEvent(new Event('loadend'));
       }

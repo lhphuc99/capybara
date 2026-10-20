@@ -308,6 +308,8 @@ interface XhrInfo {
   headers: Record<string, string>;
 }
 
+const XHR_DONE = 4;
+
 function patchXhr(ctx: PluginContext, settings: Settings, fetchOverXhr: boolean): () => void {
   const XHR = (globalThis as { XMLHttpRequest?: { prototype: XMLHttpRequest } }).XMLHttpRequest;
   if (!XHR?.prototype) return () => {};
@@ -337,6 +339,8 @@ function patchXhr(ctx: PluginContext, settings: Settings, fetchOverXhr: boolean)
   // React Native hands the native reason for a failure (e.g. "Unable to resolve host …") to this
   // internal method. It reaches responseText only for text responses, and whatwg-fetch asks for blobs.
   const nativeErrors = new WeakMap<XMLHttpRequest, string>();
+  // Ends the request an XHR is on; apps may open the same XHR again for the next one.
+  const inFlight = new WeakMap<XMLHttpRequest, (cutOff?: boolean) => void>();
   const internals = proto as unknown as Record<string, unknown>;
   const originalComplete = internals.__didCompleteResponse;
   if (typeof originalComplete === 'function') {
@@ -359,10 +363,21 @@ function patchXhr(ctx: PluginContext, settings: Settings, fetchOverXhr: boolean)
     });
 
     let failure: 'error' | 'timeout' | 'abort' | undefined;
-    xhr.addEventListener('error', () => (failure = 'error'));
-    xhr.addEventListener('timeout', () => (failure = 'timeout'));
-    xhr.addEventListener('abort', () => (failure = 'abort'));
-    xhr.addEventListener('loadend', () => {
+    const listeners: Record<string, () => void> = {
+      error: () => (failure = 'error'),
+      timeout: () => (failure = 'timeout'),
+      abort: () => (failure = 'abort'),
+      loadend: () => {
+        // Browsers still dispatch the last request's loadend after the app opened the XHR again from its onload.
+        if (typeof xhr.readyState === 'number' && xhr.readyState !== XHR_DONE) return;
+        end();
+      },
+    };
+    for (const [type, listener] of Object.entries(listeners)) xhr.addEventListener(type, listener);
+    const end = (cutOff = false) => {
+      for (const [type, listener] of Object.entries(listeners)) xhr.removeEventListener(type, listener);
+      if (inFlight.get(xhr) === end) inFlight.delete(xhr);
+      if (cutOff) failure = 'abort';
       const duration = now() - start;
       try {
         if (failure || xhr.status === 0) {
@@ -400,14 +415,20 @@ function patchXhr(ctx: PluginContext, settings: Settings, fetchOverXhr: boolean)
       } catch {
         // never surface SDK failures to the app
       }
-    });
+    };
+    inFlight.set(xhr, end);
   };
 
   proto.open = function open(this: XMLHttpRequest, method: string, url: string | URL) {
+    // Opening resets the XHR: record a request that is done but whose loadend has not run (opened again from onload).
+    if (this.readyState === XHR_DONE) inFlight.get(this)?.();
     requests.set(this, { method: String(method).toUpperCase(), url: String(url), headers: {} });
     nativeErrors.delete(this);
     // `arguments` keeps the caller's exact arity; some engines treat an explicit `undefined` async flag as false.
-    return (originalOpen as (...args: unknown[]) => void).apply(this, arguments as unknown as unknown[]);
+    const result = (originalOpen as (...args: unknown[]) => void).apply(this, arguments as unknown as unknown[]);
+    // A request still on its way is cut off, and browsers fire no event for it.
+    inFlight.get(this)?.(true);
+    return result;
   } as XMLHttpRequest['open'];
 
   proto.setRequestHeader = function setRequestHeader(this: XMLHttpRequest, name: string, value: string) {
