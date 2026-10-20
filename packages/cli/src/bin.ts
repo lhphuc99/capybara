@@ -176,6 +176,7 @@ function printBanner(actualPort: number, address: string) {
   const reachable = reachableAddresses(address);
   if (remoteUi) {
     for (const lan of reachable) lines.push(`  Network   http://${lan}:${actualPort}`);
+    if (reachable.length > 0) lines.push('            Anyone on this network can open it and see everything apps send, tokens included.');
   } else if (reachable.length > 0) {
     // As Vite says "use --host to expose": the flag is easy to miss in --help.
     lines.push('  Network   use --remote-ui to open the UI on other devices');

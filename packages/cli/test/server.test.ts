@@ -119,6 +119,17 @@ async function load(sessionId = 'app-1') {
 }
 
 describe('event relay', () => {
+  it('gives a session the time it connected when the app sends no start time', async () => {
+    await start();
+    const app = connect('/client');
+    await app.opened;
+    const { startedAt: _, ...withoutStart } = session();
+    app.send({ t: 'hello', protocol: 1, session: withoutStart });
+    await app.next((m) => m.t === 'welcome');
+    const { meta } = await load();
+    expect(meta.info.startedAt).toBeGreaterThan(Date.now() - 5_000);
+  });
+
   it('streams app events to viewers and serves history to late viewers', async () => {
     await start();
     const ui = viewer();
@@ -437,9 +448,14 @@ describe('access control', () => {
     await expect(connect('/viewer', { origin: 'http://localhost:5174' }).opened).resolves.toBeUndefined();
   });
 
-  it('refuses plain HTTP requests addressed to other hosts', async () => {
+  it('refuses plain HTTP requests addressed to other hosts, with a page that says what to open instead', async () => {
     await start();
     expect(await statusOf({ headers: { host: 'evil.test' } })).toBe(403);
+    // Such as this computer's own name on the network.
+    const page = await get({ headers: { host: `devbox.local:${port}` } });
+    expect(page.status).toBe(403);
+    expect(page.body).toContain('Open Capybara at localhost or an IP address');
+    expect(page.body).toContain(`<a href="http://localhost:${port}">`);
   });
 
   // Another device, as the server sees it: a peer at this machine's LAN address, on loopback.

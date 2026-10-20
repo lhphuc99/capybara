@@ -21,7 +21,7 @@ import {
 import { WebSocket, WebSocketServer, type RawData } from 'ws';
 import { diagnoseRequest } from './diagnose.js';
 import { isAllowedHost, isAllowedViewerOrigin, isLocalConnection, isLoopbackAddress, unmapped } from './security.js';
-import { refuseRemote, serveStatic } from './static.js';
+import { refuseHost, refuseRemote, serveStatic } from './static.js';
 import { localWebOrigin, needsSymbolication, symbolicateEvents } from './symbolicate.js';
 
 export { reverseAndroidPorts } from './adb.js';
@@ -151,7 +151,7 @@ export function createServer(options: ServerOptions): CapybaraServer {
 
   const httpServer = http.createServer((req, res) => {
     if (!isAllowedHost(req.headers.host)) {
-      res.writeHead(403, { 'content-type': 'text/plain' }).end('Forbidden host');
+      refuseHost(res, req.socket.localPort);
       return;
     }
     if (!mayView(req)) {
@@ -367,7 +367,8 @@ export function createServer(options: ServerOptions): CapybaraServer {
           ws.close();
           return;
         }
-        session = attach(message.session, ws);
+        const info = message.session;
+        session = attach(Number.isFinite(info.startedAt) ? info : { ...info, startedAt: Date.now() }, ws);
         send(ws, { t: 'welcome', lastSeq: session.lastSeq });
         return;
       }
