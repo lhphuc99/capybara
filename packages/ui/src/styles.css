@@ -747,6 +747,23 @@ code {
   background: var(--bg-hover);
 }
 
+.tree-more {
+  gap: 10px;
+}
+
+.link-button {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+
+.link-button:hover {
+  text-decoration: underline;
+}
+
 .tree-row.changed {
   background: color-mix(in srgb, var(--warn) 18%, transparent);
 }

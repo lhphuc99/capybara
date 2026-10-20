@@ -18,6 +18,9 @@ interface Props {
   highlight?: ReadonlySet<string>;
 }
 
+/** Children of a branch shown at first, and how many more each "Show more" adds. */
+const PAGE = 100;
+
 /** Settings shared by every node of one tree. */
 interface Tree {
   raw: boolean;
@@ -48,6 +51,7 @@ interface NodeProps {
 function TreeNode({ name, value, depth, path, tree }: NodeProps) {
   const id = tree.highlight && path ? pathKey(path) : undefined;
   const [open, setOpen] = useState(() => depth < tree.expandDepth || (id !== undefined && tree.above!.has(id)));
+  const [shown, setShown] = useState(PAGE);
   const children = childrenOf(value, tree.raw);
   const indent = { paddingLeft: depth * 14 };
   const changed = id !== undefined && tree.highlight!.has(id) ? ' changed' : '';
@@ -106,7 +110,7 @@ function TreeNode({ name, value, depth, path, tree }: NodeProps) {
         />
       </div>
       {open &&
-        children.entries.map(([key, child, segment], index) => (
+        children.entries.slice(0, shown).map(([key, child, segment], index) => (
           <TreeNode
             key={`${index}:${key}`}
             name={key}
@@ -116,12 +120,32 @@ function TreeNode({ name, value, depth, path, tree }: NodeProps) {
             tree={tree}
           />
         ))}
+      {open && children.entries.length > shown && (
+        <MoreRow indent={(depth + 1) * 14} left={children.entries.length - shown} onMore={(n) => setShown(shown + n)} />
+      )}
       {open && children.more > 0 && (
         <div className="tree-row t-muted" style={{ paddingLeft: (depth + 1) * 14 }}>
-          <span className="caret-space" />… {children.more} more
+          <span className="caret-space" />… {children.more} more, not sent by the app
         </div>
       )}
     </>
+  );
+}
+
+/** Buttons for the children a large branch has not shown yet. */
+function MoreRow({ indent, left, onMore }: { indent: number; left: number; onMore: (n: number) => void }) {
+  return (
+    <div className="tree-row tree-more" style={{ paddingLeft: indent }}>
+      <span className="caret-space" />
+      <button type="button" className="link-button" onClick={() => onMore(PAGE)}>
+        Show {Math.min(PAGE, left).toLocaleString()} more
+      </button>
+      {left > PAGE && (
+        <button type="button" className="link-button" onClick={() => onMore(left)}>
+          Show all {left.toLocaleString()}
+        </button>
+      )}
+    </div>
   );
 }
 
