@@ -3,6 +3,7 @@ import { isIPv4 } from 'node:net';
 import { networkInterfaces } from 'node:os';
 import {
   CLIENT_PATH,
+  COMMAND_TIMEOUT_MS,
   PROTOCOL_VERSION,
   VIEWER_PATH,
   type ClientToServer,
@@ -106,7 +107,7 @@ export function createServer(options: ServerOptions): CapybaraServer {
   const maxSessions = options.maxSessions ?? 20;
   const maxEvents = options.maxEventsPerSession ?? 5_000;
   const maxStateEvents = options.maxStateEvents ?? 2_000;
-  const commandTimeout = options.commandTimeout ?? 10_000;
+  const commandTimeout = options.commandTimeout ?? COMMAND_TIMEOUT_MS;
   const allowedOrigins = options.allowedOrigins ?? [];
   const sessions = new Map<string, Session>();
   const viewers = new Set<WebSocket>();

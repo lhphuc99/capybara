@@ -1,7 +1,7 @@
 import { createContext, runInContext } from 'node:vm';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { trackMMKV, watchMetroMMKV } from '../src/metro-mmkv.js';
-import { inspectStorage } from '../src/metro-storage.js';
+import { storageExpression } from '../src/metro-storage.js';
 
 const cleanups: Array<() => void> = [];
 afterEach(() => {
@@ -42,7 +42,7 @@ function runtime(source = '', weakRef = true) {
   const entries = () => run('globalThis.__CAPYBARA_MMKV_TRACKER_V1__?.entries() ?? []');
   cleanups.push(() => run('globalThis.__CAPYBARA_MMKV_TRACKER_V1__?.dispose()'));
   const inspect = async (method: string, params: object = {}) => {
-    const state = run(`(${inspectStorage.toString()})(${JSON.stringify(method)}, ${JSON.stringify(params)})`);
+    const state = run(storageExpression(method, params));
     await vi.waitFor(() => expect(state.done).toBe(true), { interval: 1 });
     if (state.error) throw new Error(state.error);
     return JSON.parse(JSON.stringify(state.value));

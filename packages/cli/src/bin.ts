@@ -24,6 +24,8 @@ Options:
       --no-update-check     Don't look up newer versions on npm (or set $CAPYBARA_NO_UPDATE_CHECK)
   -h, --help                Show this help
   -v, --version             Show the version
+
+Set $CAPYBARA_DEBUG=1 to print what goes wrong when reading apps through Metro, e.g. why one does not show up.
 `;
 
 const version = (JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string })

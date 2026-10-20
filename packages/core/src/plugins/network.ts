@@ -1,4 +1,4 @@
-import type { BodyPreview, NetworkErrorPayload } from '@capybara-devtools/protocol';
+import { MAX_BODY_SIZE, MAX_SOCKET_MESSAGE_SIZE, type BodyPreview, type NetworkErrorPayload } from '@capybara-devtools/protocol';
 import type { Plugin, PluginContext } from '../client.js';
 import { errorMessage, now, randomId, utf8Length } from '../utils.js';
 import { hookWebSockets } from './websocket.js';
@@ -53,7 +53,7 @@ export function networkPlugin(options: NetworkPluginOptions = {}): Plugin {
               typeof pattern === 'string' ? pattern : { source: pattern.source, flags: pattern.flags },
             ),
             ignoreProtocols: DEV_TOOL_PROTOCOLS,
-            maxMessage: options.maxMessageSize ?? 16 * 1024,
+            maxMessage: options.maxMessageSize ?? MAX_SOCKET_MESSAGE_SIZE,
           }),
         );
       }
@@ -68,7 +68,7 @@ function resolveSettings(options: NetworkPluginOptions): Settings {
   const patterns = options.ignoreUrls ?? [];
   const redacted = new Set((options.redactHeaders ?? []).map((name) => name.toLowerCase()));
   return {
-    maxBody: options.maxBodySize ?? 128 * 1024,
+    maxBody: options.maxBodySize ?? MAX_BODY_SIZE,
     isIgnored: (url) =>
       patterns.some((pattern) => {
         if (typeof pattern === 'string') return url.includes(pattern);

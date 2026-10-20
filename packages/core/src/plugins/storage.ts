@@ -1,4 +1,12 @@
-import type { StorageAdapterInfo, StorageEntries, StorageEntry, StorageOp } from '@capybara-devtools/protocol';
+import {
+  MAX_STORAGE_KEYS,
+  STORAGE_PREVIEW_LENGTH,
+  STORAGE_VALUE_LENGTH,
+  type StorageAdapterInfo,
+  type StorageEntries,
+  type StorageEntry,
+  type StorageOp,
+} from '@capybara-devtools/protocol';
 import type { Plugin } from '../client.js';
 import { utf8Length } from '../utils.js';
 
@@ -21,10 +29,6 @@ export interface StorageAdapter {
   note?: string;
 }
 
-/** Keeps a listing of a huge storage from becoming one multi-megabyte message. */
-const MAX_ENTRIES = 1_000;
-const PREVIEW_CHARS = 2_000;
-const VALUE_CHARS = 1_000_000;
 
 export function storagePlugin(adapters: readonly StorageAdapter[]): Plugin {
   const find = (id: string): StorageAdapter => {
@@ -54,16 +58,17 @@ export function storagePlugin(adapters: readonly StorageAdapter[]): Plugin {
       entries: async ({ adapter }: { adapter: string }): Promise<StorageEntries> => {
         const a = find(adapter);
         const keys = [...(await a.keys())].sort();
-        const shown = keys.slice(0, MAX_ENTRIES);
+        // Keeps a listing of a huge storage from becoming one multi-megabyte message.
+        const shown = keys.slice(0, MAX_STORAGE_KEYS);
         const pairs = a.getMany
           ? await a.getMany(shown)
           : await Promise.all(shown.map(async (key) => [key, await a.get(key)] as const));
-        return { entries: pairs.map(([key, value]) => toEntry(key, value ?? null, PREVIEW_CHARS)), total: keys.length };
+        return { entries: pairs.map(([key, value]) => toEntry(key, value ?? null, STORAGE_PREVIEW_LENGTH)), total: keys.length };
       },
 
       get: async ({ adapter, key }: { adapter: string; key: string }): Promise<StorageEntry | null> => {
         const value = await find(adapter).get(key);
-        return value === undefined || value === null ? null : toEntry(key, value, VALUE_CHARS);
+        return value === undefined || value === null ? null : toEntry(key, value, STORAGE_VALUE_LENGTH);
       },
 
       set: async ({ adapter, key, value }: { adapter: string; key: string; value: string }) => {

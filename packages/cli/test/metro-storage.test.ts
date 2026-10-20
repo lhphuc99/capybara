@@ -1,6 +1,6 @@
 import { createContext, runInContext } from 'node:vm';
 import { describe, expect, it, vi } from 'vitest';
-import { inspectStorage, readMetroStorage } from '../src/metro-storage.js';
+import { readMetroStorage, storageExpression } from '../src/metro-storage.js';
 
 /**
  * Native MMKV keeps untyped bytes and every getter decodes them: a number is 8 bytes, a boolean 1 byte,
@@ -72,7 +72,7 @@ function runtime(source = '', globals: Record<string, unknown> = {}) {
     }; }
     ${source}`, context);
   const inspect = async (method: string, params: object = {}) => {
-    const state = runInContext(`(${inspectStorage.toString()})(${JSON.stringify(method)}, ${JSON.stringify(params)})`, context);
+    const state = runInContext(storageExpression(method, params), context);
     await vi.waitFor(() => expect(state.done).toBe(true), { interval: 1 });
     if (state.error) throw new Error(state.error);
     return JSON.parse(JSON.stringify(state.value));

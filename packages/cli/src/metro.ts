@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { CLIENT_GLOBAL, serialize } from '@capybara-devtools/core';
 import {
   CLIENT_PATH,
+  MAX_SOCKET_MESSAGE_SIZE,
   METRO_SDK,
   PROTOCOL_VERSION,
   type BodyPreview,
@@ -12,6 +13,7 @@ import {
   type SessionInfo,
 } from '@capybara-devtools/protocol';
 import { WebSocket, type RawData } from 'ws';
+import { debug } from './debug.js';
 import { readMetroStorage } from './metro-storage.js';
 import { watchMetroMMKV } from './metro-mmkv.js';
 import { parseWebSocketReport, watchMetroWebSockets, WEBSOCKET_BINDING } from './metro-websocket.js';
@@ -60,7 +62,6 @@ const STARTUP_CHECK_MS = 1_000;
 const STARTUP_LIMIT_MS = 30_000;
 const MAX_BODY_FETCH = 4 * 1024 * 1024;
 const MAX_HELD_EVENTS = 2_000;
-const MAX_SOCKET_MESSAGE = 16 * 1024;
 
 const SERIALIZER_GLOBAL = '__CAPYBARA_SERIALIZE__';
 const INSTALL_SERIALIZER = `globalThis.${SERIALIZER_GLOBAL} = ${serialize.toString()}`;
@@ -345,6 +346,11 @@ function watchApp(
     };
   };
 
+  const label = () => {
+    const device = metadata.deviceName || target.deviceName;
+    return `${metadata.appDisplayName || target.title || target.appId || 'A React Native app'}${device ? ` (${device})` : ''}`;
+  };
+
   const unreadableHint = () => {
     const device = metadata.deviceName || target.deviceName;
     const expoGo = /^host\.exp\.exponent$/i.test(target.appId ?? '');
@@ -399,11 +405,16 @@ function watchApp(
       (reply) => parseProbe(reply.result?.value),
       // React Native's answer when the engine cannot be debugged over CDP, as in Expo Go on Android. Such an app
       // sends no logs and cannot be checked for the SDK, so a session would be empty or a duplicate of the SDK's.
-      (error: unknown) => (error instanceof CdpError && error.code === METHOD_NOT_FOUND ? 'unreadable' : undefined),
+      (error: unknown) => {
+        if (error instanceof CdpError && error.code === METHOD_NOT_FOUND) return 'unreadable';
+        debug(`Could not check ${label()} for the SDK`, error);
+        return undefined;
+      },
     );
     current.checking = false;
     if (run !== current || current.state !== 'deciding') return;
     if (probe === 'unreadable' || probe?.sdk) {
+      if (probe !== 'unreadable') debug(`${label()} runs the SDK, so Metro leaves it to the SDK`);
       current.state = 'skipped';
       for (const event of current.held) releaseEvent(event);
       current.held = [];
@@ -422,6 +433,7 @@ function watchApp(
       current.retry = setTimeout(() => void decide(current), STARTUP_CHECK_MS);
       return;
     }
+    debug(`Reading ${label()} through Metro on port ${metroPort}`);
     current.state = 'streaming';
     current.mmkv = watchMetroMMKV(call, current.contextId);
     current.sockets = watchMetroWebSockets(call, current.contextId, {
@@ -429,7 +441,7 @@ function watchApp(
       // of them with an http:// URL.
       ignoreUrls: [{ source: `^(?:wss?|https?)://[^/]+:(?:${metroPort}|8097|9090)(?:/|$)`, flags: '' }],
       ignoreProtocols: [],
-      maxMessage: MAX_SOCKET_MESSAGE,
+      maxMessage: MAX_SOCKET_MESSAGE_SIZE,
     });
     current.session = openSession(capybaraUrl, sessionInfo(probe?.name), end, (command) => {
       if (command.plugin !== 'storage') return Promise.reject(new Error('This plugin is unavailable through Metro'));
@@ -440,7 +452,9 @@ function watchApp(
   };
 
   const enqueue = (current: Run, event: CdpEvent) => {
-    queue = queue.then(() => handle(current, event)).catch(() => {});
+    queue = queue
+      .then(() => handle(current, event))
+      .catch((error: unknown) => debug(`Could not read ${event.method} from ${label()}`, error));
   };
 
   const onEvent = (event: CdpEvent) => {
@@ -515,7 +529,13 @@ function watchApp(
 
   const serializeArgs = async (args: RemoteObject[], contextId: number): Promise<SerializedValue[]> => {
     const objects = args.filter((arg) => arg.objectId);
-    const inApp = objects.length > 0 ? await serializeInApp(objects, contextId).catch(() => undefined) : undefined;
+    const inApp =
+      objects.length > 0
+        ? await serializeInApp(objects, contextId).catch((error: unknown) => {
+            debug(`Could not read logged values in ${label()}, so they show as descriptions`, error);
+            return undefined;
+          })
+        : undefined;
     release(objects);
     let next = 0;
     // Without the in-app values, objects keep the one-line description CDP gave.
@@ -535,7 +555,10 @@ function watchApp(
       return { kind: 'unknown', contentType, size, summary: 'Too large to capture' };
     }
     const result = await call<{ body: string; base64Encoded: boolean }>('Network.getResponseBody', { requestId }).catch(
-      () => undefined,
+      (error: unknown) => {
+        debug(`No body for request ${requestId} of ${label()}`, error);
+        return undefined;
+      },
     );
     return result ? responseBody(result, contentType) : undefined;
   };
@@ -653,6 +676,7 @@ function watchApp(
       return;
     }
     if (!connected) {
+      debug(`Could not attach to ${label()} through Metro on port ${metroPort}; trying again in ${RETRY_AFTER_FAILURE_MS / 1_000} s`);
       // Leaves the target out of the next few scans instead of failing every two seconds.
       retryTimer = setTimeout(end, RETRY_AFTER_FAILURE_MS);
       retryTimer.unref();
@@ -661,11 +685,11 @@ function watchApp(
     socket = connected;
     socket.on('message', onMessage);
     socket.on('close', end);
-    socket.on('error', () => {});
+    socket.on('error', (error) => debug(`Lost the debugger connection to ${label()}`, error));
     // Metadata first, so it is there when the JS context shows up.
-    await call('ReactNativeApplication.enable').catch(() => {});
-    await call('Runtime.enable').catch(() => {});
-    await call('Network.enable').catch(() => {});
+    for (const domain of ['ReactNativeApplication', 'Runtime', 'Network']) {
+      await call(`${domain}.enable`).catch((error: unknown) => debug(`${domain}.enable failed for ${label()}`, error));
+    }
   })();
 
   return { close: end };
@@ -762,7 +786,7 @@ function openSession(
       socket.close();
     }
   });
-  socket.on('error', () => {});
+  socket.on('error', (error) => debug(`Lost the connection to Capybara for ${info.appName}`, error));
   socket.on('close', () => {
     if (!closed) onDisconnect();
   });

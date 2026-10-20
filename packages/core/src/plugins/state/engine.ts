@@ -213,7 +213,7 @@ export function createStateEngine(
   const ENTRY_LIMIT = 1_200;
   /** Summaries per `state.entries` event; after a reset the `entries` command lists the rest. */
   const ENTRIES_PER_EVENT = 200;
-  /** Same cap as network bodies. */
+  /** MAX_BODY_SIZE, the cap of network bodies, written out since the Metro bridge runs this function on its own. */
   const MAX_READ = 128 * 1024;
   const PREVIEW: SerializeOptions = { maxDepth: 3, maxKeys: 20, maxItems: 20, maxString: 200, maxNodes: 200 };
   // Tried in order until a read fits in MAX_READ.

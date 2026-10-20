@@ -433,5 +433,6 @@ export type ServerToViewer =
   | { t: 'cleared'; sessionId: string; scope?: 'state' }
   | CommandResult;
 
+export * from './limits.js';
 export * from './values.js';
 export * from './versions.js';

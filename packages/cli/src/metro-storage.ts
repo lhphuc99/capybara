@@ -1,3 +1,4 @@
+import { MAX_STORAGE_KEYS, STORAGE_PREVIEW_LENGTH, STORAGE_VALUE_LENGTH } from '@capybara-devtools/protocol';
 import type { RemoteObject } from './cdp.js';
 
 interface Evaluation {
@@ -10,6 +11,12 @@ type CdpCall = <T>(method: string, params?: object) => Promise<T>;
 /** Hermes fails to compile evaluated source containing characters outside the BMP, such as an emoji in a key. */
 function asciiLiteral(value: unknown): string {
   return JSON.stringify(value).replace(/[\u007f-￿]/g, (char) => `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`);
+}
+
+/** Code that reads storage inside the app: arguments go in as JSON literals, with the SDK's limits, which it cannot import. */
+export function storageExpression(method: string, params: { adapter?: unknown; key?: unknown }): string {
+  const limits = { keys: MAX_STORAGE_KEYS, preview: STORAGE_PREVIEW_LENGTH, value: STORAGE_VALUE_LENGTH };
+  return `(${inspectStorage.toString()})(${JSON.stringify(method)}, ${asciiLiteral({ ...params, limits })})`;
 }
 
 /** Hermes does not consistently implement awaitPromise. Keep the result in an object handle and poll it. */
@@ -25,9 +32,8 @@ export async function readMetroStorage(
   if (method !== 'list' && (typeof input?.adapter !== 'string' || (method === 'get' && typeof input.key !== 'string'))) {
     throw new Error('Invalid storage command');
   }
-  // Only the arguments this reader understands cross into the app, always as JSON literals.
-  const args = method === 'list' ? {} : { adapter: input!.adapter, key: input!.key };
-  const expression = `(${inspectStorage.toString()})(${JSON.stringify(method)}, ${asciiLiteral(args)})`;
+  // Only the arguments this reader understands cross into the app.
+  const expression = storageExpression(method, method === 'list' ? {} : { adapter: input!.adapter, key: input!.key });
   let objectId: string | undefined;
   const check = () => {
     if (!isActive()) throw new Error('The app reloaded or disconnected. Select its current session.');
@@ -74,7 +80,10 @@ export async function readMetroStorage(
  * in the bundle; never runs arbitrary module factories or MMKV constructors. ESM export getters
  * are read to resolve live bindings, but nested application object getters are skipped.
  */
-export function inspectStorage(method: string, params: { adapter?: string; key?: string }) {
+export function inspectStorage(
+  method: string,
+  params: { adapter?: string; key?: string; limits: { keys: number; preview: number; value: number } },
+) {
   const state: { done: boolean; value?: unknown; error?: string } = { done: false };
   type Store = {
     getAllKeys(): readonly string[] | Promise<readonly string[]>;
@@ -216,11 +225,11 @@ export function inspectStorage(method: string, params: { adapter?: string; key?:
     if (method === 'get') {
       if (typeof params.key !== 'string') throw new Error('Invalid storage key');
       const value = await read(item, params.key);
-      return value === null ? null : entry(params.key, value, 1_000_000);
+      return value === null ? null : entry(params.key, value, params.limits.value);
     }
     const allKeys = await item.store.getAllKeys();
     if (!Array.isArray(allKeys) || !allKeys.every((key) => typeof key === 'string')) throw new Error('Invalid storage keys');
-    const keys = [...allKeys].sort().slice(0, 1_000);
+    const keys = [...allKeys].sort().slice(0, params.limits.keys);
     const entries: ReturnType<typeof entry>[] = [];
     // Bounded batches avoid holding every full value of a large store at once.
     for (let i = 0; i < keys.length; i += 25) {
@@ -228,7 +237,7 @@ export function inspectStorage(method: string, params: { adapter?: string; key?:
       const pairs = item.kind === 'async' && item.store.multiGet
         ? await item.store.multiGet(batch)
         : await Promise.all(batch.map(async (key) => [key, await read(item, key)] as const));
-      for (const [key, value] of pairs) entries.push(entry(key, value ?? null, 2_000));
+      for (const [key, value] of pairs) entries.push(entry(key, value ?? null, params.limits.preview));
     }
     return { entries, total: allKeys.length };
   };

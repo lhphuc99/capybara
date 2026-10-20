@@ -1,4 +1,5 @@
 import {
+  COMMAND_TIMEOUT_MS,
   VIEWER_PATH,
   type CapybaraEvent,
   type CommandResult,
@@ -13,8 +14,8 @@ import {
 import { WebSocket } from 'ws';
 
 const TIMEOUT_MS = 10_000;
-/** Longer than the server waits for the app (10 s), so its "The app did not answer" comes first, as in the UI. */
-const COMMAND_TIMEOUT_MS = 15_000;
+/** Longer than the server waits for the app, so its "The app did not answer" comes first, as in the UI. */
+const COMMAND_WAIT_MS = COMMAND_TIMEOUT_MS + 5_000;
 /** The server may wait 8 s for each request a diagnosis sends again. */
 const DIAGNOSE_TIMEOUT_MS = 60_000;
 
@@ -65,11 +66,11 @@ export class ViewerConnection {
   }
 
   storage<M extends keyof StorageCommands>(sessionId: string, method: M, params: StorageCommands[M]['params']): Promise<StorageCommands[M]['result']> {
-    return this.request((id) => ({ t: 'command', id, sessionId, plugin: 'storage', method, params }), COMMAND_TIMEOUT_MS);
+    return this.request((id) => ({ t: 'command', id, sessionId, plugin: 'storage', method, params }), COMMAND_WAIT_MS);
   }
 
   state<M extends keyof StateCommands>(sessionId: string, method: M, params: StateCommands[M]['params']): Promise<StateCommands[M]['result']> {
-    return this.request((id) => ({ t: 'command', id, sessionId, plugin: 'state', method, params }), COMMAND_TIMEOUT_MS);
+    return this.request((id) => ({ t: 'command', id, sessionId, plugin: 'state', method, params }), COMMAND_WAIT_MS);
   }
 
   diagnose(sessionId: string, requestId: string): Promise<NetworkDiagnosis> {
