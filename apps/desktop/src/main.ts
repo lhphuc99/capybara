@@ -2,9 +2,21 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { DEFAULT_PORT } from '@capybara-devtools/protocol';
-import { fetchLatestVersions, reverseAndroidPorts, startMetroBridge, type MetroBridge, type ServerOptions } from 'capybara-devtools';
+import {
+  fetchLatestVersions,
+  listen,
+  PortInUseError,
+  readPort,
+  remoteUiFrom,
+  reverseAndroidPorts,
+  startMetroBridge,
+  startOrReuse,
+  updateCheckFrom,
+  type MetroBridge,
+  type ServerOptions,
+  type Started,
+} from 'capybara-devtools';
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, shell, type MenuItemConstructorOptions } from 'electron';
-import { listen, PortInUseError, portFromEnv, startOrReuse, type Started } from './server.js';
 import { checkForUpdates, startUpdateChecks } from './updater.js';
 
 const TAKEOVER_INTERVAL_MS = 2_000;
@@ -76,7 +88,7 @@ async function main() {
     ]),
   );
 
-  const port = portFromEnv(process.env.CAPYBARA_PORT);
+  const port = readPort(process.env.CAPYBARA_PORT, true);
   if (port === undefined) {
     // Otherwise listening fails with a RangeError, and Try Again fails the same way.
     const { response } = await dialog.showMessageBox({
@@ -94,11 +106,11 @@ async function main() {
       return;
     }
   }
-  const checkUpdates = !process.env.CAPYBARA_NO_UPDATE_CHECK;
+  const checkUpdates = updateCheckFrom(process.env);
   const options: ServerOptions = {
     port: port ?? DEFAULT_PORT,
     uiDir: join(app.getAppPath(), 'dist', 'ui'),
-    remoteUi: process.env.CAPYBARA_REMOTE_UI === '1',
+    remoteUi: remoteUiFrom(process.env),
     onHint: (hint) => console.log(hint),
     version: app.getVersion(),
     latestVersions: checkUpdates ? () => fetchLatestVersions() : undefined,

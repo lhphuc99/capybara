@@ -29,12 +29,12 @@
   "bin": {
     "capybara": "./dist/bin.js"
   },
-  "main": "./dist/server.js",
-  "types": "./dist/server.d.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/server.d.ts",
-      "default": "./dist/server.js"
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
     },
     "./package.json": "./package.json"
   },

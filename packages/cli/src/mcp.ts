@@ -3,6 +3,7 @@ import { DEFAULT_PORT, libraryTitle, parsePath, type SessionMeta, type StatePath
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
+import { readPort } from './config.js';
 import { ViewerConnection } from './mcp-connection.js';
 import {
   adapterLine,
@@ -615,8 +616,8 @@ export async function runMcp(argv: string[], version: string): Promise<void> {
     process.stdout.write(HELP);
     return;
   }
-  const port = Number(values.port ?? process.env.CAPYBARA_PORT ?? DEFAULT_PORT);
-  if (!Number.isInteger(port) || port <= 0 || port > 65_535) throw new Error(`Invalid port: ${values.port ?? process.env.CAPYBARA_PORT}`);
+  const port = readPort(values.port ?? process.env.CAPYBARA_PORT, false);
+  if (port === undefined) throw new Error(`Invalid port: ${values.port ?? process.env.CAPYBARA_PORT}`);
   const host = values.host ?? '127.0.0.1';
   const connection = new ViewerConnection(port, host);
   const server = createMcpServer(connection, { version, showSecrets: values['show-secrets'] });

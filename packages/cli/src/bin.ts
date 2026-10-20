@@ -6,7 +6,9 @@ import { parseArgs } from 'node:util';
 import { CLI_PACKAGE, DEFAULT_PORT, isNewerVersion } from '@capybara-devtools/protocol';
 import { reverseAndroidPorts } from './adb.js';
 import { DEFAULT_METRO_PORTS, startMetroBridge, type MetroBridge } from './metro.js';
-import { createServer, reachableAddresses } from './server.js';
+import { readPort, remoteUiFrom, updateCheckFrom } from './config.js';
+import { reachableAddresses } from './server.js';
+import { PortInUseError, startOrReuse, type Started } from './start.js';
 import { fetchLatestVersions } from './updates.js';
 
 const HELP = `Usage: capybara [options]
@@ -70,9 +72,10 @@ if (values.version) {
   process.exit(0);
 }
 
-const port = Number(values.port ?? process.env.CAPYBARA_PORT ?? DEFAULT_PORT);
-if (!Number.isInteger(port) || port < 0 || port > 65_535) {
-  console.error(`Invalid port: ${values.port ?? process.env.CAPYBARA_PORT}`);
+const portValue = values.port ?? process.env.CAPYBARA_PORT;
+const port = readPort(portValue, true);
+if (port === undefined) {
+  console.error(`Invalid port: ${portValue}`);
   process.exit(1);
 }
 
@@ -97,37 +100,41 @@ const checkLatest = async () => {
   return latest;
 };
 
-const remoteUi = values['remote-ui'] || process.env.CAPYBARA_REMOTE_UI === '1';
+const remoteUi = remoteUiFrom(process.env, values['remote-ui']);
 const uiDir = fileURLToPath(new URL('./ui/', import.meta.url));
-const server = createServer({
-  port,
-  host: values.host,
-  uiDir: existsSync(uiDir) ? uiDir : undefined,
-  allowedOrigins: values['allow-origin'] ?? [],
-  remoteUi,
-  onHint: (hint) => console.log(`  ${hint}\n`),
-  version,
-  latestVersions: values['update-check'] && !process.env.CAPYBARA_NO_UPDATE_CHECK ? checkLatest : undefined,
-});
-
-let metroBridge: MetroBridge | undefined;
-
+let started: Started;
 try {
-  const { port: actual, address } = await server.start();
-  printBanner(actual, address);
-  reverseAndroidPorts(actual);
-  if (metroPorts.length > 0) {
-    metroBridge = startMetroBridge({ port: actual, metroPorts, version, onHint: (hint) => server.hint(hint) });
-  }
-  if (values.open) openBrowser(`http://${hostOf(address)}:${actual}`);
+  started = await startOrReuse({
+    port,
+    host: values.host,
+    uiDir: existsSync(uiDir) ? uiDir : undefined,
+    allowedOrigins: values['allow-origin'] ?? [],
+    remoteUi,
+    onHint: (hint) => console.log(`  ${hint}\n`),
+    version,
+    latestVersions: updateCheckFrom(process.env, values['update-check']) ? checkLatest : undefined,
+  });
 } catch (error) {
-  if ((error as NodeJS.ErrnoException).code === 'EADDRINUSE') {
-    console.error(`Port ${port} is already in use. Is Capybara already running? Choose another port with --port.`);
-  } else {
-    console.error(error);
-  }
+  console.error(error instanceof PortInUseError ? `${error.message}. Choose another port with --port.` : error);
   process.exit(1);
 }
+
+if (!started.server) {
+  // The desktop app or another `capybara` has the port; apps already reach it there.
+  const url = `http://localhost:${started.port}`;
+  console.log(`\n  Capybara is already running at ${url}. Quit it first to start one with these options.\n`);
+  if (values.open) openBrowser(url);
+  process.exit(0);
+}
+
+const { server, address } = started;
+printBanner(started.port, address);
+reverseAndroidPorts(started.port);
+let metroBridge: MetroBridge | undefined;
+if (metroPorts.length > 0) {
+  metroBridge = startMetroBridge({ port: started.port, metroPorts, version, onHint: (hint) => server.hint(hint) });
+}
+if (values.open) openBrowser(`http://${hostOf(address)}:${started.port}`);
 
 const shutdown = () => {
   metroBridge?.stop();
