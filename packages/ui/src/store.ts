@@ -217,9 +217,13 @@ function updateSession(session: SessionState): void {
   setState({ ...state, sessions: { ...state.sessions, [session.meta.info.id]: session } });
 }
 
+/** The newest app still connected, one on this computer first: any device on the network can connect as an app. */
 function pickDefault(sessions: Record<string, SessionState>): string | undefined {
   const sorted = Object.values(sessions).sort(
-    (a, b) => Number(b.meta.connected) - Number(a.meta.connected) || b.meta.info.startedAt - a.meta.info.startedAt,
+    (a, b) =>
+      Number(b.meta.connected) - Number(a.meta.connected) ||
+      Number(!b.meta.address) - Number(!a.meta.address) ||
+      b.meta.info.startedAt - a.meta.info.startedAt,
   );
   return sorted[0]?.meta.info.id;
 }
@@ -229,7 +233,8 @@ function sameApp(a: SessionMeta, b: SessionMeta): boolean {
     a.info.appName === b.info.appName &&
     a.info.platform === b.info.platform &&
     a.info.device?.model === b.info.device?.model &&
-    a.info.userAgent === b.info.userAgent
+    a.info.userAgent === b.info.userAgent &&
+    a.address === b.address
   );
 }
 

@@ -101,7 +101,8 @@ export function SessionPicker({ sessions, selectedId }: Props) {
                     {info.appName} <span className="tag">{platformLabel(info.platform)}</span>
                   </span>
                   <small>
-                    {describeSession(info) || 'Unknown device'} · {connected ? 'started' : 'offline since'}{' '}
+                    {describeSession(info) || 'Unknown device'}
+                    {session.meta.address && ` · from ${session.meta.address}`} · {connected ? 'started' : 'offline since'}{' '}
                     {formatClock(connected ? info.startedAt : session.meta.lastSeen)}
                   </small>
                 </span>

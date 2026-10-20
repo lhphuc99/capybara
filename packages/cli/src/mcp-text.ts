@@ -10,14 +10,17 @@ export function parseJson(text: string): { ok: true; value: unknown } | { ok: fa
   }
 }
 
-/** The session a tool reads: the one asked for, else the newest app still connected. */
+/** The session a tool reads: the one asked for, else the newest app still connected, one on this computer first. */
 export function pickSession(sessions: SessionMeta[], id: string | undefined): SessionMeta {
   if (id) {
     const found = sessions.find((session) => session.info.id === id);
     if (found) return found;
     throw new Error(`There is no session ${id}.${sessions.length > 0 ? ` Sessions:\n${sessions.map(sessionLine).join('\n')}` : ''}`);
   }
-  const [newest] = [...sessions].sort((a, b) => Number(b.connected) - Number(a.connected) || b.info.startedAt - a.info.startedAt);
+  // Any device on the network can connect as an app, so another device's app is read only when asked for or alone.
+  const [newest] = [...sessions].sort(
+    (a, b) => Number(b.connected) - Number(a.connected) || Number(!b.address) - Number(!a.address) || b.info.startedAt - a.info.startedAt,
+  );
   if (!newest) {
     throw new Error(
       'No app has connected to Capybara yet. Start a web app that calls init() from @capybara-devtools/web, or a React Native app through Metro.',
@@ -33,6 +36,7 @@ export function sessionLine(session: SessionMeta): string {
     `${info.appName} (${info.platform}${where ? `, ${where}` : ''})`,
     info.runtime,
     session.connected ? 'connected' : 'disconnected',
+    session.address && `from ${session.address} on the network`,
     `${session.eventCount} events`,
     `started ${clock(info.startedAt)}`,
   ];
@@ -40,7 +44,7 @@ export function sessionLine(session: SessionMeta): string {
 }
 
 export function sessionHeader(session: SessionMeta): string {
-  return `${session.info.appName} (session ${session.info.id}${session.connected ? '' : ', disconnected'})`;
+  return `${session.info.appName} (session ${session.info.id}${session.connected ? '' : ', disconnected'}${session.address ? `, from ${session.address} on the network` : ''})`;
 }
 
 /** The newest `limit` items, and a note on the older ones left out. */

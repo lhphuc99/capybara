@@ -23,7 +23,7 @@ export interface WriteToolContext {
 
 export const WRITE_INSTRUCTIONS = `Some tools change things: set_storage, remove_storage and clear_storage edit the app's storage, act_on_query refetches, invalidates or resets TanStack Query and SWR entries, and clear_session and remove_session clear what Capybara recorded. Use them only when the user asks, e.g. to try the app with a made-up user or a feature flag turned on.`;
 
-const session = z.string().optional().describe('Session id from list_sessions. Defaults to the newest connected app.');
+const session = z.string().optional().describe('Session id from list_sessions. Defaults to the newest connected app, one on this computer first.');
 const adapter = z.string().describe('Store id from get_storage, e.g. localStorage or async-storage.');
 const changes = { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false } as const;
 

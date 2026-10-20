@@ -389,6 +389,8 @@ export interface SessionMeta {
   connected: boolean;
   lastSeen: number;
   eventCount: number;
+  /** Where the app connects from when that is not this computer, such as a phone; any device on the network can connect. */
+  address?: string;
 }
 
 export interface ServerInfo {

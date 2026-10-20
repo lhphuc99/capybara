@@ -478,6 +478,17 @@ describe('access control', () => {
     expect((await ui.next((m) => m.t === 'server')).server.hints).toEqual(hints);
   });
 
+  it.skipIf(!lan)('says which apps connect from another device', async () => {
+    await start();
+    const phone = connect('/client', {}, { localAddress: lan });
+    await phone.opened;
+    phone.send({ t: 'hello', protocol: 1, session: session('phone') });
+    await phone.next((m) => m.t === 'welcome');
+    await connectApp('simulator');
+    expect((await load('phone')).meta.address).toBe(lan);
+    expect((await load('simulator')).meta).not.toHaveProperty('address');
+  });
+
   it.skipIf(!lan)('lets other devices open the UI with remoteUi', async () => {
     await start({ remoteUi: true });
     const elsewhere = { localAddress: lan };

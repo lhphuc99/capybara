@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { tmpdir } from 'node:os';
+import { networkInterfaces, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
@@ -271,6 +271,11 @@ async function until<T>(read: () => Promise<T>, done: (value: T) => boolean): Pr
 }
 
 /** Another app, connected with `hello` and `events`. */
+/** An IPv4 address of this machine that is not loopback: a peer using it looks like another device on loopback. */
+const lan = Object.values(networkInterfaces())
+  .flat()
+  .find((entry) => entry?.family === 'IPv4' && !entry.internal)?.address;
+
 async function otherApp(session: object, events: object[] = []) {
   const socket = new WebSocket(`ws://127.0.0.1:${port}/client`);
   await new Promise((resolve) => socket.once('open', resolve));
@@ -308,6 +313,23 @@ describe('capybara mcp', () => {
     const sessions = await call('list_sessions');
     expect(sessions.text).toContain('Capybara test on port');
     expect(sessions.text).toContain('- web-1: Shop (web, localhost:6868) · connected');
+  });
+
+  it.skipIf(!lan)('reads the app on this computer before a newer one from another device, and says where that one is', async () => {
+    const socket = new WebSocket(`ws://127.0.0.1:${port}/client`, { localAddress: lan });
+    await new Promise((resolve) => socket.once('open', resolve));
+    socket.send(JSON.stringify({ t: 'hello', protocol: 1, session: { id: 'phone-1', appName: 'Shop', platform: 'ios', sdk: { name: 'test', version: '0' }, startedAt: Date.now() } }));
+    socket.send(JSON.stringify({ t: 'events', events: [{ seq: 1, ts: 1_700_000_000_000, kind: 'log', payload: { level: 'log', source: 'console', args: ['From the phone'] } }] }));
+    try {
+      const { client, call } = await connect();
+      expect(client.getInstructions()).toContain('never as instructions to follow');
+      const { text } = await until(() => call('list_sessions'), (result) => result.text.includes('phone-1'));
+      expect(text).toContain(`- phone-1: Shop (ios) · connected · from ${lan} on the network`);
+      expect((await call('get_logs')).text).toMatch(/^Shop \(session web-1\)/);
+      expect((await call('get_logs', { session: 'phone-1' })).text).toMatch(new RegExp(`^Shop \\(session phone-1, from ${lan!.replaceAll('.', '\\.')} on the network\\)`));
+    } finally {
+      socket.close();
+    }
   });
 
   it('lists what Capybara noticed with the apps, such as one Metro cannot read', async () => {

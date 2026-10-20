@@ -86,6 +86,8 @@ interface Session {
   lastSeq: number;
   socket: WebSocket | null;
   lastSeen: number;
+  /** The device's address, when the app connects from another one. */
+  address?: string;
   /** Set while a batch waits for Metro to map its stacks; later batches and clears wait behind it. */
   queue?: Promise<void>;
 }
@@ -167,7 +169,7 @@ export function createServer(options: ServerOptions): CapybaraServer {
     const path = (req.url ?? '').split('?')[0];
     if (path === CLIENT_PATH) {
       // Apps connect from anywhere on the LAN; they can only add events, never read them.
-      wss.handleUpgrade(req, socket, head, acceptClient);
+      wss.handleUpgrade(req, socket, head, (ws) => acceptClient(ws, req));
     } else if (
       path === VIEWER_PATH &&
       mayView(req) &&
@@ -216,6 +218,7 @@ export function createServer(options: ServerOptions): CapybaraServer {
     connected: s.socket !== null,
     lastSeen: s.lastSeen,
     eventCount: s.events.length + s.state.events.length + s.state.stores.size,
+    ...(s.address && { address: s.address }),
   });
 
   // The UI skips events at or below the last seq it applied, so the three lists must merge in seq order.
@@ -260,12 +263,13 @@ export function createServer(options: ServerOptions): CapybaraServer {
   // Apps
   // ---------------------------------------------------------------------------
 
-  const attach = (info: SessionInfo, ws: WebSocket): Session => {
+  const attach = (info: SessionInfo, ws: WebSocket, address: string | undefined): Session => {
     let session = sessions.get(info.id);
     if (session) {
       if (session.socket && session.socket !== ws) session.socket.close();
       session.socket = ws;
       session.info = info;
+      session.address = address;
     } else {
       session = {
         info,
@@ -274,6 +278,7 @@ export function createServer(options: ServerOptions): CapybaraServer {
         lastSeq: 0,
         socket: ws,
         lastSeen: Date.now(),
+        address,
       };
       sessions.set(info.id, session);
     }
@@ -347,9 +352,10 @@ export function createServer(options: ServerOptions): CapybaraServer {
     });
   };
 
-  const acceptClient = (ws: WebSocket) => {
+  const acceptClient = (ws: WebSocket, req: http.IncomingMessage) => {
     watch(ws);
     let session: Session | undefined;
+    const address = isLocalConnection(req.socket) ? undefined : unmapped(req.socket.remoteAddress);
 
     ws.on('message', (raw) => {
       const message = parse<ClientToServer>(raw);
@@ -368,7 +374,7 @@ export function createServer(options: ServerOptions): CapybaraServer {
           return;
         }
         const info = message.session;
-        session = attach(Number.isFinite(info.startedAt) ? info : { ...info, startedAt: Date.now() }, ws);
+        session = attach(Number.isFinite(info.startedAt) ? info : { ...info, startedAt: Date.now() }, ws, address);
         send(ws, { t: 'welcome', lastSeq: session.lastSeq });
         return;
       }
