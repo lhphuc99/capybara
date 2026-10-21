@@ -1,6 +1,6 @@
 # Capybara website
 
-The landing page at https://capybara-devtools.chanieshop.com: what Capybara does, how to start, and downloads. A static page built with Vite, outside the npm workspaces, with its own lockfile so Vercel installs only what the page needs.
+The landing page at https://capybara.lhphuc.com: what Capybara does, how to start, and downloads. A static page built with Vite, outside the npm workspaces, with its own lockfile so Vercel installs only what the page needs.
 
 ```bash
 npm install
