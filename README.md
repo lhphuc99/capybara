@@ -4,7 +4,7 @@
 
 Debug React Native and web apps from one place: logs, network (including WebSockets), storage and state (Redux, Zustand, XState, MobX, TanStack Query, SWR, React Context), streamed live to a local UI.
 
-**[Website](https://capybara-devtools.chanieshop.com)** · [Download](https://capybara-devtools.chanieshop.com/#download)
+**[Website](https://capybara.lhphuc.com)** · [Download](https://capybara.lhphuc.com/#download)
 
 > Status: MVP. Formerly called Devsight.
 
@@ -237,7 +237,7 @@ The SDK finds your machine from the Metro bundle URL, so simulators and phones o
 
 The same server and UI in a window of their own, with a Dock or taskbar icon and no terminal to keep open. The code is in `apps/desktop` (Electron).
 
-Download it from the [website](https://capybara-devtools.chanieshop.com/#download) or [GitHub Releases](https://github.com/lhphuc99/capybara/releases), or build it yourself from a clone of this repo, after `npm install`:
+Download it from the [website](https://capybara.lhphuc.com/#download) or [GitHub Releases](https://github.com/lhphuc99/capybara/releases), or build it yourself from a clone of this repo, after `npm install`:
 
 ```bash
 npm run desktop                  # build it and open the window; run `npm run build` once before
@@ -345,6 +345,6 @@ npm run dev:ui
 
 For a change that should go into the next release, run `npx changeset`, pick the packages and describe the change for users; commit the file it writes in `.changeset/`. All packages share one version number.
 
-The website is in `website/`, outside the workspaces, with its own dependencies; see [website/README.md](website/README.md). Changes to it deploy to capybara-devtools.chanieshop.com when they reach `main`.
+The website is in `website/`, outside the workspaces, with its own dependencies; see [website/README.md](website/README.md). Changes to it deploy to capybara.lhphuc.com when they reach `main`.
 
 Architecture, protocol and roadmap (Vietnamese): [docs/PLAN.md](docs/PLAN.md). Releasing (Vietnamese): [docs/RELEASING.md](docs/RELEASING.md).
