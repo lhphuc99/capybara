@@ -5,6 +5,7 @@
 ### Patch Changes
 
 - b8d76cc: A Flutter app read through the Dart VM service no longer leaves a second session that shows as connected when it hot restarts while Capybara is still setting it up. That session got nothing more and stayed until Capybara quit.
+- A Flutter app that hot restarts just as Capybara attaches to it now shows up at once, instead of after its next hot restart, and Capybara no longer keeps asking every 3 seconds for the isolate that the restart ended.
 
 ## 0.6.0
 
