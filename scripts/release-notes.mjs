@@ -20,10 +20,13 @@ for (const dir of packages) {
     .find((part) => part.startsWith(`${version}\n`));
   if (!section) continue;
 
-  // One entry per line, with the indented lines that continue a bullet.
+  // One entry per line, with the indented lines that continue a bullet and the blank lines between its
+  // paragraphs: split off, a second paragraph would show up on its own under every package of the changeset.
   const entries = [];
-  for (const line of section.split('\n').slice(1)) {
-    if (/^\s+\S/.test(line) && entries.at(-1)?.startsWith('- ')) entries[entries.length - 1] += `\n${line}`;
+  const lines = section.split('\n').slice(1);
+  for (const [i, line] of lines.entries()) {
+    const continues = /^\s+\S/.test(line) || (line.trim() === '' && /^\s+\S/.test(lines[i + 1] ?? ''));
+    if (continues && entries.at(-1)?.startsWith('- ')) entries[entries.length - 1] += `\n${line}`;
     else entries.push(line);
   }
   const fresh = entries.filter((entry) => {
