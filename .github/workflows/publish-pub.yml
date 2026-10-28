@@ -38,7 +38,8 @@ jobs:
           flutter-version: ${{ steps.package.outputs.flutter }}
       - name: The tag names the version in pubspec.yaml
         working-directory: ${{ steps.package.outputs.dir }}
-        run: test "$(sed -n 's/^version: *//p' pubspec.yaml)" = "${{ steps.package.outputs.version }}"
+        run: |
+          test "$(sed -n 's/^version: *//p' pubspec.yaml)" = "${{ steps.package.outputs.version }}"
       - run: flutter pub get
         working-directory: dart
       - run: flutter test
