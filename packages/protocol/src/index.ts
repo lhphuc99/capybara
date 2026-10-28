@@ -235,7 +235,18 @@ export interface StorageChangePayload {
   key?: string;
 }
 
-export type StateLibrary = 'redux' | 'zustand' | 'xstate' | 'mobx' | 'tanstack-query' | 'swr' | 'context';
+/** `riverpod`, `bloc` and `watch` (Listenables and streams the app watches) come from the Capybara package for Flutter. */
+export type StateLibrary =
+  | 'redux'
+  | 'zustand'
+  | 'xstate'
+  | 'mobx'
+  | 'tanstack-query'
+  | 'swr'
+  | 'context'
+  | 'riverpod'
+  | 'bloc'
+  | 'watch';
 
 /** Keys from the root of a store's state or an entry's data, e.g. `['todos', 0, 'title']`. */
 export type StatePath = Array<string | number>;
@@ -250,7 +261,7 @@ export interface StateStoreInfo {
   library: StateLibrary;
   label: string;
   /** How the SDK found the store. */
-  via: 'shim' | 'enhancer' | 'connect' | 'subscribe' | 'client' | 'cache' | 'fiber' | 'module';
+  via: 'shim' | 'enhancer' | 'connect' | 'subscribe' | 'client' | 'cache' | 'fiber' | 'module' | 'observer';
   /** False when changes come with a diff but no action name. */
   actions: boolean;
   /** Commands its entries support. Only stores with entries (TanStack Query, SWR) have any. */
@@ -348,6 +359,8 @@ export interface StorageAdapterInfo {
   readOnly: boolean;
   canClear: boolean;
   note?: string;
+  /** Every value is a secret, as in a keychain, so `capybara mcp` hides them all. Missing from the JS SDKs. */
+  secret?: boolean;
 }
 
 export interface StorageEntry {

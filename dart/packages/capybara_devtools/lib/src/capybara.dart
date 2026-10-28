@@ -4,10 +4,17 @@ import 'dart:developer' as developer;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show FlutterVersion;
+import 'package:web_socket_channel/web_socket_channel.dart';
 
 import 'core/client.dart';
 import 'core/serialize.dart';
 import 'core/socket.dart';
+import 'network/plugin.dart';
+import 'network/recorder.dart';
+import 'network/websocket.dart';
+import 'state/plugin.dart';
+import 'state/registry.dart';
+import 'storage/storage.dart';
 import 'platform_stub.dart' if (dart.library.io) 'platform_io.dart';
 import 'version.dart';
 
@@ -20,7 +27,14 @@ const Symbol _zoneKey = #capybara;
 const int _definedPort = int.fromEnvironment('CAPYBARA_PORT', defaultValue: 7357);
 
 final class CapybaraOptions {
-  const CapybaraOptions({this.appName, this.host, this.port, this.enabled = true});
+  const CapybaraOptions({
+    this.appName,
+    this.host,
+    this.port,
+    this.enabled = true,
+    this.network = true,
+    this.ignoreUrls = const [],
+  });
 
   /// The app's name in Capybara. Defaults to its package name.
   final String? appName;
@@ -34,6 +48,14 @@ final class CapybaraOptions {
 
   /// False turns the package off at run time.
   final bool enabled;
+
+  /// Records requests made through dart:io's `HttpClient`: `package:http`'s default client, dio's default adapter,
+  /// `Image.network`. False leaves only those of [CapybaraHttpClient] and [Capybara.webSocket].
+  final bool network;
+
+  /// Requests and WebSockets whose URL contains one of these strings, or matches one of these patterns, are not
+  /// recorded.
+  final List<Pattern> ignoreUrls;
 }
 
 /// Sends the app's logs and errors to Capybara, the local devtools for React Native, Flutter and web apps.
@@ -45,6 +67,9 @@ final class CapybaraOptions {
 /// ```
 abstract final class Capybara {
   static CapybaraClient? _client;
+  static NetworkPlugin? _network;
+  static final StoragePlugin _storage = StoragePlugin();
+  static final StatePlugin _state = StatePlugin();
   static CapybaraOptions _options = const CapybaraOptions();
   static List<String>? _connectHosts;
   static int? _connectPort;
@@ -84,6 +109,7 @@ abstract final class Capybara {
         unawaited(Future.sync(body));
         // The synchronous part of body has run: runApp may have set the binding up already.
         _wrapErrorHandlers();
+        _network?.check();
       },
       zoneSpecification: ZoneSpecification(
         print: (self, parent, zone, line) {
@@ -126,10 +152,91 @@ abstract final class Capybara {
     _client?.log(_logLevel(level), [message, ?data]);
   }
 
+  /// Records a WebSocket's messages, both ways, and how it closes. Wrap the channel where the app makes it, and use
+  /// what this returns in its place:
+  ///
+  /// ```dart
+  /// final channel = Capybara.webSocket(WebSocketChannel.connect(url), url: url);
+  /// ```
+  ///
+  /// A WebSocket that is not wrapped shows only as its handshake request, when Capybara records requests.
+  static WebSocketChannel webSocket(WebSocketChannel channel, {required Uri url}) {
+    if (!_enabled) return channel;
+    final recorder = activeRecorder;
+    return recorder == null ? channel : trackWebSocket(channel, url, recorder);
+  }
+
+  /// Shows one of the app's stores in Capybara's Storage tab, where it can be edited:
+  ///
+  /// ```dart
+  /// Capybara.addStorage(CapybaraSharedPreferences.legacy(await SharedPreferences.getInstance()));
+  /// Capybara.addStorage(CapybaraSecureStorage(secureStorage));
+  /// Capybara.addStorage(CapybaraHiveBox(await Hive.openBox('settings')));
+  /// ```
+  ///
+  /// Call it before or after [run]; a store added again with the same id replaces the first.
+  static void addStorage(CapybaraStorage storage) {
+    if (!_enabled) return;
+    _storage.add(storage);
+  }
+
+  /// Shows a `ValueNotifier`'s value, or a `ChangeNotifier`'s state, in Capybara's State tab, recorded each time it
+  /// notifies. For a ChangeNotifier, [read] gives its state, as a map of its fields say; without one, the notifier's
+  /// `toJson()` is used. The function returned stops watching.
+  ///
+  /// ```dart
+  /// Capybara.watch('cart', cart, read: () => {'items': cart.items, 'total': cart.total});
+  /// ```
+  static void Function() watch(String name, Listenable listenable, {Object? Function()? read}) {
+    if (!_enabled || kIsWeb) return () {};
+    final reader = read ?? (listenable is ValueListenable ? () => listenable.value : () => _plain(listenable));
+    final store = StateRegistry.instance.track(
+      library: 'watch',
+      label: name,
+      via: 'subscribe',
+      actions: false,
+      read: reader,
+    );
+    void listener() {
+      try {
+        store.record(reader());
+      } catch (_) {
+        // Never throw into the app's notifier.
+      }
+    }
+
+    listenable.addListener(listener);
+    return () {
+      listenable.removeListener(listener);
+      store.dispose();
+    };
+  }
+
+  // A notifier changes in place, so each record is a copy: the diff would see the same objects otherwise.
+  static Object? _plain(Object value) {
+    try {
+      return jsonDecode(
+        jsonEncode(
+          value,
+          toEncodable: (object) {
+            try {
+              return (object as dynamic).toJson();
+            } catch (_) {
+              return '$object';
+            }
+          },
+        ),
+      );
+    } catch (_) {
+      return '$value';
+    }
+  }
+
   /// Stops sending, and puts back the handlers Capybara set unless others were set over them since.
   static Future<void> stop() async {
     final client = _client;
     _client = null;
+    _network = null;
     _watcher?.cancel();
     _watcher = null;
     if (_flutterHandler != null && identical(FlutterError.onError, _flutterHandler)) {
@@ -151,10 +258,13 @@ abstract final class Capybara {
     // Started already, by an earlier run or init: the session goes on.
     if (running != null) return running;
     _options = options;
+    final network = options.network ? NetworkPlugin(ignoreUrls: options.ignoreUrls, isCapybara: _isCapybara) : null;
+    _network = network;
     final client = Zone.root.run(
       () => CapybaraClient(
         session: _sessionInfo(options, caller),
         targets: _targets,
+        plugins: [?network, _storage, _state],
         connect: connectForTesting ?? HostInfo.connect,
         diagnostic: (message) => Zone.root.print('[capybara] $message'),
       ),
@@ -263,6 +373,10 @@ abstract final class Capybara {
     }
   }
 
+  // Capybara's own socket goes around the overrides; this keeps it out should another client reach it.
+  static bool _isCapybara(Uri url) =>
+      url.path == '/client' && _targets().any((target) => target.host == url.host && target.port == url.port);
+
   static bool _isHost(String host) =>
       RegExp(r'^[A-Za-z0-9.-]{1,253}$').hasMatch(host) || RegExp(r'^[0-9A-Fa-f:]{2,39}$').hasMatch(host);
 
@@ -326,6 +440,7 @@ abstract final class Capybara {
           return;
         }
         _wrapErrorHandlers();
+        _network?.check();
       }),
     );
   }

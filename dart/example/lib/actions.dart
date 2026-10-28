@@ -15,8 +15,16 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
-/// tool/mock_server.mjs on this computer. The Android emulator reaches the computer's loopback at 10.0.2.2.
-final String mockHost = Platform.isAndroid ? '10.0.2.2' : '127.0.0.1';
+import 'state.dart';
+
+/// tool/mock_server.mjs on this computer. The Android emulator reaches the computer's loopback at 10.0.2.2; a phone on
+/// USB reaches it at 127.0.0.1 after `adb reverse tcp:4100 tcp:4100`, with `--dart-define=MOCK_HOST=127.0.0.1`.
+const String _definedMockHost = String.fromEnvironment('MOCK_HOST');
+final String mockHost = _definedMockHost.isNotEmpty
+    ? _definedMockHost
+    : Platform.isAndroid
+    ? '10.0.2.2'
+    : '127.0.0.1';
 const int mockPort = 4100;
 
 Uri mockUri(String path) => Uri.parse('http://$mockHost:$mockPort$path');
@@ -71,6 +79,16 @@ final Map<String, Action> actions = {
     for (final request in httpRequests) 'http.$client.$request': () => _request(client, request),
   'http.images': _loadImages,
   'ws.echo': _webSocketEcho,
+  'state.counter': () async {
+    providers.read(counterProvider.notifier).increment();
+    await providers.read(cartTotalProvider.future);
+  },
+  'state.cart': () async {
+    cart.add(ItemAdded('CAPY-${_random.nextInt(3)}', 1 + _random.nextInt(2)));
+  },
+  'state.clear': () async => cart.add(CartCleared()),
+  'state.theme': () async => theme.toggle(),
+  'state.settings': () async => settings.change(),
   'storage.prefs': _writePreferences,
   'storage.secure': () =>
       const FlutterSecureStorage().write(key: 'authToken', value: 'secret-${_random.nextInt(1 << 32)}'),
@@ -171,7 +189,8 @@ Future<void> _request(String client, String request) async {
       final http.Client httpClient = client == 'http'
           ? http.Client()
           : Platform.isIOS || Platform.isMacOS
-          ? CupertinoClient.defaultSessionConfiguration()
+          // Outside dart:io, so the package sees its requests only through CapybaraHttpClient.
+          ? CapybaraHttpClient(CupertinoClient.defaultSessionConfiguration())
           : throw UnsupportedError('cupertino_http runs on iOS and macOS only');
       try {
         final http.BaseResponse response = switch (request) {
@@ -232,7 +251,8 @@ Future<void> _loadImages() async {
 }
 
 Future<void> _webSocketEcho() async {
-  final channel = WebSocketChannel.connect(Uri.parse('ws://$mockHost:$mockPort/ws'));
+  final url = Uri.parse('ws://$mockHost:$mockPort/ws');
+  final channel = Capybara.webSocket(WebSocketChannel.connect(url), url: url);
   await channel.ready;
   final replies = channel.stream.take(2).toList();
   channel.sink.add(jsonEncode({'type': 'hello', 'cart': 3}));

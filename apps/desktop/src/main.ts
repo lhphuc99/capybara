@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { DEFAULT_PORT } from '@capybara-devtools/protocol';
 import {
   fetchLatestVersions,
+  lanAddresses,
   listen,
   PortInUseError,
   readPort,
@@ -177,7 +178,7 @@ function restartFlutter() {
   own?.server.setFlutterAttach(undefined);
   if (!own || !settings.flutter) return;
   const { server, port } = own;
-  flutterBridge = startFlutterBridge({ port, version: app.getVersion(), onHint: (hint) => server.hint(hint) });
+  flutterBridge = startFlutterBridge({ port, version: app.getVersion(), onHint: (hint) => server.hint(hint), addresses: lanAddresses });
   server.setFlutterAttach(flutterBridge.attach);
 }
 

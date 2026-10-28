@@ -1,4 +1,4 @@
-import { isFlutterSession, type LogLevel } from '@capybara-devtools/protocol';
+import { isFlutterSession, isPubPackage, type LogLevel } from '@capybara-devtools/protocol';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { memo, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
 import { CopyButton } from '../components/CopyButton';
@@ -188,9 +188,11 @@ export function LogsPanel({ session }: { session: SessionState }) {
           {logs.length === 0 ? (
             <EmptyMessage title="No logs yet">
               <p>
-                {isFlutterSession(session.meta.info)
-                  ? 'What the app prints with print, debugPrint or developer.log shows up here, and so do Flutter errors.'
-                  : 'Anything the app writes with console.log, console.warn or console.error shows up here.'}
+                {isPubPackage(session.meta.info.sdk.name)
+                  ? 'What the app prints with print or debugPrint, logs with Capybara.log, and its errors show up here. developer.log does not: send a logger\'s records on with Capybara.log.'
+                  : isFlutterSession(session.meta.info)
+                    ? 'What the app prints with print, debugPrint or developer.log shows up here, and so do Flutter errors.'
+                    : 'Anything the app writes with console.log, console.warn or console.error shows up here.'}
               </p>
             </EmptyMessage>
           ) : (

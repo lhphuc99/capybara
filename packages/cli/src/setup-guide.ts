@@ -4,6 +4,7 @@ import { homedir } from 'node:os';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { parseArgs } from 'node:util';
 import { DEFAULT_PORT, isNewerVersion } from '@capybara-devtools/protocol';
+import { lanAddresses } from './server.js';
 
 export type AppKind = 'vite' | 'next' | 'expo' | 'react-native' | 'web';
 export type PackageManagerName = 'npm' | 'yarn' | 'pnpm' | 'bun';
@@ -66,6 +67,10 @@ export interface FlutterProject {
   platforms: string[];
   /** Packages under `dependencies` in pubspec.yaml. */
   dependencies: string[];
+  /** The Capybara package, when the app depends on it: the version pubspec.lock has, and whether main.dart runs it. */
+  capybara?: { version?: string; running: boolean };
+  /** With a macos folder: whether its debug entitlements let the app connect out, which the package needs. */
+  macosNetworkClient?: boolean;
 }
 
 export type Detection =
@@ -393,19 +398,41 @@ function readPubspec(file: string): Pubspec | undefined {
 
 const FLUTTER_PLATFORMS = ['ios', 'android', 'macos', 'linux', 'windows', 'web'];
 
+function readText(file: string): string | undefined {
+  try {
+    return readFileSync(file, 'utf8');
+  } catch {
+    return undefined;
+  }
+}
+
+/** The version pubspec.lock has of `name`, looking up the tree as far as a pub workspace keeps it. */
+function lockedVersion(dir: string, name: string): string | undefined {
+  for (let current = dir, i = 0; i < 4; current = dirname(current), i++) {
+    const lock = readText(join(current, 'pubspec.lock'));
+    const match = lock && new RegExp(`\\n  ${name}:\\n(?:    .*\\n)*?    version: "([^"]+)"`).exec(lock);
+    if (match) return match[1];
+    if (lock) return undefined;
+  }
+  return undefined;
+}
+
 function detectFlutter(dir: string): Detection | undefined {
   const pubspec = readPubspec(join(dir, 'pubspec.yaml'));
   if (!pubspec) return undefined;
   if (pubspec.flutter) {
-    return {
-      type: 'flutter',
-      project: {
-        dir,
-        name: pubspec.name ?? basename(dir),
-        platforms: FLUTTER_PLATFORMS.filter((platform) => existsSync(join(dir, platform))),
-        dependencies: pubspec.dependencies,
-      },
-    };
+    const platforms = FLUTTER_PLATFORMS.filter((platform) => existsSync(join(dir, platform)));
+    const project: FlutterProject = { dir, name: pubspec.name ?? basename(dir), platforms, dependencies: pubspec.dependencies };
+    if (pubspec.dependencies.includes(DART_PACKAGE)) {
+      const main = readText(join(dir, 'lib', 'main.dart')) ?? '';
+      project.capybara = { version: lockedVersion(dir, DART_PACKAGE), running: /\bCapybara\.(run|init)\(/.test(main) };
+    }
+    if (platforms.includes('macos')) {
+      project.macosNetworkClient = /com\.apple\.security\.network\.client/.test(
+        readText(join(dir, 'macos', 'Runner', 'DebugProfile.entitlements')) ?? '',
+      );
+    }
+    return { type: 'flutter', project };
   }
   if (pubspec.workspace.length === 0) return undefined;
   const apps = pubspec.workspace.filter((member) => readPubspec(join(dir, member, 'pubspec.yaml'))?.flutter);
@@ -796,31 +823,103 @@ function assistantSection(): string[] {
 
 /** HTTP clients Capybara reads through dart:io's HTTP profile, by package name. */
 const DART_HTTP = ['http', 'dio', 'chopper', 'retrofit', 'cupertino_http', 'cronet_http', 'cached_network_image'];
-/** What the Capybara package for Flutter will add: the state and storage these packages keep. */
-const DART_NEEDS_PACKAGE = [
-  'flutter_riverpod',
-  'hooks_riverpod',
-  'riverpod',
-  'flutter_bloc',
-  'bloc',
-  'provider',
-  'get',
-  'shared_preferences',
-  'flutter_secure_storage',
-  'hive_ce',
-  'hive',
-  'web_socket_channel',
-];
+const DART_PACKAGE = 'capybara_devtools';
+const RIVERPOD = ['flutter_riverpod', 'hooks_riverpod', 'riverpod'];
+const BLOC = ['flutter_bloc', 'bloc'];
+
+/** The steps that add the Capybara package, picked by what the app depends on. */
+function packageSteps(project: FlutterProject): string[] {
+  const has = (...names: string[]) => names.some((name) => project.dependencies.includes(name));
+  const adds = [DART_PACKAGE, ...(has(...RIVERPOD) ? ['capybara_devtools_riverpod'] : []), ...(has(...BLOC) ? ['capybara_devtools_bloc'] : [])];
+  const steps: string[][] = [
+    [`Add it${adds.length > 1 ? ', with the packages for the app\'s state libraries' : ''}:`, '', ...code('sh', `flutter pub add ${adds.join(' ')}`)],
+    [
+      'In `lib/main.dart`, run the app inside `Capybara.run`, with what `main` did before `runApp`:',
+      '',
+      ...code(
+        'dart',
+        `import 'package:capybara_devtools/capybara_devtools.dart';
+
+void main() {
+  Capybara.run(() async {
+    WidgetsFlutterBinding.ensureInitialized();
+    // …what main did before runApp
+    runApp(const MyApp());
+  });
+}`,
+      ),
+      '',
+      'Keep a binding of the app\'s own (such as SentryWidgetsFlutterBinding) and the crash reporter\'s setup inside it. In release builds `Capybara.run` only runs its body.',
+    ],
+  ];
+  if (has(...RIVERPOD)) {
+    steps.push([
+      'Add the Riverpod observer to the `ProviderScope`:',
+      '',
+      ...code('dart', `ProviderScope(observers: const [CapybaraRiverpodObserver()], child: const MyApp())`),
+    ]);
+  }
+  if (has(...BLOC)) {
+    steps.push([
+      'Put the Bloc observer in front of the app\'s, inside `Capybara.run`, before any bloc is made:',
+      '',
+      ...code('dart', 'Bloc.observer = CapybaraBlocObserver(parent: Bloc.observer);'),
+    ]);
+  }
+  const storage = [
+    ...(has('shared_preferences')
+      ? ['Capybara.addStorage(CapybaraSharedPreferences.legacy(prefs)); // or .async(…), .withCache(…): the API the app uses']
+      : []),
+    ...(has('flutter_secure_storage') ? ['Capybara.addStorage(CapybaraSecureStorage(secureStorage)); // read-only, values hidden from MCP'] : []),
+    ...(has('hive_ce', 'hive') ? ['Capybara.addStorage(CapybaraHiveBox(box)); // each box the app opens'] : []),
+  ];
+  if (storage.length > 0) steps.push(['Where the app opens its stores, add them:', '', ...code('dart', storage.join('\n'))]);
+  if (has('provider')) {
+    steps.push([
+      'For each ChangeNotifier or ValueNotifier whose state matters, a line where it is made (`read:` gives a ChangeNotifier\'s fields when it has no `toJson()`):',
+      '',
+      ...code('dart', `Capybara.watch('settings', settings);`),
+    ]);
+  }
+  if (has('cupertino_http', 'cronet_http')) {
+    steps.push([
+      'Wrap the cupertino_http or cronet_http client, whose requests the package cannot see otherwise:',
+      '',
+      ...code('dart', 'final client = CapybaraHttpClient(CupertinoClient.defaultSessionConfiguration());'),
+    ]);
+  }
+  if (has('web_socket_channel')) {
+    steps.push([
+      'Wrap each WebSocket channel where it is made, to see its messages:',
+      '',
+      ...code('dart', 'final channel = Capybara.webSocket(WebSocketChannel.connect(url), url: url);'),
+    ]);
+  }
+  if (project.macosNetworkClient === false) {
+    steps.push([
+      'macOS blocks the app from connecting to Capybara: add this to `macos/Runner/DebugProfile.entitlements`:',
+      '',
+      ...code('xml', '<key>com.apple.security.network.client</key>\n<true/>'),
+    ]);
+  }
+  const address = lanAddresses()[0] ?? '<this computer\'s address>';
+  steps.push([
+    `On a phone on Wi‑Fi, and on any iPhone, the app has to be told where Capybara runs: \`flutter run --dart-define=CAPYBARA_HOST=${address}\`. Simulators, emulators, desktops and Android phones on USB need nothing.`,
+  ]);
+  // Everything under a list item is indented, code blocks line by line, or Markdown ends the item.
+  const indent = (line: string) => line.split('\n').map((part) => (part ? `   ${part}` : part));
+  return steps.flatMap((step, index) => [`${index + 1}. ${step[0]}`, ...step.slice(1).flatMap(indent), '']);
+}
 
 function flutterGuide(project: FlutterProject, options: GuideOptions): string[] {
   const http = DART_HTTP.filter((name) => project.dependencies.includes(name));
-  const later = DART_NEEDS_PACKAGE.filter((name) => project.dependencies.includes(name));
+  const capybara = project.capybara;
   const lines = [
     `# Add Capybara to ${project.name}`,
     '',
     `Flutter app${project.platforms.length > 0 ? ` for ${project.platforms.join(', ')}` : ''}, in ${project.dir}.`,
     '',
-    `This guide is for Capybara ${options.version}. There is nothing to change in the app: Capybara reads Flutter apps in debug mode through the Dart VM service, the way Flutter DevTools does.`,
+    `This guide is for Capybara ${options.version}. Capybara reads Flutter apps in debug mode through the Dart VM service, the way Flutter DevTools does, so there is nothing to change in the app for its logs, errors and requests. The Capybara package for Flutter adds its storage, state and WebSocket messages (step 3).`,
     '',
     '## 1. Run the app and Capybara',
     '',
@@ -842,12 +941,23 @@ function flutterGuide(project: FlutterProject, options: GuideOptions): string[] 
       : '- The app shows up in Capybara\'s window, with "via Dart VM service".',
     '- If it does not, start Capybara with the address flutter run prints ("A Dart VM Service on … is available at"): `npx capybara-devtools --flutter-vm-service <address>`, or paste it in the UI. Run with `CAPYBARA_DEBUG=1` to see why an app is skipped.',
     '',
+    '## 3. The Capybara package (for storage, state and WebSockets)',
+    '',
+    capybara?.running
+      ? `The app runs ${DART_PACKAGE}${capybara.version ? ` ${capybara.version}` : ''} already. These are the steps, for what is not done yet:`
+      : 'Add it when the app\'s storage, state or WebSocket messages matter, when it runs on a phone that flutter run did not start, or to see errors of futures nobody awaited. With it, Capybara reads the app through the package instead of the Dart VM service.',
+    '',
+    ...packageSteps(project),
+    options.via === 'mcp'
+      ? 'Then call list_sessions: the app is listed with capybara_devtools rather than "via Dart VM service", and get_storage and get_state read it.'
+      : 'Then the app shows up in Capybara with capybara_devtools rather than "via Dart VM service".',
+    '',
     '## Notes',
     '',
     '- Requests the app made before Capybara attached are missing; a hot restart (R in flutter run) records them from the start.',
-    `- WebSocket messages, storage and state need the Capybara package for Flutter, which is coming to pub.dev${later.length > 0 ? ` (this app uses ${later.join(', ')})` : ''}.`,
-    '- Release builds have no Dart VM service, so Capybara reads nothing from them. Profile builds show logs and requests.',
-    '- Errors in async code nobody awaited appear only in the device log, not in Capybara.',
+    '- With the package, `developer.log` output does not show: send a logger\'s records on with `Capybara.log`.',
+    '- Release builds have no Dart VM service, and the package does nothing in them, so Capybara reads nothing from them. Profile builds show logs and requests.',
+    '- Without the package, errors in async code nobody awaited appear only in the device log.',
     `- Docs: ${DOCS}`,
   ];
   if (options.via === 'cli') lines.push(...assistantSection());

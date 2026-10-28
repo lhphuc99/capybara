@@ -155,6 +155,7 @@ if (values.flutter || flutterUris.length > 0) {
     vmServiceUris: flutterUris,
     scan: values.flutter,
     onHint: (hint) => server.hint(hint),
+    addresses: () => reachableAddresses(started.address),
   });
   server.setFlutterAttach(flutterBridge.attach);
 }

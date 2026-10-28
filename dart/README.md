@@ -1,7 +1,8 @@
 # Dart and Flutter
 
 A [pub workspace](https://dart.dev/tools/pub/workspaces) beside the npm one: the Capybara package for Flutter,
-[`packages/capybara_devtools`](packages/capybara_devtools), and an example app. Nothing here is part of the npm build,
+[`packages/capybara_devtools`](packages/capybara_devtools), its packages for
+[Riverpod](packages/capybara_devtools_riverpod) and [Bloc](packages/capybara_devtools_bloc), and an example app. Nothing here is part of the npm build,
 tests or releases.
 
 ## Setup
@@ -26,6 +27,8 @@ node example/tool/mock_server.mjs        # the API the buttons call, on 127.0.0.
 cd example && fvm flutter run            # -d macos, an iOS simulator or an Android emulator
 ```
 
+On an Android phone on USB, run `adb reverse tcp:4100 tcp:4100` and add `--dart-define=MOCK_HOST=127.0.0.1`.
+
 So run, Capybara reads the app through the Dart VM service. With `--dart-define=CAPYBARA_SDK=true` the app runs the
 package instead, and Capybara leaves the VM service alone. `--dart-define=CAPYBARA_PORT=47901` points the package at a
 Capybara started with `--port 47901`.
@@ -49,6 +52,8 @@ dart format --set-exit-if-changed .
 cd example && fvm flutter test
 cd packages/capybara_devtools && fvm flutter test
 fvm flutter test --platform chrome test/web_test.dart   # it has to build for the web
+cd ../capybara_devtools_riverpod && fvm flutter test
+cd ../capybara_devtools_bloc && fvm flutter test
 ```
 
 The package's contract tests run it against Capybara's server built from this repository, so `npm run build` at the

@@ -32,6 +32,13 @@ describe('updateNotice', () => {
     expect(updateNotice(server(), app('test', '0'), false, none)).toBeUndefined();
   });
 
+  it('asks to update the Flutter package with flutter pub add, from pub.dev only', () => {
+    const app = (version: string): SessionInfo => ({ id: 's1', appName: 'Shop', platform: 'ios', sdk: { name: 'capybara_devtools', version }, startedAt: 1 });
+    expect(updateNotice(server({ capybara_devtools: '0.2.0' }), app('0.1.0'), false, none)?.command).toBe('flutter pub add capybara_devtools:^0.2.0');
+    // Its versions are its own: the server's says nothing about it.
+    expect(updateNotice(server(undefined, '0.9.0'), app('0.1.0'), false, none)).toBeUndefined();
+  });
+
   it('offers a newer CLI, but not in the desktop app', () => {
     const latest = server({ 'capybara-devtools': '0.3.0' });
     expect(updateNotice(latest, undefined, false, none)?.command).toBe('npx capybara-devtools@latest');

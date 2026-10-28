@@ -29,6 +29,9 @@
   --syntax-muted: #6e7781;
   --lib-xstate: #0f766e;
   --lib-mobx: #c2410c;
+  --lib-riverpod: #0891b2;
+  --lib-bloc: #2563eb;
+  --lib-watch: #7c3aed;
   --shadow: 0 10px 30px rgb(15 20 30 / 0.16);
   --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
@@ -64,6 +67,9 @@
   --syntax-muted: #8b949e;
   --lib-xstate: #2dd4bf;
   --lib-mobx: #fb923c;
+  --lib-riverpod: #22d3ee;
+  --lib-bloc: #60a5fa;
+  --lib-watch: #a78bfa;
   --shadow: 0 10px 30px rgb(0 0 0 / 0.5);
 }
 
@@ -1540,6 +1546,18 @@ code {
   background: var(--ok);
 }
 
+.state-dot.riverpod {
+  background: var(--lib-riverpod);
+}
+
+.state-dot.bloc {
+  background: var(--lib-bloc);
+}
+
+.state-dot.watch {
+  background: var(--lib-watch);
+}
+
 .state-alert {
   width: 6px;
   height: 6px;
@@ -2042,19 +2060,6 @@ code {
   background: var(--bg);
   box-shadow: 0 1px 2px rgb(0 0 0 / 0.12);
   color: var(--text);
-}
-
-.soon {
-  display: inline-block;
-  margin-left: 6px;
-  padding: 0 7px;
-  border-radius: 999px;
-  background: var(--warn-bg);
-  color: var(--warn);
-  font-size: 11px;
-  font-weight: 500;
-  line-height: 18px;
-  vertical-align: 1px;
 }
 
 /* A Dart stack in a value tree: the app's frames open, the rest folded by where they come from. */

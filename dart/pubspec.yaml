@@ -8,6 +8,8 @@ environment:
 workspace:
   - example
   - packages/capybara_devtools
+  - packages/capybara_devtools_bloc
+  - packages/capybara_devtools_riverpod
 
 dev_dependencies:
   flutter_lints: ^6.0.0

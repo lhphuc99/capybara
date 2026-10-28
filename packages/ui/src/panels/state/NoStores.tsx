@@ -1,4 +1,4 @@
-import { FLUTTER_VM_SDK, METRO_SDK, type Platform } from '@capybara-devtools/protocol';
+import { FLUTTER_VM_SDK, isPubPackage, METRO_SDK, type Platform } from '@capybara-devtools/protocol';
 import type { ReactNode } from 'react';
 import { EmptyPanel } from '../../components/EmptyMessage';
 import type { SessionState } from '../../store';
@@ -30,9 +30,16 @@ export function NoStores({
       return (
         <EmptyPanel title="State needs the Capybara package for Flutter">
           <p>
-            Through the Dart VM service, Capybara reads the app's logs, Flutter errors and HTTP requests, but not its state. The package
-            for Flutter that reads Riverpod, Bloc and other stores is coming to pub.dev.
+            Through the Dart VM service, Capybara reads the app's logs, Flutter errors and HTTP requests, but not its state. Add the
+            Capybara package, then the observer of the app's state library:
           </p>
+          <Code>{`flutter pub add capybara_devtools
+
+// lib/main.dart
+void main() => Capybara.run(() {
+  WidgetsFlutterBinding.ensureInitialized();
+  runApp(const MyApp());
+});`}</Code>
         </EmptyPanel>
       );
     }
@@ -63,7 +70,39 @@ export function NoStores({
       </EmptyPanel>
     );
   }
+  if (isPubPackage(info.sdk.name)) return <FlutterSetup />;
   return <Setup platform={info.platform} libraryContexts={libraryContexts} onShowLibraryContexts={onShowLibraryContexts} />;
+}
+
+function FlutterSetup() {
+  return (
+    <EmptyPanel title="No state stores yet" className="state-empty">
+      <p>Riverpod providers, blocs and cubits, and notifiers the app watches show up here once they are registered.</p>
+      <div className="state-snippets">
+        <div>
+          <h4>Riverpod and Bloc</h4>
+          <Code>{`flutter pub add capybara_devtools_riverpod
+flutter pub add capybara_devtools_bloc
+
+ProviderScope(
+  observers: const [CapybaraRiverpodObserver()],
+  child: const MyApp(),
+)
+
+Bloc.observer =
+    CapybaraBlocObserver(parent: Bloc.observer);`}</Code>
+        </div>
+        <div>
+          <h4>ValueNotifier and ChangeNotifier</h4>
+          <Code>{`Capybara.watch('settings', settings);
+
+// A ChangeNotifier without toJson():
+Capybara.watch('cart', cart,
+    read: () => {'items': cart.items});`}</Code>
+        </div>
+      </div>
+    </EmptyPanel>
+  );
 }
 
 function Setup({
@@ -137,7 +176,7 @@ if (${web ? 'import.meta.env.DEV' : '__DEV__'}) init();
 }
 
 // `import.meta` is not the import keyword.
-const SYNTAX = /(\/\/.*$)|('[^']*')|\b(import|from|if)\b(?!\.)/gm;
+const SYNTAX = /(\/\/.*$)|('[^']*')|\b(import|from|if|void|final|const)\b(?!\.)/gm;
 
 /** A short snippet with comments, strings and keywords colored. */
 function Code({ children: code }: { children: string }) {

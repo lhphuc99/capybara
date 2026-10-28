@@ -1,0 +1,24 @@
+name: capybara_devtools_bloc
+description: "Shows a Flutter app's blocs and cubits, with each event and change, in Capybara's State tab."
+version: 0.1.0
+homepage: https://capybara.lhphuc.com
+repository: https://github.com/lhphuc99/capybara/tree/main/dart/packages/capybara_devtools_bloc
+issue_tracker: https://github.com/lhphuc99/capybara/issues
+topics: [devtools, debugging, bloc, state-management, flutter]
+
+environment:
+  sdk: ^3.8.0
+  flutter: ">=3.32.0"
+
+resolution: workspace
+
+dependencies:
+  capybara_devtools: ^0.1.0
+  flutter:
+    sdk: flutter
+  bloc: ^9.0.0
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter

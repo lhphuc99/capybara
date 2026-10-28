@@ -342,12 +342,37 @@ describe('setup guide for Flutter', () => {
     });
     const text = guide(dir);
     expect(text).toContain('# Add Capybara to shop');
-    expect(text).toContain('There is nothing to change in the app');
+    expect(text).toContain('there is nothing to change in the app for its logs, errors and requests');
     expect(text).toContain('this app uses dio');
-    expect(text).toContain('(this app uses flutter_riverpod, shared_preferences)');
     expect(text).toContain('Call list_sessions');
     expect(text).not.toMatch(/npm install|init\(\)/);
     expect(guide(dir, 'cli')).toContain('claude mcp add capybara');
+  });
+
+  it('adds the package with the steps for the state and storage the app uses', () => {
+    const dir = project({ 'pubspec.yaml': PUBSPEC, 'ios/Runner/Info.plist': '', 'macos/Runner/DebugProfile.entitlements': '<plist/>' });
+    const text = guide(dir);
+    expect(text).toContain('flutter pub add capybara_devtools capybara_devtools_riverpod');
+    expect(text).toContain('Capybara.run(() async {');
+    expect(text).toContain('observers: const [CapybaraRiverpodObserver()]');
+    expect(text).toContain('CapybaraSharedPreferences.legacy(prefs)');
+    expect(text).not.toContain('CapybaraBlocObserver');
+    expect(text).toContain('com.apple.security.network.client');
+    expect(text).toContain('--dart-define=CAPYBARA_HOST=');
+  });
+
+  it('says when the app runs the package already, and which version', () => {
+    const dir = project({
+      'pubspec.yaml': PUBSPEC.replace('  dio: ^5.4.0', '  dio: ^5.4.0\n  capybara_devtools: ^0.1.0'),
+      'pubspec.lock': 'packages:\n  capybara_devtools:\n    dependency: "direct main"\n    source: hosted\n    version: "0.1.0"\n',
+      'lib/main.dart': 'void main() => Capybara.run(() => runApp(const App()));\n',
+      'macos/Runner/DebugProfile.entitlements': '<key>com.apple.security.network.client</key><true/>',
+    });
+    const detection = detectProject(dir);
+    expect(detection.type === 'flutter' && detection.project.capybara).toEqual({ version: '0.1.0', running: true });
+    const text = guide(dir);
+    expect(text).toContain('The app runs capybara_devtools 0.1.0 already');
+    expect(text).not.toContain('DebugProfile.entitlements');
   });
 
   it('keeps a Flutter app that has a package.json for its tooling a Flutter app', () => {

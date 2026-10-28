@@ -1,4 +1,4 @@
-import type { StateEntrySummary } from '@capybara-devtools/protocol';
+import { isFlutterSession, type StateEntrySummary } from '@capybara-devtools/protocol';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { EntryTable } from '../components/EntryTable';
 import { ColumnHandle, ResizeHandle, useColumnWidth, usePaneWidth } from '../components/ResizeHandle';
@@ -234,6 +234,7 @@ function StateBrowser({ session }: { session: SessionState }) {
             groups={groups}
             selected={store}
             onSelect={selectStore}
+            flutter={isFlutterSession(session.meta.info)}
             libraryContexts={libraryCount > 0 ? { shown: libraryContexts, count: libraryCount, onToggle: toggleLibraryContexts } : undefined}
           />
           <ColumnHandle
@@ -316,11 +317,14 @@ function StoreNav({
   groups,
   selected,
   onSelect,
+  flutter,
   libraryContexts,
 }: {
   groups: StoreGroup[];
   selected: StoreView;
   onSelect: (view: StoreView) => void;
+  /** The app is a Flutter app, whose stores come from observers rather than from init(). */
+  flutter: boolean;
   /** Present while the app has React Contexts of libraries, shown or not. */
   libraryContexts?: { shown: boolean; count: number; onToggle: (show: boolean) => void };
 }) {
@@ -369,10 +373,17 @@ function StoreNav({
         </label>
       )}
       {selected.info.note && <p className="adapter-note">{selected.info.note}</p>}
-      <p className="adapter-note">
-        Missing a Redux store, or a zustand store made with <code>devtools()</code>? <code>init()</code> has to run
-        before they load; otherwise use <code>capybaraReduxEnhancer()</code> or <code>watchZustand()</code>.
-      </p>
+      {flutter ? (
+        <p className="adapter-note">
+          Missing a store? Riverpod needs <code>CapybaraRiverpodObserver</code> in its <code>ProviderScope</code>, Bloc{' '}
+          <code>CapybaraBlocObserver</code> as <code>Bloc.observer</code>, and a notifier <code>Capybara.watch()</code>.
+        </p>
+      ) : (
+        <p className="adapter-note">
+          Missing a Redux store, or a zustand store made with <code>devtools()</code>? <code>init()</code> has to run
+          before they load; otherwise use <code>capybaraReduxEnhancer()</code> or <code>watchZustand()</code>.
+        </p>
+      )}
     </nav>
   );
 }

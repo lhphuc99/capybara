@@ -137,6 +137,34 @@ void main() {
       await capybara.session('Contract', connected: false);
     });
 
+    test('the server keeps the requests the package records', () async {
+      final api = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => api.close(force: true));
+      api.listen(
+        (request) => request.response
+          ..headers.contentType = ContentType.json
+          ..write('{"items":[]}')
+          ..close(),
+      );
+      // flutter_test answers every request with a 400 through its own HttpOverrides.
+      final mock = HttpOverrides.current;
+      HttpOverrides.global = null;
+      addTearDown(() => HttpOverrides.global = mock);
+      addTearDown(Capybara.stop);
+      Capybara.run(
+        () {},
+        options: CapybaraOptions(appName: 'Requests', host: '127.0.0.1', port: capybara.port),
+      );
+      final id = _id(await capybara.session('Requests'));
+      final client = HttpClient();
+      await (await (await client.getUrl(Uri.parse('http://127.0.0.1:${api.port}/items'))).close()).drain<void>();
+      client.close();
+      await capybara.waitFor((_) => capybara.events(id).any((event) => event['kind'] == 'network.response'));
+      final response = capybara.events(id).firstWhere((event) => event['kind'] == 'network.response');
+      expect(response['payload'], containsPair('status', 200));
+      expect((response['payload']! as Map)['body'], containsPair('text', '{"items":[]}'));
+    });
+
     test('a command from the UI reaches the plugin and its answer comes back', () async {
       final client = CapybaraClient(
         session: {

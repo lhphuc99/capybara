@@ -73,7 +73,7 @@ How it works and what to know:
 - `flutter run` and IDEs start a Dart Development Service (DDS) beside each app. Capybara looks for those processes, asks the app's VM service where its DDS is, and connects to DDS as one more client, beside the IDE and DevTools. It never connects to the VM service directly, which could keep DDS from starting.
 - It only reads, apart from switching on dart:io's HTTP profiling for the app (what DevTools' Network tab does), which it switches off again when it stops, if it was the one that switched it on. The app keeps request and response bodies in memory while profiling is on.
 - Requests made before Capybara attached are missing, and the Network tab says so; a hot restart (R in `flutter run`) records them from the start. Each hot restart is a new session, as a reload is for a web page.
-- Not through the VM service: WebSocket messages (the handshake shows as a request with status 101), storage and state. These need the Capybara package for Flutter, which is coming to pub.dev. Errors in async code nobody awaited appear only in the device log.
+- Not through the VM service: WebSocket messages (the handshake shows as a request with status 101), storage and state. These need the Capybara package for Flutter (below). Errors in async code nobody awaited appear only in the device log.
 - Release builds have no VM service, so Capybara reads nothing from them; profile builds show logs and requests.
 - An app started some other way, or with `--no-dds`, does not show up on its own. Give Capybara the address `flutter run` prints ("A Dart VM Service on … is available at: http://127.0.0.1:…/…=/"):
 
@@ -83,7 +83,30 @@ How it works and what to know:
   ```
 
   Or paste it in the UI: **Connect a Flutter app…** in the top bar, the last item of the app menu, or the Flutter tab of the start page. The address lets whoever has it run code in the app, so Capybara takes only addresses on this computer, only from the UI on this computer, and never stores or shows it. In the desktop app, **Settings › Read Flutter Apps Through the Dart VM Service** turns it on and off.
-- Checked with Flutter 3.47.8 (Dart 3.13.7) on an iOS simulator and an Android emulator, against [`dart/example`](dart/README.md), whose buttons make each kind of log, error and request. Flutter desktop, web and physical devices have not been tried yet. `CAPYBARA_DEBUG=1` prints why an app is not read.
+- Checked with Flutter 3.47.8 (Dart 3.13.7) on an iOS simulator, an Android emulator, a Pixel 7 and macOS, against [`dart/example`](dart/README.md), whose buttons make each kind of log, error and request. `CAPYBARA_DEBUG=1` prints why an app is not read.
+
+### Flutter — the Capybara package
+
+[`capybara_devtools`](dart/packages/capybara_devtools/README.md) adds what the VM service cannot show, and works in debug builds only:
+
+```bash
+flutter pub add capybara_devtools
+```
+
+```dart
+void main() => Capybara.run(() {
+  WidgetsFlutterBinding.ensureInitialized();
+  runApp(const MyApp());
+});
+```
+
+- Logs and errors from inside the app, uncaught errors of futures included; `Capybara.log('Saved', data: cart)` for values shown as trees. `developer.log` no longer shows: Capybara reads the app through the package instead of the VM service.
+- Requests through dart:io (`package:http`, dio, `Image.network`) from the app's first moment, `CapybaraHttpClient` for cupertino_http and cronet_http, and WebSocket messages with `Capybara.webSocket(channel, url: url)`.
+- Storage the app adds, editable: `Capybara.addStorage(CapybaraSharedPreferences.legacy(prefs))`, `CapybaraSecureStorage(storage)` (read-only, values hidden from MCP), `CapybaraHiveBox(box)`.
+- State: [`capybara_devtools_riverpod`](dart/packages/capybara_devtools_riverpod/README.md) (`ProviderScope(observers: [CapybaraRiverpodObserver()])`), [`capybara_devtools_bloc`](dart/packages/capybara_devtools_bloc/README.md) (`Bloc.observer = CapybaraBlocObserver(parent: Bloc.observer)`), and `Capybara.watch('settings', settings)` for a ValueNotifier or ChangeNotifier.
+- Phones: Android phones on USB need nothing. A phone on Wi‑Fi, and any iPhone, needs `--dart-define=CAPYBARA_HOST=<this computer's address>`; when `flutter run` started it, Capybara tells the package the address itself. macOS apps need `com.apple.security.network.client` in `DebugProfile.entitlements`.
+
+`capybara setup-guide` (or `get_setup_guide` in MCP) lists these steps for a given app, from the packages it depends on.
 
 ### Web (React, Vite, Next.js client)
 

@@ -301,6 +301,27 @@ describe('Flutter apps through the Dart VM service', () => {
     expect(t.vm.httpOn()).toBe(false);
   });
 
+  it('leaves a package that reached Capybara alone', async () => {
+    const t = await fixture({ sdk: true, packageConnected: true });
+    t.start({ packageCheck: 20, addresses: () => ['192.168.1.20'] });
+    await until(() => expect(t.vm.calls.some((call) => call.method === 'ext.capybara.status')).toBe(true));
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(t.vm.packageTargets()).toEqual([]);
+    expect(t.hints).toEqual([]);
+  });
+
+  it('tells a package that cannot reach Capybara where it is, then says so if that did not help', async () => {
+    const reachable = await fixture({ sdk: true, packageReachable: true });
+    reachable.start({ packageCheck: 20, addresses: () => ['192.168.1.20'] });
+    await until(() => expect(reachable.vm.packageTargets()).toEqual([`192.168.1.20:${reachable.port}`]));
+
+    const lost = await fixture({ sdk: true });
+    lost.start({ packageCheck: 20, addresses: () => [] });
+    await until(() => expect(lost.hints).toHaveLength(1));
+    expect(lost.hints[0]).toContain('--dart-define=CAPYBARA_HOST=');
+    expect(lost.vm.packageTargets()).toEqual([]);
+  });
+
   it('closes its session when the app starts the Capybara package later', async () => {
     const t = await fixture();
     t.start();

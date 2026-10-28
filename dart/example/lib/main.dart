@@ -2,9 +2,12 @@ import 'dart:async';
 
 import 'package:capybara_devtools/capybara_devtools.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hive_ce_flutter/hive_flutter.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'actions.dart';
+import 'state.dart';
 
 /// `--dart-define=CAPYBARA_SDK=true` runs the app with the Capybara package. Without it Capybara reads the app
 /// through the Dart VM service alone, as it does apps that do not have the package.
@@ -21,7 +24,11 @@ void main() {
 Future<void> _start() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Hive.initFlutter();
-  await Hive.openBox<Object>('settings');
+  // Without Capybara running, these only keep the stores at hand.
+  Capybara.addStorage(CapybaraHiveBox(await Hive.openBox<Object>('settings')));
+  Capybara.addStorage(CapybaraSharedPreferences.legacy(await SharedPreferences.getInstance()));
+  Capybara.addStorage(CapybaraSecureStorage(const FlutterSecureStorage()));
+  setUpState();
   registerExampleExtensions();
   runApp(const ExampleApp());
 }
@@ -46,6 +53,7 @@ const _sections = {
   'HTTP': ['http.images'],
   'WebSocket': ['ws.echo'],
   'Storage': ['storage.prefs', 'storage.secure', 'storage.hive'],
+  'State': ['state.counter', 'state.cart', 'state.clear', 'state.theme', 'state.settings'],
 };
 
 class HomeScreen extends StatelessWidget {

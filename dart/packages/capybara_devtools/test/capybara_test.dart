@@ -1,6 +1,8 @@
 // ignore_for_file: avoid_print
 
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'dart:ui';
 
 import 'package:capybara_devtools/capybara_devtools.dart';
@@ -22,6 +24,24 @@ List<Map<String, Object?>> _logs(FakeSocket socket) => [
 ];
 
 Map<String, Object?> _firstArg(Map<String, Object?> log) => (log['args']! as List).first as Map<String, Object?>;
+
+/// flutter_test answers every request with a 400 through its own HttpOverrides.
+void _withoutTestHttpOverrides() {
+  final mock = HttpOverrides.current;
+  HttpOverrides.global = null;
+  addTearDown(() => HttpOverrides.global = mock);
+}
+
+final class _Cart extends ChangeNotifier {
+  final List<String> items = [];
+
+  void add(String item) {
+    items.add(item);
+    notifyListeners();
+  }
+
+  Map<String, Object?> toJson() => {'items': items};
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -202,6 +222,80 @@ void main() {
     await _until(() => server.sockets.isNotEmpty);
     await Future<void>.delayed(const Duration(milliseconds: 100));
     expect(server.sockets, hasLength(1));
+  });
+
+  test('records the requests the app makes, and stops recording when stopped', () async {
+    final api = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => api.close(force: true));
+    api.listen(
+      (request) => request.response
+        ..write('pong')
+        ..close(),
+    );
+    _withoutTestHttpOverrides();
+    final before = HttpOverrides.current;
+    Capybara.run(() {});
+    final socket = await welcomed();
+    expect(socket.sent.first['session'], containsPair('plugins', ['network', 'storage', 'state']));
+
+    final client = HttpClient();
+    final response = await (await client.getUrl(Uri.parse('http://127.0.0.1:${api.port}/ping'))).close();
+    expect(await utf8.decodeStream(response), 'pong');
+    client.close();
+    await _until(() => socket.events.any((event) => event['kind'] == 'network.response'));
+    expect([
+      for (final event in socket.events) event['kind'],
+    ], containsAllInOrder(['network.request', 'network.response']));
+
+    await Capybara.stop();
+    expect(HttpOverrides.current, same(before));
+  });
+
+  test('leaves requests alone with network off', () async {
+    final before = HttpOverrides.current;
+    Capybara.run(() {}, options: const CapybaraOptions(network: false));
+    final socket = await welcomed();
+    expect(socket.sent.first['session'], containsPair('plugins', ['storage', 'state']));
+    expect(HttpOverrides.current, same(before));
+  });
+
+  test('records watched notifiers, and answers reads of their state', () async {
+    final counter = ValueNotifier(0);
+    final cart = _Cart();
+    Capybara.run(() {});
+    final socket = await welcomed();
+    final stopCounter = Capybara.watch('counter', counter);
+    final stopCart = Capybara.watch('cart', cart);
+    counter.value = 1;
+    cart.add('tea');
+    await _until(() => socket.events.where((event) => event['kind'] == 'state.change').length == 2);
+    final changes = [
+      for (final event in socket.events)
+        if (event['kind'] == 'state.change') event['payload']! as Map,
+    ];
+    expect(changes[0]['ops'], [
+      {'op': 'set', 'path': <Object>[], 'value': 1, 'prev': 0},
+    ]);
+    expect((changes[1]['ops']! as List).single, containsPair('path', ['items', 0]));
+
+    socket.receive({'t': 'command', 'id': 's1', 'plugin': 'state', 'method': 'stores'});
+    socket.receive({
+      't': 'command',
+      'id': 'g1',
+      'plugin': 'state',
+      'method': 'get',
+      'params': {
+        'store': (changes[1]['store'])!,
+        'path': ['items'],
+      },
+    });
+    await _until(() => socket.sent.where((message) => message['t'] == 'result').length == 2);
+    final results = {for (final message in socket.sent.where((m) => m['t'] == 'result')) message['id']: message};
+    expect([for (final store in results['s1']!['result']! as List) (store as Map)['label']], ['counter', 'cart']);
+    expect((results['g1']!['result']! as Map)['value'], ['tea']);
+
+    stopCounter();
+    stopCart();
   });
 
   test('only runs the app when turned off', () async {

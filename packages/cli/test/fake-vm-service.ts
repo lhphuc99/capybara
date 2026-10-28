@@ -39,6 +39,9 @@ export async function fakeVmService(
     httpOn?: boolean;
     /** The app has no Development Service, as with `flutter run --no-dds`. */
     noDds?: boolean;
+    /** With the package: it reached Capybara on its own, or does once given an address it can reach. */
+    packageConnected?: boolean;
+    packageReachable?: boolean;
   } = {},
 ) {
   const calls: Array<{ method: string; params: Record<string, unknown> }> = [];
@@ -48,6 +51,9 @@ export async function fakeVmService(
   const objects = new Map<string, unknown>();
   let isolate = newIsolate(1, Date.now() - (options.age ?? 0), options.sdk);
   let httpOn = options.httpOn ?? false;
+  let packageConnected = options.packageConnected ?? false;
+  const packageReachable = options.packageReachable ?? false;
+  const packageTargets: string[] = [];
   let requests: Array<FakeHttpRequest & { updated: number }> = [];
   let clock = 1_000;
 
@@ -143,6 +149,12 @@ export async function fakeVmService(
           return reply({ type: 'UriList', uris: (params.uris as string[]).map((uri) => uri.replace('package:shop/', 'file:///Users/me/shop/lib/')) });
         case 'getObject':
           return objects.has(params.objectId) ? reply(objects.get(params.objectId)) : fail(113, 'Object expired');
+        case 'ext.capybara.status':
+          return reply({ type: '_extensionType', method, connected: packageConnected });
+        case 'ext.capybara.connect':
+          packageTargets.push(`${params.host}:${params.port}`);
+          if (packageReachable) packageConnected = true;
+          return reply({ type: '_extensionType', method, target: `ws://${params.host}:${params.port}/client` });
         case 'ext.dart.io.httpEnableTimelineLogging':
           if (params.enabled !== undefined) httpOn = params.enabled === 'true';
           return reply({ type: 'HttpTimelineLoggingState', enabled: httpOn });
@@ -169,6 +181,8 @@ export async function fakeVmService(
     ddsUri: `ws://127.0.0.1:${port}/${TOKEN}/ws`,
     psLine: `4242 /Users/me/fvm/versions/3.47.8/bin/cache/dart-sdk/bin/dart development-service --vm-service-uri=http://127.0.0.1:${port}/${TOKEN}/ --bind-address=127.0.0.1 --bind-port=0 --serve-devtools --app-name=Kind: Flutter - Device: iPhone Duo - Package: shop`,
     httpOn: () => httpOn,
+    /** Where the bridge told the package to connect. */
+    packageTargets: () => packageTargets,
     /** Plain HTTP requests, which is how the bridge asks where DDS is. */
     probes: () => probes,
     isolateId: () => isolate.id,

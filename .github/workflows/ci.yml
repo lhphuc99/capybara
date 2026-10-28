@@ -95,6 +95,13 @@ jobs:
         working-directory: .
       - run: flutter test
         working-directory: dart/packages/capybara_devtools
+      - run: flutter test
+        working-directory: dart/packages/capybara_devtools_riverpod
+      - run: flutter test
+        working-directory: dart/packages/capybara_devtools_bloc
+      # What pub.dev would refuse shows here rather than at publishing.
+      - if: matrix.flutter == 'pinned'
+        run: for package in capybara_devtools capybara_devtools_riverpod capybara_devtools_bloc; do (cd "packages/$package" && flutter pub publish --dry-run); done
       # The package has to build for the web, where it does nothing yet; the runners have Chrome.
       - if: matrix.flutter == 'pinned'
         run: flutter test --platform chrome test/web_test.dart

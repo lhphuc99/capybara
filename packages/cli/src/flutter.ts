@@ -38,6 +38,10 @@ export interface FlutterBridgeOptions {
   httpInterval?: number;
   /** Told once per app that is found but cannot be read, with what to do instead. */
   onHint?: (message: string) => void;
+  /** Addresses of this computer that phones reach the server at; none when it listens on loopback only. */
+  addresses?: () => string[];
+  /** Milliseconds before an app running the Capybara package is asked whether it reached Capybara. Default 12000. */
+  packageCheck?: number;
   listProcesses?: () => Promise<string[]>;
   fetch?: typeof fetch;
 }
@@ -88,6 +92,7 @@ interface Run {
   held: Array<() => Promise<void> | void>;
   decideTimer?: ReturnType<typeof setTimeout>;
   httpTimer?: ReturnType<typeof setInterval>;
+  packageTimer?: ReturnType<typeof setTimeout>;
   /** HTTP profiling was off and Capybara turned it on, so it turns it off again when done. */
   enabledHttp?: boolean;
   late?: boolean;
@@ -95,8 +100,13 @@ interface Run {
   print?: ReturnType<typeof createPrintReader>;
 }
 
-/** Methods the bridge calls. It only reads, except for switching dart:io's HTTP profiling on and back off. */
+/**
+ * Methods the bridge calls. It only reads, except for switching dart:io's HTTP profiling on and back off, and telling
+ * an app that runs the Capybara package where Capybara is, when the package cannot find it.
+ */
 const ALLOWED = new Set([
+  'ext.capybara.status',
+  'ext.capybara.connect',
   'setClientName',
   'getVM',
   'getIsolate',
@@ -108,6 +118,11 @@ const ALLOWED = new Set([
   'ext.dart.io.getHttpProfileRequest',
 ]);
 
+/**
+ * Past the package's longest wait between attempts (10 s), an app running it that has not reached Capybara is told
+ * where Capybara is: a phone on Wi‑Fi, or an iPhone, finds no Capybara at 127.0.0.1.
+ */
+const PACKAGE_CHECK_MS = 12_000;
 /** A new isolate that registers no Flutter extension within this time is read without waiting further. */
 const DECIDE_LIMIT_MS = 3_000;
 /** How often a found app whose Development Service does not answer is tried again. */
@@ -139,6 +154,9 @@ export function startFlutterBridge(options: FlutterBridgeOptions): FlutterBridge
         port: options.port,
         version: options.version ?? '0.0.0',
         httpInterval: options.httpInterval ?? 1_000,
+        addresses: options.addresses ?? (() => []),
+        packageCheck: options.packageCheck ?? PACKAGE_CHECK_MS,
+        onHint: (message) => options.onHint?.(message),
         onEnd: () => apps.delete(dds),
       });
       apps.set(dds, watcher);
@@ -226,7 +244,16 @@ interface AppWatcher {
 function watchApp(
   dds: string,
   meta: AppMeta,
-  context: { capybaraUrl: string; port: number; version: string; httpInterval: number; onEnd: () => void },
+  context: {
+    capybaraUrl: string;
+    port: number;
+    version: string;
+    httpInterval: number;
+    addresses: () => string[];
+    packageCheck: number;
+    onHint: (message: string) => void;
+    onEnd: () => void;
+  },
 ): AppWatcher {
   const runs = new Map<string, Run>();
   const controller = new AbortController();
@@ -304,6 +331,7 @@ function watchApp(
   };
 
   const endRun = (run: Run) => {
+    clearTimeout(run.packageTimer);
     runs.delete(run.isolateId);
     clearTimeout(run.decideTimer);
     clearInterval(run.httpTimer);
@@ -384,12 +412,39 @@ function watchApp(
     run.session?.close();
     run.session = undefined;
     run.state = 'skipped';
+    clearTimeout(run.packageTimer);
+    run.packageTimer = setTimeout(() => void helpPackage(run), context.packageCheck);
+    run.packageTimer.unref();
     run.held = [];
     clearInterval(run.httpTimer);
     if (run.enabledHttp) {
       run.enabledHttp = false;
       void call('ext.dart.io.httpEnableTimelineLogging', { isolateId: run.isolateId, enabled: 'false' }).catch(() => {});
     }
+  };
+
+  let helped = false;
+  const connected = (run: Run) =>
+    call<{ connected?: unknown }>('ext.capybara.status', { isolateId: run.isolateId }).then(
+      (status) => status.connected === true,
+      () => undefined,
+    );
+  // Asked once per app: the package keeps the address it is given, also after a hot restart.
+  const helpPackage = async (run: Run) => {
+    if (helped || ended || runs.get(run.isolateId) !== run || (await connected(run)) !== false) return;
+    helped = true;
+    const host = context.addresses()[0];
+    if (host) {
+      await call('ext.capybara.connect', { isolateId: run.isolateId, host, port: String(context.port) }).catch(() => {});
+      await new Promise((resolve) => setTimeout(resolve, 3_000).unref());
+      if (ended || (await connected(run)) !== false) {
+        debug(`Told ${label()}, which runs the Capybara package, to connect to ${host}`);
+        return;
+      }
+    }
+    context.onHint(
+      `${label()} runs the Capybara package but cannot reach Capybara. Run it with --dart-define=CAPYBARA_HOST=${host ?? '<this computer\'s address>'}, with the phone on this computer's network.`,
+    );
   };
 
   const startRun = (isolate: VmIsolateRef, existing: VmIsolate | undefined) => {

@@ -32,6 +32,9 @@ final class PluginContext {
   void emit(String kind, Map<String, Object?> payload, {int? ts}) => _client.emit(kind, payload, ts: ts);
 
   Object? serialize(Object? value) => _client.serializeValue(value);
+
+  /// Events reach the server now. Plugins that only count changes while offline look here.
+  bool get connected => _client.connected;
 }
 
 final class _Buffered {
@@ -371,7 +374,7 @@ String _randomId() {
   return '$time${List.generate(8, (_) => alphabet[_random.nextInt(alphabet.length)]).join()}';
 }
 
-String _errorMessage(Object error) {
-  final text = error.toString();
-  return text.startsWith('Exception: ') ? text.substring('Exception: '.length) : text;
-}
+// What Dart puts before an error's message says nothing to someone reading it in the UI.
+final _errorPrefix = RegExp(r'^(Exception|Bad state|Unsupported operation|Invalid argument\(s\)|FormatException): ');
+
+String _errorMessage(Object error) => error.toString().replaceFirst(_errorPrefix, '');

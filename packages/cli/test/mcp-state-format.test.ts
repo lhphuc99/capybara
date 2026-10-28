@@ -69,6 +69,9 @@ describe('credentials in MCP', () => {
     expect(redact.url('ws://api.test/socket?token=t1&page=2')).toBe('ws://api.test/socket?token=[hidden]&page=2');
     expect(storageValueText('authToken', '', redact, false)).toBe('');
     expect(storageValueText('authToken', 'abc123', redact, false)).toBe('[hidden]');
+    // A keychain's values are all secrets, whatever their keys are called.
+    expect(storageValueText('lastUser', 'ada@example.com', redact, false, true)).toBe('[hidden]');
+    expect(storageValueText('lastUser', 'ada@example.com', redactor(false), false, true)).toBe('ada@example.com');
     expect(readValueText({ value: null, truncated: false }, ['user', 'token'], redact, 1_000)).toBe('null');
     expect(readValueText({ value: 'abc123', truncated: false }, ['user', 'token'], redact, 1_000)).toBe('[hidden]');
   });

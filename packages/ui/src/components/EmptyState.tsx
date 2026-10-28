@@ -138,10 +138,22 @@ function Flutter({ server }: { server?: ServerInfo }) {
       </p>
       <AttachFlutterBox />
 
-      <h2>
-        Storage and State: the Capybara package for Flutter <span className="soon">Coming soon</span>
-      </h2>
-      <p>The package adds the Storage and State tabs. It is coming soon to pub.dev; logs, errors and network work without it.</p>
+      <h2>Storage, State and WebSockets: the Capybara package for Flutter</h2>
+      <p>
+        The package adds the Storage and State tabs and WebSocket messages, and works on phones that <code>flutter run</code>{' '}
+        did not start. Logs, errors and requests work without it.
+      </p>
+      <pre className="code">{`flutter pub add capybara_devtools
+
+void main() => Capybara.run(() {
+  WidgetsFlutterBinding.ensureInitialized();
+  runApp(const MyApp());
+});`}</pre>
+      <p className="note">
+        On a phone on Wi‑Fi, and on an iPhone, run it with{' '}
+        <code>--dart-define=CAPYBARA_HOST={server.addresses[0] ?? "<this computer's address>"}</code>. macOS apps need{' '}
+        <code>com.apple.security.network.client</code> in <code>DebugProfile.entitlements</code>.
+      </p>
     </>
   );
 }
