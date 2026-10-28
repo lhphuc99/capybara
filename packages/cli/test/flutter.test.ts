@@ -303,6 +303,25 @@ describe('Flutter apps through the Dart VM service', () => {
     expect(t.sessions()).toHaveLength(1);
   });
 
+  it('reads the new isolate of an app that hot restarts while Capybara attaches', async () => {
+    const t = await fixture({ slow: { getVM: 300 } });
+    t.start();
+    await until(() => expect(t.vm.calls.some((call) => call.method === 'getVM')).toBe(true));
+    t.vm.restart();
+    await until(() => expect(t.sessions().filter((s) => s.connected)).toHaveLength(1));
+  });
+
+  it('lets go of an isolate that exits while Capybara attaches', async () => {
+    const t = await fixture({ slow: { getIsolate: 300 } });
+    t.start();
+    await until(() => expect(t.vm.calls.some((call) => call.method === 'getIsolate')).toBe(true));
+    const old = t.vm.isolateId();
+    t.vm.restart();
+    await until(() => expect(t.sessions().filter((s) => s.connected)).toHaveLength(1));
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(t.vm.calls.filter((call) => call.params.isolateId === old).map((call) => call.method)).toEqual(['getIsolate']);
+  });
+
   it('leaves apps that run the Capybara package to it', async () => {
     const t = await fixture({ sdk: true });
     t.start();

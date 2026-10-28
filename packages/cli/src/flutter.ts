@@ -350,7 +350,7 @@ function watchApp(
   };
 
   const enableHttp = async (run: Run) => {
-    if (run.state === 'skipped' || run.enabledHttp !== undefined) return;
+    if (run.state === 'skipped' || run.enabledHttp !== undefined || runs.get(run.isolateId) !== run) return;
     const state = await call<{ enabled?: boolean }>('ext.dart.io.httpEnableTimelineLogging', { isolateId: run.isolateId }).catch(
       () => undefined,
     );
@@ -363,7 +363,7 @@ function watchApp(
   };
 
   const stream = async (run: Run) => {
-    if (run.state !== 'deciding' || ended) return;
+    if (run.state !== 'deciding' || ended || runs.get(run.isolateId) !== run) return;
     clearTimeout(run.decideTimer);
     const isolate = await call<VmIsolate>('getIsolate', { isolateId: run.isolateId }).catch(() => undefined);
     if (runs.get(run.isolateId) !== run || run.state !== 'deciding') return;
@@ -483,8 +483,15 @@ function watchApp(
   // DDS replays each stream's history in turn when it is listened to; held here and sorted by time, the logs
   // of before Capybara attached keep their order across streams.
   let replay: Array<{ streamId: string; event: VmEvent }> | undefined;
+  // Isolate events that come while attaching, routed once the isolates getVM listed have runs: one that exited in
+  // the meantime is then ended, not kept.
+  let attaching: Array<{ streamId: string; event: VmEvent }> | undefined = [];
 
   const onEvent = (notice: { streamId: string; event: VmEvent }) => {
+    if (attaching && notice.streamId === 'Isolate') {
+      attaching.push(notice);
+      return;
+    }
     if (replay && notice.streamId !== 'Isolate' && notice.streamId !== 'Service') {
       replay.push(notice);
       return;
@@ -583,6 +590,10 @@ function watchApp(
       await call('setClientName', { name: 'Capybara' }).catch(() => {});
       // DDS answers with the services the flutter tool registered, such as its version, right away.
       await call('streamListen', { streamId: 'Service' }).catch(() => {});
+      const listen = (streamId: string) =>
+        call('streamListen', { streamId }).catch((error: unknown) => debug(`streamListen ${streamId} failed for ${label()}`, error));
+      // Before getVM: an isolate that starts after it answered, as on a hot restart, would never be heard of.
+      await listen('Isolate');
       vm = await call<VmInfo>('getVM');
       await new Promise((resolve) => setTimeout(resolve, 200));
       const versionMethod = services.get('flutterVersion');
@@ -592,14 +603,14 @@ function watchApp(
           () => undefined,
         );
       }
-      const listen = (streamId: string) =>
-        call('streamListen', { streamId }).catch((error: unknown) => debug(`streamListen ${streamId} failed for ${label()}`, error));
-      await listen('Isolate');
       for (const ref of vm.isolates ?? []) {
         if (ref.isSystemIsolate || ref.name !== 'main') continue;
         const isolate = await call<VmIsolate>('getIsolate', { isolateId: ref.id }).catch(() => undefined);
         if (isolate) startRun(ref, isolate);
       }
+      const early = attaching ?? [];
+      attaching = undefined;
+      for (const notice of early) route(notice);
       // After the runs exist: DDS replays the logs and errors it kept as soon as these are listened to.
       replay = [];
       for (const streamId of ['Stdout', 'Stderr', 'Logging', 'Extension']) await listen(streamId);
