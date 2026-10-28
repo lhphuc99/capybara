@@ -104,6 +104,18 @@ describe('state stores in MCP', () => {
     expect(noStoresText(session)).toContain('but not Redux, Zustand, XState, MobX, TanStack Query, SWR or React Context state.');
   });
 
+  it('says what a Flutter app read through the Dart VM service shows, rather than asking to update an npm package', () => {
+    const session: SessionMeta = {
+      info: { id: 'f1', appName: 'shop', platform: 'ios', sdk: { name: 'dart-vm-service', version: '0.6.0' }, startedAt: 0 },
+      connected: true,
+      lastSeen: 0,
+      eventCount: 0,
+    };
+    const text = noStoresText(session);
+    expect(text).toContain('read through the Dart VM service');
+    expect(text).not.toMatch(/npm|init\(\)|Update it/);
+  });
+
   it('lists the newest of same-named stores and leaves out library contexts', () => {
     const store = (id: string, label: string, extra: Partial<StateStoreInfo> = {}): StoreEntry => ({
       info: { id, library: id.split(':')[0] as StateStoreInfo['library'], label, via: 'shim', actions: true, ...extra },

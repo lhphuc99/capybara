@@ -496,6 +496,32 @@ describe('access control', () => {
     expect(await statusOf(elsewhere)).toBe(200);
   });
 
+  it.skipIf(!lan)('takes the address of a Flutter app only from this machine, even with remote UI', async () => {
+    await start({ remoteUi: true });
+    const attached: string[] = [];
+    server!.setFlutterAttach(async (uri) => {
+      attached.push(uri);
+      return { appName: 'shop' };
+    });
+    const mine = viewer();
+    await mine.opened;
+    const device = connect('/viewer', { origin: `http://127.0.0.1:${port}` }, { localAddress: lan });
+    await device.opened;
+    expect((await mine.next((m) => m.t === 'init')).server.flutter).toEqual({ attach: true });
+    expect((await device.next((m) => m.t === 'init')).server.flutter).toEqual({ attach: false });
+
+    device.send({ t: 'attach', id: 'd1', uri: 'http://127.0.0.1:50300/abc=/' });
+    expect(await device.next((m) => m.t === 'result')).toEqual({
+      t: 'result',
+      id: 'd1',
+      ok: false,
+      error: 'Only the computer Capybara runs on can add Flutter apps',
+    });
+    mine.send({ t: 'attach', id: 'm1', uri: 'http://127.0.0.1:50300/abc=/' });
+    expect(await mine.next((m) => m.t === 'result')).toEqual({ t: 'result', id: 'm1', ok: true, result: { appName: 'shop' } });
+    expect(attached).toEqual(['http://127.0.0.1:50300/abc=/']);
+  });
+
   it.skipIf(!lan)('lets other devices in and out as remote UI is turned on and off while running', async () => {
     await start();
     const elsewhere = { localAddress: lan };

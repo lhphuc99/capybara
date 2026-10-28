@@ -1,5 +1,14 @@
 import { parseArgs } from 'node:util';
-import { DEFAULT_PORT, libraryTitle, parsePath, type NetworkEntry, type SessionMeta, type StatePath } from '@capybara-devtools/protocol';
+import {
+  DEFAULT_PORT,
+  FLUTTER_VM_SDK,
+  isFlutterSession,
+  libraryTitle,
+  parsePath,
+  type NetworkEntry,
+  type SessionMeta,
+  type StatePath,
+} from '@capybara-devtools/protocol';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
@@ -39,7 +48,7 @@ import { clock, newest, pickSession, sessionHeader, sessionLine } from './mcp-te
 import { registerWriteTools, WRITE_INSTRUCTIONS } from './mcp-writes.js';
 import { resolveProjectDir, setupGuide } from './setup-guide.js';
 
-const INSTRUCTIONS = `Capybara records what a React Native or web app in development is doing: console logs, network requests (fetch, XHR, WebSocket), storage (localStorage, sessionStorage, cookies, AsyncStorage, MMKV) and state (Redux, Zustand, XState, MobX, TanStack Query, SWR, React Context). These tools read the Capybara server running on this computer. To add Capybara to an app, call get_setup_guide, which works before Capybara runs, and make the changes it lists.
+const INSTRUCTIONS = `Capybara records what a React Native, Flutter or web app in development is doing: logs, network requests (fetch, XHR, WebSocket), storage (localStorage, sessionStorage, cookies, AsyncStorage, MMKV) and state (Redux, Zustand, XState, MobX, TanStack Query, SWR, React Context). Flutter apps started with flutter run show up without a package, with print, debugPrint and developer.log output, Flutter errors and their HTTP requests; the Dart and Flutter MCP server (dart mcp-server) is the one for their code, hot reload and widget tree. These tools read the Capybara server running on this computer. To add Capybara to an app, call get_setup_guide, which works before Capybara runs, and make the changes it lists.
 
 Tools use the newest connected app, one on this computer first, unless you pass a session id from list_sessions. Ids from get_network work with get_request, get_websocket and diagnose_request. get_state lists the state stores; pass a store's id or label to get_state for its current state, to get_state_actions for what changed and which action changed it, or to get_queries for TanStack Query and SWR entries. Lists show the newest entries; pass "after" with the last seq you saw to get only newer ones, or "before" to page back. Values that look like credentials (Authorization, cookies, tokens, passwords) are hidden.
 
@@ -274,7 +283,9 @@ export function createMcpServer(connection: ViewerConnection, options: McpOption
         const lines = [`${sessionHeader(meta)}: ${matched.length} of ${requests.length} requests match.`];
         if (meta.info.attachedLate) {
           lines.push(
-            `Capybara started reading this app at ${clock(meta.info.startedAt)}, after it had started, so requests from before then are missing; reloading the app records them from the start.`,
+            `Capybara started reading this app at ${clock(meta.info.startedAt)}, after it had started, so requests from before then are missing; ${
+              isFlutterSession(meta.info) ? 'a hot restart (R in flutter run)' : 'reloading the app'
+            } records them from the start.`,
           );
         }
         if (omitted > 0) lines.push(`Showing the newest ${shown.length}; pass before: ${shown[0]!.seq} for older ones.`);
@@ -381,7 +392,11 @@ export function createMcpServer(connection: ViewerConnection, options: McpOption
           const totals = await Promise.all(
             adapters.map((adapter) => connection.storage(id, 'entries', { adapter: adapter.id }).then((listing) => listing.total, () => undefined)),
           );
-          if (adapters.length === 0) return `${sessionHeader(meta)} has no storage Capybara can read.`;
+          if (adapters.length === 0) {
+            return meta.info.sdk.name === FLUTTER_VM_SDK
+              ? `${sessionHeader(meta)} is read through the Dart VM service, which shows its logs, Flutter errors and HTTP requests. Its storage needs the Capybara package for Flutter, which is coming to pub.dev.`
+              : `${sessionHeader(meta)} has no storage Capybara can read.`;
+          }
           return [`${sessionHeader(meta)} storage:`, ...adapters.map((adapter, index) => adapterLine(adapter, totals[index]))].join('\n');
         }
         if (args.key !== undefined) {
@@ -568,12 +583,12 @@ export function createMcpServer(connection: ViewerConnection, options: McpOption
     {
       title: 'How to add Capybara to an app',
       description:
-        "Says how to add Capybara to a web or React Native app (Vite, Next.js, Expo, React Native and others): the install command, the file that calls init(), where to import it, and what the app's state libraries need, worked out from its package.json. Call it when asked to set up, install or add Capybara, then make the changes it lists. It changes no file and works before Capybara runs.",
+        "Says how to add Capybara to a web, React Native or Flutter app (Vite, Next.js, Expo, React Native, Flutter and others): the install command, the file that calls init(), where to import it, and what the app's state libraries need, worked out from its package.json or pubspec.yaml. Call it when asked to set up, install or add Capybara, then make the changes it lists. It changes no file and works before Capybara runs.",
       inputSchema: {
         projectDir: z
           .string()
           .optional()
-          .describe("Absolute path of the app's folder, the one with its package.json. Defaults to the folder this server was started in."),
+          .describe("Absolute path of the app's folder, the one with its package.json or pubspec.yaml. Defaults to the folder this server was started in."),
       },
       annotations: reads,
     },

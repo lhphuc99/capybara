@@ -1,0 +1,15 @@
+include: ../analysis_options.yaml
+
+analyzer:
+  exclude:
+    - build/**
+    - android/**
+    - ios/**
+    - linux/**
+    - macos/**
+    - windows/**
+
+linter:
+  rules:
+    # Printing is what most of its buttons are for.
+    avoid_print: false

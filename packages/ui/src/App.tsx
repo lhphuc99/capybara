@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { AppearanceMenu } from './components/AppearanceMenu';
+import { AttachFlutterButton } from './components/AttachFlutter';
 import { EmptyState } from './components/EmptyState';
 import { HintBanner } from './components/HintBanner';
 import { RemoteAccess } from './components/RemoteAccess';
@@ -98,6 +99,7 @@ export function App() {
           </div>
         )}
         <ConnectionBadge status={status} session={session} />
+        <AttachFlutterButton />
         <RemoteAccess />
         <AppearanceMenu />
       </header>

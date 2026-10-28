@@ -37,6 +37,29 @@ describe('fetchLatestVersions', () => {
     expect(await fetchLatestVersions('https://registry.example/', fetchImpl)).toEqual({ 'capybara-devtools': '0.3.0' });
   });
 
+  it('reads the Flutter package from pub.dev, under its pub name', async () => {
+    const requested: string[] = [];
+    const fetchImpl = (async (url: string | URL | Request) => {
+      const href = String(url);
+      requested.push(href);
+      if (href === 'https://pub.example/api/packages/capybara_devtools') {
+        return Response.json({ name: 'capybara_devtools', latest: { version: '0.1.2' } });
+      }
+      return new Response('{"error":"Not found"}', { status: 404 });
+    }) as typeof fetch;
+    expect(await fetchLatestVersions('https://registry.example/', fetchImpl, 'https://pub.example/')).toEqual({
+      capybara_devtools: '0.1.2',
+    });
+    expect(requested).toContain('https://pub.example/api/packages/capybara_devtools');
+  });
+
+  it('says nothing about the Flutter package before it is on pub.dev', async () => {
+    const { fetchImpl } = registry({ 'capybara-devtools': '0.6.0' });
+    expect(await fetchLatestVersions('https://registry.example/', fetchImpl, 'https://pub.example')).toEqual({
+      'capybara-devtools': '0.6.0',
+    });
+  });
+
   it('gives undefined when nothing could be read, e.g. offline', async () => {
     const { fetchImpl } = registry({ 'capybara-devtools': 0 });
     expect(await fetchLatestVersions('https://registry.example/', fetchImpl)).toBeUndefined();

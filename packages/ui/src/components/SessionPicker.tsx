@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { describeSession, formatClock, platformLabel } from '../format';
 import { useListKeys } from '../listKeys';
 import { removeSession, selectSession, type SessionState } from '../store';
+import { AttachFlutterMenuItem } from './AttachFlutter';
 
 interface Props {
   sessions: Record<string, SessionState>;
@@ -81,46 +82,49 @@ export function SessionPicker({ sessions, selectedId }: Props) {
       </button>
 
       {open && (
-        <div className="picker-menu" role="listbox" aria-label="Apps" ref={menuRef}>
-          {list.map((session, index) => {
-            const { info, connected } = session.meta;
-            return (
-              <div
-                key={info.id}
-                role="option"
-                aria-selected={info.id === selectedId}
-                tabIndex={info.id === tabbable ? 0 : -1}
-                data-row={info.id}
-                className="picker-item"
-                onClick={() => choose(info.id)}
-                onKeyDown={(event) => onItemKey(event, index)}
-              >
-                <span className={`dot ${connected ? 'on' : 'off'}`} />
-                <span className="picker-text">
-                  <span className="picker-title">
-                    {info.appName} <span className="tag">{platformLabel(info.platform)}</span>
+        <div className="picker-menu">
+          <div role="listbox" aria-label="Apps" ref={menuRef}>
+            {list.map((session, index) => {
+              const { info, connected } = session.meta;
+              return (
+                <div
+                  key={info.id}
+                  role="option"
+                  aria-selected={info.id === selectedId}
+                  tabIndex={info.id === tabbable ? 0 : -1}
+                  data-row={info.id}
+                  className="picker-item"
+                  onClick={() => choose(info.id)}
+                  onKeyDown={(event) => onItemKey(event, index)}
+                >
+                  <span className={`dot ${connected ? 'on' : 'off'}`} />
+                  <span className="picker-text">
+                    <span className="picker-title">
+                      {info.appName} <span className="tag">{platformLabel(info.platform)}</span>
+                    </span>
+                    <small>
+                      {describeSession(info) || 'Unknown device'}
+                      {session.meta.address && ` · from ${session.meta.address}`} · {connected ? 'started' : 'offline since'}{' '}
+                      {formatClock(connected ? info.startedAt : session.meta.lastSeen)}
+                    </small>
                   </span>
-                  <small>
-                    {describeSession(info) || 'Unknown device'}
-                    {session.meta.address && ` · from ${session.meta.address}`} · {connected ? 'started' : 'offline since'}{' '}
-                    {formatClock(connected ? info.startedAt : session.meta.lastSeen)}
-                  </small>
-                </span>
-                {!connected && (
-                  <button
-                    type="button"
-                    className="btn small"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      removeSession(info.id);
-                    }}
-                  >
-                    Remove
-                  </button>
-                )}
-              </div>
-            );
-          })}
+                  {!connected && (
+                    <button
+                      type="button"
+                      className="btn small"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        removeSession(info.id);
+                      }}
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <AttachFlutterMenuItem onAttached={() => setOpen(false)} />
         </div>
       )}
     </div>

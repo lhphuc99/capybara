@@ -2,7 +2,7 @@
 
 # Capybara
 
-Debug React Native and web apps from one place: logs, network (including WebSockets), storage and state (Redux, Zustand, XState, MobX, TanStack Query, SWR, React Context), streamed live to a local UI.
+Debug React Native, Flutter and web apps from one place: logs, network (including WebSockets), storage and state (Redux, Zustand, XState, MobX, TanStack Query, SWR, React Context), streamed live to a local UI.
 
 **[Website](https://capybara.lhphuc.com)** · [Download](https://capybara.lhphuc.com/#download)
 
@@ -59,6 +59,31 @@ The desktop app reuses a running CLI server, including its Metro configuration. 
 MMKV versions here are those of the [`react-native-mmkv`](https://github.com/mrousavy/react-native-mmkv) package, not of the Tencent MMKV core it bundles (the core is at 2.x). Targets are **3.x and 4.x**; 2.x needs React Native's legacy architecture and is out of scope. Automated checks run against the published JS sources of **3.3.3 and 4.3.2** (and 2.12.2, which shares the 3.x hook), with a simulated native boundary (including Nitro's frozen prototypes). After building, run `npm run test:mmkv-compat -w capybara-devtools` to repeat this matrix. It downloads integrity-pinned source archives to a temporary directory, without installing dependencies into your app. Pass a cache directory after `--` to use pre-downloaded archives.
 
 Native **react-native-mmkv 4.3.2** and **3.3.3** have been verified end to end on an iOS simulator, and 4.3.2 also on an Android emulator (Expo SDK 57, React Native 0.86, Hermes), each with a separate test app holding synthetic data: [`packages/cli/test/native-fixture`](packages/cli/test/native-fixture/README.md) and [`packages/cli/test/native-fixture-mmkv3`](packages/cli/test/native-fixture-mmkv3/README.md). The same apps run on the web through react-native-web, where `packages/cli/scripts/check-mmkv-web.mjs` checks MMKV's web storage through the web SDK. Metro discovery has not been run on a physical device yet.
+
+### Flutter — no package needed
+
+Run the app in debug mode with `flutter run`, or from VS Code or Android Studio, then start Capybara on the same computer (`npx capybara-devtools`, `npm start` here, or the desktop app). Capybara finds the app within a few seconds and reads it through the Dart VM service, as Flutter DevTools does: no package, no code changes. It shows:
+
+- `print`, `debugPrint` and `developer.log` output, including what was logged before Capybara attached;
+- Flutter errors (build, layout, assertions) with their stack: the app's own frames show, Flutter's and the Dart SDK's are folded into a line per package you can open;
+- HTTP requests with their headers and bodies: everything that goes through dart:io's `HttpClient` (`package:http`, dio, `Image.network`, chopper), and cupertino_http and cronet_http, which report to the same profile.
+
+How it works and what to know:
+
+- `flutter run` and IDEs start a Dart Development Service (DDS) beside each app. Capybara looks for those processes, asks the app's VM service where its DDS is, and connects to DDS as one more client, beside the IDE and DevTools. It never connects to the VM service directly, which could keep DDS from starting.
+- It only reads, apart from switching on dart:io's HTTP profiling for the app (what DevTools' Network tab does), which it switches off again when it stops, if it was the one that switched it on. The app keeps request and response bodies in memory while profiling is on.
+- Requests made before Capybara attached are missing, and the Network tab says so; a hot restart (R in `flutter run`) records them from the start. Each hot restart is a new session, as a reload is for a web page.
+- Not through the VM service: WebSocket messages (the handshake shows as a request with status 101), storage and state. These need the Capybara package for Flutter, which is coming to pub.dev. Errors in async code nobody awaited appear only in the device log.
+- Release builds have no VM service, so Capybara reads nothing from them; profile builds show logs and requests.
+- An app started some other way, or with `--no-dds`, does not show up on its own. Give Capybara the address `flutter run` prints ("A Dart VM Service on … is available at: http://127.0.0.1:…/…=/"):
+
+  ```bash
+  npm start -- --flutter-vm-service http://127.0.0.1:50300/abc=/   # repeatable
+  npm start -- --no-flutter                                        # don't read Flutter apps
+  ```
+
+  Or paste it in the UI: **Connect a Flutter app…** in the top bar, the last item of the app menu, or the Flutter tab of the start page. The address lets whoever has it run code in the app, so Capybara takes only addresses on this computer, only from the UI on this computer, and never stores or shows it. In the desktop app, **Settings › Read Flutter Apps Through the Dart VM Service** turns it on and off.
+- Checked with Flutter 3.47.8 (Dart 3.13.7) on an iOS simulator and an Android emulator, against [`dart/example`](dart/README.md), whose buttons make each kind of log, error and request. Flutter desktop, web and physical devices have not been tried yet. `CAPYBARA_DEBUG=1` prints why an app is not read.
 
 ### Web (React, Vite, Next.js client)
 
@@ -276,7 +301,7 @@ For Claude Desktop, Cursor and other clients, add it to their MCP settings:
 
 ### Set up Capybara with an AI assistant
 
-With the MCP server added, ask the assistant to "set up Capybara in this project" (in Claude Code, `/mcp__capybara__setup` does the same). It calls `get_setup_guide`, which reads the app's package.json and lockfile and says what to change in that app: the SDK to install with its package manager, the file that calls `init()` and where to import it (`instrumentation-client.ts` in Next.js 15.3 and later, an entry file of its own with Expo Router), and the line each state library needs. The guide changes no file: the assistant makes the changes, and once the app runs, checks with `list_sessions` that it connects. At a monorepo's root the guide lists the apps to choose from.
+With the MCP server added, ask the assistant to "set up Capybara in this project" (in Claude Code, `/mcp__capybara__setup` does the same). It calls `get_setup_guide`, which reads the app's package.json and lockfile (or a Flutter app's pubspec.yaml) and says what to change in that app: the SDK to install with its package manager, the file that calls `init()` and where to import it (`instrumentation-client.ts` in Next.js 15.3 and later, an entry file of its own with Expo Router), and the line each state library needs. The guide changes no file: the assistant makes the changes, and once the app runs, checks with `list_sessions` that it connects. At a monorepo's root the guide lists the apps to choose from.
 
 An assistant without the MCP server gets the same guide from a command, followed by how to add the server:
 
@@ -286,7 +311,7 @@ npx capybara-devtools setup-guide            # the app in this folder, or pass i
 
 | Tool | What it does |
 | --- | --- |
-| `get_setup_guide` | How to add Capybara to an app, worked out from its package.json. Works before Capybara runs |
+| `get_setup_guide` | How to add Capybara to an app, worked out from its package.json or pubspec.yaml. Works before Capybara runs |
 | `list_sessions` | Connected apps and their session ids |
 | `get_logs` | Logs, filtered by level, text or `/regex/` and source (uncaught errors, unhandled rejections); one entry in full by `seq` |
 | `get_network` | Requests and WebSockets, one per line, filtered by status (`404`, `5xx`, `failed`), method, URL (with `inContent`, also headers, bodies and WebSocket messages), type and duration |
@@ -314,7 +339,7 @@ npm run example:nextjs  # Next.js App Router with a route handler, http://localh
 npm run example:expo    # Expo Go; no Capybara SDK unless EXPO_PUBLIC_CAPYBARA_SDK=1
 ```
 
-Each example has a store of each state library and a React Context, with buttons that change them. The Expo example loads no Capybara SDK by default, so it shows what Capybara reads through Metro, AsyncStorage included. Start it with `EXPO_PUBLIC_CAPYBARA_SDK=1 npm run example:expo` to load the SDK, for the State tab and storage that updates as the app writes it.
+Each example has a store of each state library and a React Context, with buttons that change them. The Flutter example app is in [`dart/example`](dart/README.md), with a mock API (`node dart/example/tool/mock_server.mjs`) and a script that presses its buttons through the Dart VM service. The Expo example loads no Capybara SDK by default, so it shows what Capybara reads through Metro, AsyncStorage included. Start it with `EXPO_PUBLIC_CAPYBARA_SDK=1 npm run example:expo` to load the SDK, for the State tab and storage that updates as the app writes it.
 
 ## Packages
 

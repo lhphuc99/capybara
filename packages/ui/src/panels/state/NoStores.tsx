@@ -1,4 +1,4 @@
-import { METRO_SDK, type Platform } from '@capybara-devtools/protocol';
+import { FLUTTER_VM_SDK, METRO_SDK, type Platform } from '@capybara-devtools/protocol';
 import type { ReactNode } from 'react';
 import { EmptyPanel } from '../../components/EmptyMessage';
 import type { SessionState } from '../../store';
@@ -23,6 +23,16 @@ export function NoStores({
             React Context state. Add it to the app to see its stores:
           </p>
           <Code>{`import { init } from '@capybara-devtools/react-native';\n\nif (__DEV__) init();`}</Code>
+        </EmptyPanel>
+      );
+    }
+    if (info.sdk.name === FLUTTER_VM_SDK) {
+      return (
+        <EmptyPanel title="State needs the Capybara package for Flutter">
+          <p>
+            Through the Dart VM service, Capybara reads the app's logs, Flutter errors and HTTP requests, but not its state. The package
+            for Flutter that reads Riverpod, Bloc and other stores is coming to pub.dev.
+          </p>
         </EmptyPanel>
       );
     }

@@ -198,6 +198,7 @@ const PLATFORM_LABELS: Record<Platform, string> = {
   android: 'Android',
   windows: 'Windows',
   macos: 'macOS',
+  linux: 'Linux',
   unknown: 'App',
 };
 

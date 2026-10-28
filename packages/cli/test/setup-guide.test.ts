@@ -273,7 +273,9 @@ describe('setup guide', () => {
 
   it('says where to look when there is no package.json', () => {
     const empty = project({});
-    expect(guide(empty)).toBe(`There is no package.json in ${empty}. Call get_setup_guide again with projectDir set to the folder of the app, the one with its package.json.`);
+    expect(guide(empty)).toBe(
+      `There is no package.json or pubspec.yaml in ${empty}. Call get_setup_guide again with projectDir set to the folder of the app, the one with its package.json or pubspec.yaml.`,
+    );
     expect(guide(empty, 'cli')).toContain('Run `npx capybara-devtools setup-guide <folder>` with the folder of the app');
   });
 
@@ -307,5 +309,65 @@ describe('setup guide', () => {
     await runSetupGuide(['--help'], '0.3.1');
     expect(output).toMatch(/^Usage: capybara setup-guide \[folder\]/);
     await expect(runSetupGuide(['a', 'b'], '0.3.1')).rejects.toThrow('Pass one folder, not 2.');
+  });
+});
+
+const PUBSPEC = `name: shop
+description: "A new Flutter project."
+publish_to: 'none'
+
+environment:
+  sdk: ^3.8.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  dio: ^5.4.0
+  # Local data
+  shared_preferences: ^2.3.0
+  flutter_riverpod: ^3.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+`;
+
+describe('setup guide for Flutter', () => {
+  it('finds a Flutter app by its pubspec.yaml and says there is nothing to add', () => {
+    const dir = project({ 'pubspec.yaml': PUBSPEC, 'ios/Runner/Info.plist': '', 'android/app/build.gradle': '' });
+    const detection = detectProject(dir);
+    expect(detection).toEqual({
+      type: 'flutter',
+      project: { dir, name: 'shop', platforms: ['ios', 'android'], dependencies: ['flutter', 'dio', 'shared_preferences', 'flutter_riverpod'] },
+    });
+    const text = guide(dir);
+    expect(text).toContain('# Add Capybara to shop');
+    expect(text).toContain('There is nothing to change in the app');
+    expect(text).toContain('this app uses dio');
+    expect(text).toContain('(this app uses flutter_riverpod, shared_preferences)');
+    expect(text).toContain('Call list_sessions');
+    expect(text).not.toMatch(/npm install|init\(\)/);
+    expect(guide(dir, 'cli')).toContain('claude mcp add capybara');
+  });
+
+  it('keeps a Flutter app that has a package.json for its tooling a Flutter app', () => {
+    const dir = project({ 'pubspec.yaml': PUBSPEC, 'package.json': { name: 'shop-tools', devDependencies: { prettier: '3.0.0' } } });
+    expect(detectProject(dir).type).toBe('flutter');
+  });
+
+  it('lists the Flutter apps of a Dart workspace', () => {
+    const dir = project({
+      'pubspec.yaml': 'name: repo\npublish_to: none\nenvironment:\n  sdk: ^3.8.0\nworkspace:\n  - packages/core\n  - apps/shop\n',
+      'packages/core/pubspec.yaml': 'name: core\nresolution: workspace\ndependencies:\n  meta: ^1.0.0\n',
+      'apps/shop/pubspec.yaml': PUBSPEC,
+    });
+    expect(detectProject(dir)).toEqual({ type: 'flutter-workspace', dir, apps: [join(dir, 'apps/shop')] });
+    expect(guide(dir)).toContain(`- ${join(dir, 'apps/shop')}: Flutter app`);
+  });
+
+  it('is not fooled by a Dart package that is not a Flutter app', () => {
+    const dir = project({ 'pubspec.yaml': 'name: tool\ndependencies:\n  args: ^2.0.0\n' });
+    expect(detectProject(dir).type).toBe('missing');
+    expect(guide(dir)).toContain('no package.json or pubspec.yaml');
   });
 });

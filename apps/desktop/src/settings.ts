@@ -13,9 +13,17 @@ export interface DesktopSettings {
   /** Read React Native apps without the SDK through Metro. */
   metro: boolean;
   metroPorts: number[];
+  /** Read Flutter apps started with flutter run through the Dart VM service. */
+  flutter: boolean;
 }
 
-export const DEFAULT_SETTINGS: DesktopSettings = { appearance: 'system', remoteUi: false, metro: true, metroPorts: [8081, 8082] };
+export const DEFAULT_SETTINGS: DesktopSettings = {
+  appearance: 'system',
+  remoteUi: false,
+  metro: true,
+  metroPorts: [8081, 8082],
+  flutter: true,
+};
 
 export function isAppearance(value: unknown): value is Appearance {
   return APPEARANCES.includes(value as Appearance);
@@ -38,6 +46,7 @@ export function parseSettings(text: string | undefined): DesktopSettings {
     remoteUi: saved.remoteUi === true,
     metro: saved.metro !== false,
     metroPorts: ports.length > 0 ? [...new Set(ports)].sort((a, b) => a - b) : DEFAULT_SETTINGS.metroPorts,
+    flutter: saved.flutter !== false,
   };
 }
 
@@ -59,6 +68,7 @@ export interface SettingsMenuActions {
   setRemoteUi(on: boolean): void;
   setMetro(on: boolean): void;
   setMetroPort(port: number, on: boolean): void;
+  setFlutter(on: boolean): void;
 }
 
 export function settingsMenu({ settings, ownServer, remoteUiFromEnv }: SettingsMenuState, actions: SettingsMenuActions): MenuItemConstructorOptions {
@@ -93,6 +103,13 @@ export function settingsMenu({ settings, ownServer, remoteUiFromEnv }: SettingsM
           checked: settings.metroPorts.includes(port),
           click: (item: { checked: boolean }) => actions.setMetroPort(port, item.checked),
         })),
+      },
+      {
+        label: 'Read Flutter Apps Through the Dart VM Service',
+        type: 'checkbox',
+        checked: settings.flutter,
+        enabled: ownServer,
+        click: (item) => actions.setFlutter(item.checked),
       },
     ],
   };

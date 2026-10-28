@@ -1,7 +1,8 @@
-import type { LogLevel } from '@capybara-devtools/protocol';
+import { isFlutterSession, type LogLevel } from '@capybara-devtools/protocol';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { memo, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
 import { CopyButton } from '../components/CopyButton';
+import { DartPackagesContext } from '../components/DartStack';
 import { EmptyMessage } from '../components/EmptyMessage';
 import { JsonTree } from '../components/JsonTree';
 import { LogTable } from '../components/LogTable';
@@ -148,96 +149,102 @@ export function LogsPanel({ session }: { session: SessionState }) {
   const tabbable = activeSeq !== null && openableIndex.has(activeSeq) ? activeSeq : openableSeqs[0];
 
   return (
-    <section className="panel">
-      <div className="toolbar">
-        <SearchInput value={query} onChange={setQuery} placeholder="Filter logs (text or /regex/)" invalid={matcher?.invalid} />
-        <div className="chips">
-          {LEVELS.map(({ level, label }) => (
-            <button
-              key={level}
-              type="button"
-              className={`chip chip-${level}`}
-              aria-pressed={!hidden.has(level)}
-              onClick={() => toggleLevel(level)}
-            >
-              {label} <span className="n">{counts[level]}</span>
-            </button>
-          ))}
-        </div>
-        <span className="spacer" />
-        <span className="note">
-          {visible.length === logs.length ? `${logs.length} entries` : `${visible.length} of ${logs.length}`}
-        </span>
-        <CopyButton
-          className="btn"
-          label={visible.length === logs.length ? 'Copy all logs as text' : 'Copy the logs that match the filters as text'}
-          text={() => visible.map(logEntryText).join('\n')}
-          toast={`Copied ${visible.length} log ${visible.length === 1 ? 'entry' : 'entries'} to the clipboard`}
-          disabled={visible.length === 0}
-        >
-          {visible.length === logs.length ? 'Copy all' : `Copy ${visible.length}`}
-        </CopyButton>
-        <button type="button" className="btn" onClick={() => clearSession(session.meta.info.id)} disabled={logs.length === 0}>
-          Clear
-        </button>
-      </div>
-
-      <div className="list-wrap">
-        {logs.length === 0 ? (
-          <EmptyMessage title="No logs yet">
-            <p>Anything the app writes with console.log, console.warn or console.error shows up here.</p>
-          </EmptyMessage>
-        ) : (
-          <div
-            className="log-list"
-            ref={listRef}
-            onScroll={() => {
-              if (!revealing.current) onScroll();
-            }}
-            onWheel={onWheel}
-          >
-            <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
-              {virtualizer.getVirtualItems().map((item) => {
-                const entry = visible[item.index]!;
-                return (
-                  <div
-                    key={item.key}
-                    data-index={item.index}
-                    ref={virtualizer.measureElement}
-                    className={`log-row level-${entry.level}`}
-                    style={{
-                      position: 'absolute',
-                      top: 0,
-                      left: 0,
-                      width: '100%',
-                      transform: `translateY(${item.start}px)`,
-                      ...(entry.depth && ({ '--depth': entry.depth } as CSSProperties)),
-                    }}
-                  >
-                    <LogRow
-                      entry={entry}
-                      index={openableIndex.get(entry.seq) ?? -1}
-                      expanded={isGroup(entry) ? groupOpen(entry, toggledGroups) : expanded.has(entry.seq)}
-                      tabbable={entry.seq === tabbable}
-                      onToggle={(seq) => {
-                        setActiveSeq(seq);
-                        toggleEntry(entry);
-                      }}
-                      onKey={onLineKey}
-                    />
-                  </div>
-                );
-              })}
-            </div>
+    <DartPackagesContext.Provider value={session.meta.info.dartPackages}>
+      <section className="panel">
+        <div className="toolbar">
+          <SearchInput value={query} onChange={setQuery} placeholder="Filter logs (text or /regex/)" invalid={matcher?.invalid} />
+          <div className="chips">
+            {LEVELS.map(({ level, label }) => (
+              <button
+                key={level}
+                type="button"
+                className={`chip chip-${level}`}
+                aria-pressed={!hidden.has(level)}
+                onClick={() => toggleLevel(level)}
+              >
+                {label} <span className="n">{counts[level]}</span>
+              </button>
+            ))}
           </div>
-        )}
-        {!follow && visible.length > 0 && (
-          <button type="button" className="btn primary jump" onClick={() => setFollow(true)}>
-            ↓ Jump to latest
+          <span className="spacer" />
+          <span className="note">
+            {visible.length === logs.length ? `${logs.length} entries` : `${visible.length} of ${logs.length}`}
+          </span>
+          <CopyButton
+            className="btn"
+            label={visible.length === logs.length ? 'Copy all logs as text' : 'Copy the logs that match the filters as text'}
+            text={() => visible.map(logEntryText).join('\n')}
+            toast={`Copied ${visible.length} log ${visible.length === 1 ? 'entry' : 'entries'} to the clipboard`}
+            disabled={visible.length === 0}
+          >
+            {visible.length === logs.length ? 'Copy all' : `Copy ${visible.length}`}
+          </CopyButton>
+          <button type="button" className="btn" onClick={() => clearSession(session.meta.info.id)} disabled={logs.length === 0}>
+            Clear
           </button>
-        )}
-      </div>
-    </section>
+        </div>
+
+        <div className="list-wrap">
+          {logs.length === 0 ? (
+            <EmptyMessage title="No logs yet">
+              <p>
+                {isFlutterSession(session.meta.info)
+                  ? 'What the app prints with print, debugPrint or developer.log shows up here, and so do Flutter errors.'
+                  : 'Anything the app writes with console.log, console.warn or console.error shows up here.'}
+              </p>
+            </EmptyMessage>
+          ) : (
+            <div
+              className="log-list"
+              ref={listRef}
+              onScroll={() => {
+                if (!revealing.current) onScroll();
+              }}
+              onWheel={onWheel}
+            >
+              <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
+                {virtualizer.getVirtualItems().map((item) => {
+                  const entry = visible[item.index]!;
+                  return (
+                    <div
+                      key={item.key}
+                      data-index={item.index}
+                      ref={virtualizer.measureElement}
+                      className={`log-row level-${entry.level}`}
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        transform: `translateY(${item.start}px)`,
+                        ...(entry.depth && ({ '--depth': entry.depth } as CSSProperties)),
+                      }}
+                    >
+                      <LogRow
+                        entry={entry}
+                        index={openableIndex.get(entry.seq) ?? -1}
+                        expanded={isGroup(entry) ? groupOpen(entry, toggledGroups) : expanded.has(entry.seq)}
+                        tabbable={entry.seq === tabbable}
+                        onToggle={(seq) => {
+                          setActiveSeq(seq);
+                          toggleEntry(entry);
+                        }}
+                        onKey={onLineKey}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          {!follow && visible.length > 0 && (
+            <button type="button" className="btn primary jump" onClick={() => setFollow(true)}>
+              ↓ Jump to latest
+            </button>
+          )}
+        </div>
+      </section>
+    </DartPackagesContext.Provider>
   );
 }
 

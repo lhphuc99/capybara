@@ -60,6 +60,14 @@ beforeEach(() => {
 afterEach(() => act(() => root.unmount()));
 
 describe('StatePanel', () => {
+  it('says that a Flutter app read through the Dart VM service needs the package for state, not an npm update', async () => {
+    const flutter = session(false);
+    flutter.meta.info = { ...flutter.meta.info, platform: 'ios', sdk: { name: 'dart-vm-service', version: '0.6.0' }, plugins: undefined };
+    await act(async () => root.render(<StatePanel session={flutter} />));
+    expect(container.textContent).toContain('State needs the Capybara package for Flutter');
+    expect(container.textContent).not.toMatch(/npm install|init\(\)/);
+  });
+
   it('says when the app did not list its stores, instead of only showing how to add some', async () => {
     stateCommand.mockRejectedValue(new Error('The app did not answer in time'));
     await act(async () => root.render(<StatePanel session={session(false)} />));

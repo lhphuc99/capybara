@@ -1,9 +1,10 @@
-import type { SerializedValue, StatePath } from '@capybara-devtools/protocol';
+import { parseDartStack, type SerializedValue, type StatePath } from '@capybara-devtools/protocol';
 import { useMemo, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react';
 import { formatKey, isSpecial, preview, valueText } from '../format';
 import { movedIndex } from '../listKeys';
 import { ancestorKeys, pathKey } from '../state';
 import { CopyButton } from './CopyButton';
+import { DartStackRows, useDartPackages } from './DartStack';
 
 interface Props {
   value: SerializedValue;
@@ -84,6 +85,12 @@ function TreeNode({ name, value, depth, path, tree }: NodeProps) {
   const id = tree.highlight && path ? pathKey(path) : undefined;
   const [open, setOpen] = useState(() => depth < tree.expandDepth || (id !== undefined && tree.above!.has(id)));
   const [shown, setShown] = useState(PAGE);
+  const packages = useDartPackages();
+  // An error's stack from a Dart app is shown frame by frame, with Flutter's and the SDK's own frames folded.
+  const dartStack = useMemo(
+    () => (name === 'stack' && typeof value === 'string' && !tree.raw ? parseDartStack(value, packages) : undefined),
+    [name, value, tree.raw, packages],
+  );
   const children = childrenOf(value, tree.raw);
   const indent = { paddingLeft: depth * 14 };
   const changed = id !== undefined && tree.highlight!.has(id) ? ' changed' : '';
@@ -96,6 +103,19 @@ function TreeNode({ name, value, depth, path, tree }: NodeProps) {
         <span className="t-punct">: </span>
       </>
     );
+
+  if (dartStack) {
+    return (
+      <>
+        <div className={`tree-row${changed}`} style={indent} role="treeitem" aria-level={depth + 1} tabIndex={tabIndex}>
+          <span className="caret-space" />
+          <span>{label}</span>
+          <CopyButton label="Copy the stack" text={() => String(value)} toast="Copied the stack" />
+        </div>
+        <DartStackRows lines={dartStack} depth={depth + 1} />
+      </>
+    );
+  }
 
   if (!children) {
     const { onLoad } = tree;

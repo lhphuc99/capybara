@@ -1,0 +1,13 @@
+name: capybara_workspace
+publish_to: none
+
+environment:
+  sdk: ^3.8.0
+
+# Members are listed one by one: globs need Dart 3.11, and CI also checks Flutter 3.32 (Dart 3.8).
+workspace:
+  - example
+  - packages/capybara_devtools
+
+dev_dependencies:
+  flutter_lints: ^6.0.0

@@ -26,6 +26,7 @@ import { localWebOrigin, needsSymbolication, symbolicateEvents } from './symboli
 
 export { reverseAndroidPorts } from './adb.js';
 export { DEFAULT_METRO_PORTS, startMetroBridge, type MetroBridge, type MetroBridgeOptions } from './metro.js';
+export { startFlutterBridge, type FlutterBridge, type FlutterBridgeOptions } from './flutter.js';
 export { fetchLatestVersions } from './updates.js';
 
 export interface ServerOptions {
@@ -71,6 +72,11 @@ export interface CapybaraServer {
   hint(message: string): void;
   /** Turns `remoteUi` on or off while running; other devices with the UI open are let go when it goes off. */
   setRemoteUi(enabled: boolean): void;
+  /**
+   * What reads Flutter apps through the Dart VM service, so viewers on this computer can hand it the address of
+   * an app it did not find itself. Undefined when it is off.
+   */
+  setFlutterAttach(attach: ((uri: string) => Promise<{ appName: string }>) | undefined): void;
 }
 
 interface Session {
@@ -131,10 +137,11 @@ export function createServer(options: ServerOptions): CapybaraServer {
     options.onHint?.(message);
     hints.push(message);
     if (hints.length > MAX_HINTS) hints.shift();
-    broadcast({ t: 'server', server: serverInfo() });
+    broadcastServer();
   };
 
   let remoteUi = options.remoteUi === true;
+  let flutterAttach: ((uri: string) => Promise<{ appName: string }>) | undefined;
   const mayView = (req: http.IncomingMessage) => remoteUi || isLocalConnection(req.socket);
   /** Whether each viewer is on this machine, so others can be let go when remote UI is turned off. */
   const localViewers = new WeakMap<WebSocket, boolean>();
@@ -225,20 +232,26 @@ export function createServer(options: ServerOptions): CapybaraServer {
   const history = (s: Session): CapybaraEvent[] =>
     [...s.events, ...s.state.stores.values(), ...s.state.events].sort((a, b) => a.seq - b.seq);
 
-  const serverInfo = (): ServerInfo => ({
+  const serverInfo = (viewer?: WebSocket): ServerInfo => ({
     version: options.version ?? '0.0.0',
     port,
     addresses: reachableAddresses(bound),
     remoteUi,
     latest,
     hints: [...hints],
+    // Addresses are taken only from this computer, so other devices are told they can't give one.
+    ...(flutterAttach && { flutter: { attach: viewer !== undefined && localViewers.get(viewer) === true } }),
   });
+
+  const broadcastServer = () => {
+    for (const viewer of viewers) if (viewer.readyState === WebSocket.OPEN) send(viewer, { t: 'server', server: serverInfo(viewer) });
+  };
 
   const refreshLatest = async () => {
     const found = await options.latestVersions?.().catch(() => undefined);
     if (!found || closed || JSON.stringify(found) === JSON.stringify(latest)) return;
     latest = found;
-    broadcast({ t: 'server', server: serverInfo() });
+    broadcastServer();
   };
 
   const prune = () => {
@@ -420,6 +433,20 @@ export function createServer(options: ServerOptions): CapybaraServer {
     send(session.socket, { t: 'command', id, plugin: message.plugin, method: message.method, params: message.params });
   };
 
+  // The address grants running code in the app: it is taken only from this computer and never stored or sent on.
+  const attachFlutter = async (viewer: WebSocket, message: Extract<ViewerToServer, { t: 'attach' }>) => {
+    const fail = (error: string) => send(viewer, { t: 'result', id: message.id, ok: false, error });
+    if (!localViewers.get(viewer)) return fail('Only the computer Capybara runs on can add Flutter apps');
+    if (!flutterAttach) return fail('Reading Flutter apps is turned off');
+    if (typeof message.uri !== 'string') return fail('No address given');
+    try {
+      const result = await flutterAttach(message.uri.trim());
+      send(viewer, { t: 'result', id: message.id, ok: true, result });
+    } catch (error) {
+      fail(error instanceof Error ? error.message : String(error));
+    }
+  };
+
   const diagnose = async (viewer: WebSocket, message: Extract<ViewerToServer, { t: 'diagnose' }>) => {
     const fail = (error: string) => send(viewer, { t: 'result', id: message.id, ok: false, error });
     const session = sessions.get(message.sessionId);
@@ -478,7 +505,7 @@ export function createServer(options: ServerOptions): CapybaraServer {
   const acceptViewer = (ws: WebSocket) => {
     watch(ws);
     viewers.add(ws);
-    send(ws, { t: 'init', server: serverInfo(), sessions: [...sessions.values()].map(meta) });
+    send(ws, { t: 'init', server: serverInfo(ws), sessions: [...sessions.values()].map(meta) });
 
     ws.on('message', (raw) => {
       const message = parse<ViewerToServer>(raw);
@@ -492,6 +519,9 @@ export function createServer(options: ServerOptions): CapybaraServer {
           break;
         case 'diagnose':
           void diagnose(ws, message);
+          break;
+        case 'attach':
+          void attachFlutter(ws, message);
           break;
         case 'clear': {
           const session = sessions.get(message.sessionId);
@@ -578,7 +608,13 @@ export function createServer(options: ServerOptions): CapybaraServer {
       if (!enabled) {
         for (const viewer of viewers) if (!localViewers.get(viewer)) viewer.close(1008, 'Only the computer Capybara runs on can open it now');
       }
-      broadcast({ t: 'server', server: serverInfo() });
+      broadcastServer();
+    },
+
+    setFlutterAttach(next) {
+      if (flutterAttach === next) return;
+      flutterAttach = next;
+      broadcastServer();
     },
   };
 }

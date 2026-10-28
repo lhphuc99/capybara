@@ -1,5 +1,6 @@
 import {
   currentStores,
+  FLUTTER_VM_SDK,
   formatOp,
   formatPath,
   isSpecial,
@@ -92,6 +93,12 @@ export function noStoresText(session: SessionMeta): string {
       return (
         `${name} is read through Metro without the SDK, which shows logs, network and storage but not ${LIBRARY_NAMES} state. ` +
         'Add the SDK to the app to see its stores.'
+      );
+    }
+    if (info.sdk.name === FLUTTER_VM_SDK) {
+      return (
+        `${name} is read through the Dart VM service, which shows its logs, Flutter errors and HTTP requests but not its state. ` +
+        'State needs the Capybara package for Flutter, which is coming to pub.dev.'
       );
     }
     if (!info.plugins) {

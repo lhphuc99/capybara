@@ -10,6 +10,13 @@ coverage/
 examples/expo/ios/
 examples/expo/android/
 
+# Dart and Flutter. Only under dart/: a bare build/ would also hide apps/desktop/build/, which holds the icons.
+# The workspace's pubspec.lock is left out because it resolves packages, which CI checks on every Flutter version.
+dart/**/.dart_tool/
+dart/**/build/
+dart/**/.flutter-plugins*
+dart/pubspec.lock
+
 # Desktop app packages (electron-builder)
 apps/desktop/release/
 

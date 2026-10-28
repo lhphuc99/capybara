@@ -1,4 +1,4 @@
-import { METRO_SDK, type StorageAdapterInfo, type StorageEntries, type StorageEntry } from '@capybara-devtools/protocol';
+import { FLUTTER_VM_SDK, METRO_SDK, type StorageAdapterInfo, type StorageEntries, type StorageEntry } from '@capybara-devtools/protocol';
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { CopyButton } from '../components/CopyButton';
 import { EmptyPanel } from '../components/EmptyMessage';
@@ -163,6 +163,16 @@ function StorageBrowser({ session }: { session: SessionState }) {
           <p>Open the app screen that uses AsyncStorage or MMKV, then scan again.</p>
           <p>MMKV v2/v3: use the store again after connecting. MMKV v4: new instances can be detected after connecting; existing private instances may remain unavailable.</p>
           <button type="button" className="btn" onClick={() => setScanToken((n) => n + 1)}>Find stores</button>
+        </EmptyPanel>
+      );
+    }
+    if (session.meta.info.sdk.name === FLUTTER_VM_SDK) {
+      return (
+        <EmptyPanel title="Storage needs the Capybara package for Flutter">
+          <p>
+            Through the Dart VM service, Capybara reads the app's logs, Flutter errors and HTTP requests. Reading and editing
+            SharedPreferences, secure storage and Hive needs the package for Flutter, which is coming to pub.dev.
+          </p>
         </EmptyPanel>
       );
     }

@@ -54,3 +54,48 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+
+  # The Flutter example app and the Dart packages: a pub workspace in dart/, outside the npm workspaces.
+  dart:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The oldest Flutter the packages support, and the one dart/.fvmrc pins for development.
+        flutter: [floor, pinned]
+    defaults:
+      run:
+        working-directory: dart
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - id: version
+        run: echo "flutter=$(if [ '${{ matrix.flutter }}' = floor ]; then echo 3.32.8; else jq -r .flutter .fvmrc; fi)" >> "$GITHUB_OUTPUT"
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ steps.version.outputs.flutter }}
+          cache: true
+      - run: flutter pub get
+      # The formatter's output changes between Dart versions, so only the pinned one checks it.
+      - if: matrix.flutter == 'pinned'
+        run: dart format --output=none --set-exit-if-changed .
+      - run: flutter analyze --fatal-infos
+      - run: flutter test
+        working-directory: dart/example
+      # The contract tests run the package against Capybara's server built from this checkout; elsewhere they skip.
+      - if: matrix.flutter == 'pinned'
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - if: matrix.flutter == 'pinned'
+        run: npm ci && npx tsc -b packages/cli
+        working-directory: .
+      - run: flutter test
+        working-directory: dart/packages/capybara_devtools
+      # The package has to build for the web, where it does nothing yet; the runners have Chrome.
+      - if: matrix.flutter == 'pinned'
+        run: flutter test --platform chrome test/web_test.dart
+        working-directory: dart/packages/capybara_devtools
