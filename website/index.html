@@ -3,10 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Capybara · Debug React Native and web apps from one place</title>
+    <title>Capybara · Debug React Native, Flutter and web apps from one place</title>
     <meta
       name="description"
-      content="Debug React Native and web apps from one place: logs, network (including WebSockets), storage and state from Redux, Zustand, TanStack Query, SWR and React Context, streamed live to a local UI. Free and open source for macOS, Windows and Linux."
+      content="Debug React Native, Flutter and web apps from one place: logs, network (including WebSockets), storage and state from Redux, Zustand, TanStack Query, SWR, React Context, Riverpod and Bloc, streamed live to a local UI. Free and open source for macOS, Windows and Linux."
     />
     <meta name="color-scheme" content="light dark" />
     <link rel="icon" type="image/svg+xml" href="./src/assets/logo.svg" />
@@ -16,7 +16,7 @@
     <meta property="og:title" content="Capybara" />
     <meta
       property="og:description"
-      content="Debug React Native and web apps from one place: logs, network (including WebSockets), storage and app state, streamed live to a local UI."
+      content="Debug React Native, Flutter and web apps from one place: logs, network (including WebSockets), storage and app state, streamed live to a local UI."
     />
     <meta property="og:image" content="https://capybara.lhphuc.com/og.png" />
     <meta name="twitter:card" content="summary_large_image" />
@@ -49,10 +49,11 @@
         <div class="container hero-inner">
           <div class="hero-text">
             <p class="eyebrow">Free and open source · macOS, Windows, Linux</p>
-            <h1>Debug React Native and web apps from one place</h1>
+            <h1>Debug React Native, Flutter and web apps from one place</h1>
             <p class="lead">
-              Logs, network (including WebSockets), storage, and state from Redux, Zustand, TanStack Query, SWR and React Context,
-              streamed live from your app to a local UI. On React Native 0.85 and later, logs, network and storage need no SDK.
+              Logs, network (including WebSockets), storage, and state from Redux, Zustand, TanStack Query, SWR, React Context,
+              Riverpod and Bloc, streamed live from your app to a local UI. React Native 0.85 and later needs no SDK for logs, network
+              and storage, and Flutter none for logs and network.
             </p>
             <div class="actions">
               <a class="button primary" id="hero-download" href="#download">Download</a>
@@ -122,9 +123,9 @@
               <div class="showcase-text">
                 <h3>See your app's state, change by change</h3>
                 <p>
-                  Redux, Zustand, TanStack Query, SWR and React Context in one tab: every action with what it changed, the current
-                  state, and query caches you can refetch or invalidate. Redux Toolkit, zustand's <code>devtools()</code> and
-                  Context need no extra code.
+                  Redux, Zustand, TanStack Query, SWR and React Context in one tab, and Riverpod and Bloc in Flutter: every action
+                  with what it changed, the current state, and query caches you can refetch or invalidate. Redux Toolkit, zustand's
+                  <code>devtools()</code> and Context need no extra code.
                 </p>
               </div>
               <figure class="window">
@@ -175,8 +176,8 @@
               <div class="showcase-text">
                 <h3>Read and edit storage</h3>
                 <p>
-                  localStorage, sessionStorage and cookies on the web. AsyncStorage and MMKV in React Native. Values refresh as the
-                  app writes them, and JSON opens as a tree.
+                  localStorage, sessionStorage and cookies on the web. AsyncStorage and MMKV in React Native. SharedPreferences,
+                  secure storage and Hive in Flutter. Values refresh as the app writes them, and JSON opens as a tree.
                 </p>
               </div>
               <figure class="window">
@@ -244,12 +245,18 @@
 
           <div class="feature-grid">
             <article class="feature">
-              <h3>No SDK for React Native</h3>
-              <p>On React Native 0.85 and later, Capybara attaches through Metro. Start your app as usual; nothing to install in it.</p>
+              <h3>No SDK for React Native or Flutter</h3>
+              <p>
+                Capybara attaches to React Native 0.85 and later through Metro, and to Flutter apps through the Dart VM service. Start
+                your app as usual; nothing to install in it.
+              </p>
             </article>
             <article class="feature">
               <h3>Requests and WebSockets</h3>
-              <p>fetch, XHR and axios with headers, bodies and timing. WebSocket messages both ways, with socket.io frames decoded.</p>
+              <p>
+                fetch, XHR and axios, or dio and <code>package:http</code> in Flutter, with headers, bodies and timing. WebSocket
+                messages both ways, with socket.io frames decoded.
+              </p>
             </article>
             <article class="feature">
               <h3>Ask your AI assistant</h3>
@@ -288,6 +295,37 @@
                   </li>
                   <li>Start Metro and run your app on a simulator or phone.</li>
                   <li>Your app appears, with its logs, network and storage.</li>
+                </ol>
+              </div>
+            </article>
+            <article class="step">
+              <div class="step-text">
+                <div class="step-head">
+                  <h3>Flutter</h3>
+                  <span class="tag tag-ok">Works today</span>
+                </div>
+                <p>
+                  Logs, errors and requests with no package. Storage, state and WebSockets come with
+                  <a href="https://pub.dev/packages/capybara_devtools">capybara_devtools</a> from pub.dev.
+                </p>
+              </div>
+              <div class="step-body">
+                <ol>
+                  <li>
+                    Open the <a href="#download">desktop app</a>, or run Capybara in a terminal:
+                    <div class="code-block">
+                      <pre><code>npx capybara-devtools</code></pre>
+                      <button type="button" class="copy-button" data-copy>Copy</button>
+                    </div>
+                  </li>
+                  <li>Run your app in debug mode with <code>flutter run</code>, or from your IDE. It appears on its own.</li>
+                  <li>
+                    For storage, state and WebSockets, add the package and run the app inside <code>Capybara.run</code>:
+                    <div class="code-block">
+                      <pre><code>flutter pub add capybara_devtools</code></pre>
+                      <button type="button" class="copy-button" data-copy>Copy</button>
+                    </div>
+                  </li>
                 </ol>
               </div>
             </article>
@@ -350,7 +388,8 @@ if (import.meta.env.DEV) init({ appName: 'My web app' });</code></pre>
           </div>
           <p class="note centered">
             Older React Native, editing storage, or state in a React Native app? Add <code>@capybara-devtools/react-native</code>;
-            the <a href="https://github.com/lhphuc99/capybara#readme">README</a> shows how.
+            the <a href="https://github.com/lhphuc99/capybara#readme">README</a> shows how, and how to add
+            <a href="https://github.com/lhphuc99/capybara#flutter--the-capybara-package">Riverpod and Bloc</a> to a Flutter app.
             <span class="npm-soon-note">Until the packages are on npm, <a href="https://github.com/lhphuc99/capybara#quick-start">run Capybara from source</a>.</span>
           </p>
           <p class="sr-only" aria-live="polite" id="copy-status"></p>
@@ -365,7 +404,7 @@ if (import.meta.env.DEV) init({ appName: 'My web app' });</code></pre>
           <ol class="flow">
             <li>
               <strong>Your app</strong>
-              <span>React Native through Metro, or a web page with the SDK</span>
+              <span>React Native through Metro, Flutter through the Dart VM service, or the SDK in your app</span>
             </li>
             <li>
               <strong>Capybara</strong>
