@@ -2,7 +2,7 @@ import { initClient, type CapybaraClient, type CommonInitOptions, type StorageAd
 import { windowErrorsPlugin } from './errors.js';
 import { cookieStorage, webStorage } from './storage.js';
 
-export const SDK_VERSION = '0.5.1';
+export const SDK_VERSION = '0.6.0';
 
 /** Traffic of a dev server's own tooling: Next.js error overlay requests and its HMR socket. */
 const DEV_SERVER_NOISE = [/\/__nextjs_[\w-]+(\?|$)/, /\/_next\/webpack-hmr(\?|$)/];

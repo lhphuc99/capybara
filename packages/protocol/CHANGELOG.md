@@ -1,5 +1,13 @@
 # @capybara-devtools/protocol
 
+## 0.6.0
+
+### Minor Changes
+
+- 44f046f: Flutter apps show up without a package. Capybara reads apps that `flutter run` or an IDE started in debug mode through the Dart VM service, as Flutter DevTools does: `print`, `debugPrint` and `developer.log` output (with what was logged before Capybara attached), Flutter errors with their stack, and HTTP requests with their bodies, from `package:http`, dio, `HttpClient`, `Image.network`, cupertino_http and cronet_http. It finds them on its own; one it did not find can be given by the address `flutter run` prints, with `--flutter-vm-service <address>` or in the UI (**Connect a Flutter app…** in the top bar or the app menu, and the Flutter tab of the start page, which now has a tab per platform), and `--no-flutter` (or Settings in the desktop app) turns it off. Dart stacks show the app's own frames, with Flutter's and the Dart SDK's folded into a line per package. It only reads, and switches on dart:io's HTTP profiling, which it switches off again when done. `capybara setup-guide` and the MCP server's `get_setup_guide` recognise Flutter apps by their pubspec.yaml, and `get_logs` lists the app's own frames of a Dart stack first.
+  
+  The Capybara package for Flutter, `capybara_devtools` on pub.dev with `capybara_devtools_riverpod` and `capybara_devtools_bloc`, adds storage, state and WebSocket messages, and Capybara speaks to it: the State tab groups Riverpod, Bloc and watched notifiers, a store can be marked secret (secure storage), whose values `capybara mcp` hides, the State and Storage tabs show Dart code for apps with the package, the update notice says `flutter pub add`, `setup-guide` lists the package's steps from the app's dependencies, and an app running the package that cannot reach Capybara, as an iPhone, is told its address through the VM service.
+
 ## 0.5.1
 
 ### Patch Changes
