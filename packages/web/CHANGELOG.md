@@ -1,5 +1,12 @@
 # @capybara-devtools/web
 
+## 0.6.1
+
+### Patch Changes
+
+- @capybara-devtools/core@0.6.1
+  - @capybara-devtools/protocol@0.6.1
+
 ## 0.6.0
 
 ### Patch Changes

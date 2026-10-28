@@ -1,5 +1,11 @@
 # @capybara-devtools/core
 
+## 0.6.1
+
+### Patch Changes
+
+- @capybara-devtools/protocol@0.6.1
+
 ## 0.6.0
 
 ### Patch Changes
