@@ -4,8 +4,20 @@
 export const CLI_PACKAGE = 'capybara-devtools';
 /** The SDK packages. Each sends its package name as `sdk.name`. */
 export const SDK_PACKAGES = ['@capybara-devtools/web', '@capybara-devtools/react-native'] as const;
+/**
+ * The Flutter package on pub.dev, which sends its name as `sdk.name`. It has versions of its own, so unlike the
+ * npm packages it is never compared with the server's version.
+ */
+export const PUB_PACKAGES = ['capybara_devtools'] as const;
 
-/** Newest published version by npm package name, e.g. `{ 'capybara-devtools': '0.2.0' }`. */
+export function isPubPackage(name: string): boolean {
+  return (PUB_PACKAGES as readonly string[]).includes(name);
+}
+
+/**
+ * Newest published version by package name, e.g. `{ 'capybara-devtools': '0.2.0' }`: npm names, and pub.dev
+ * names for the Flutter package (with underscores, so the two never collide).
+ */
 export type LatestVersions = Record<string, string>;
 
 const SEMVER = /^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/;

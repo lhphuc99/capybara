@@ -102,6 +102,11 @@ export function diagnose(sessionId: string, requestId: string): Promise<NetworkD
   return request((id) => ({ t: 'diagnose', id, sessionId, requestId }), 60_000);
 }
 
+/** Asks the server to read the Flutter app at this Dart VM service address; resolves to the app's name. */
+export function attachFlutter(uri: string): Promise<{ appName: string }> {
+  return request((id) => ({ t: 'attach', id, uri }), 20_000);
+}
+
 export function storageCommand<M extends keyof StorageCommands>(
   sessionId: string,
   method: M,

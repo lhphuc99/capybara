@@ -1,3 +1,4 @@
+import { isFlutterSession } from '@capybara-devtools/protocol';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { EmptyMessage } from '../components/EmptyMessage';
@@ -165,7 +166,8 @@ export function NetworkPanel({ session }: { session: SessionState }) {
       {session.meta.info.attachedLate && (
         <p className="callout inline">
           Capybara started reading this app at {formatClock(session.meta.info.startedAt)}, after it had started, so earlier requests
-          are missing. Reload the app to record them from the start.
+          are missing. {isFlutterSession(session.meta.info) ? 'Hot restart the app (R in flutter run)' : 'Reload the app'} to record
+          them from the start.
         </p>
       )}
 

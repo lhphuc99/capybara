@@ -60,6 +60,24 @@ beforeEach(() => {
 afterEach(() => act(() => root.unmount()));
 
 describe('StatePanel', () => {
+  it('says that a Flutter app read through the Dart VM service needs the package for state, not an npm update', async () => {
+    const flutter = session(false);
+    flutter.meta.info = { ...flutter.meta.info, platform: 'ios', sdk: { name: 'dart-vm-service', version: '0.6.0' }, plugins: undefined };
+    await act(async () => root.render(<StatePanel session={flutter} />));
+    expect(container.textContent).toContain('State needs the Capybara package for Flutter');
+    expect(container.textContent).not.toMatch(/npm install|init\(\)/);
+  });
+
+  it('shows a Flutter app with the package how to add its observers, not init()', async () => {
+    stateCommand.mockResolvedValue([]);
+    const flutter = session(false);
+    flutter.meta.info = { ...flutter.meta.info, platform: 'android', sdk: { name: 'capybara_devtools', version: '0.1.0' }, plugins: ['state'] };
+    await act(async () => root.render(<StatePanel session={flutter} />));
+    expect(container.textContent).toContain('CapybaraRiverpodObserver');
+    expect(container.textContent).toContain("Capybara.watch('settings', settings)");
+    expect(container.textContent).not.toMatch(/npm install|init\(\)/);
+  });
+
   it('says when the app did not list its stores, instead of only showing how to add some', async () => {
     stateCommand.mockRejectedValue(new Error('The app did not answer in time'));
     await act(async () => root.render(<StatePanel session={session(false)} />));

@@ -5,6 +5,8 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { CLI_PACKAGE, DEFAULT_PORT, isNewerVersion } from '@capybara-devtools/protocol';
 import { reverseAndroidPorts } from './adb.js';
+import { isLoopbackVmUri, redactVmUri } from './flutter-discovery.js';
+import { startFlutterBridge, type FlutterBridge } from './flutter.js';
 import { DEFAULT_METRO_PORTS, startMetroBridge, type MetroBridge } from './metro.js';
 import { readPort, remoteUiFrom, updateCheckFrom } from './config.js';
 import { reachableAddresses } from './server.js';
@@ -23,11 +25,14 @@ Options:
       --allow-origin <url>  Extra origin allowed to open the UI socket, repeatable
       --metro-port <port>   Metro dev server to read React Native apps from, repeatable (default ${DEFAULT_METRO_PORTS.join(', ')})
       --no-metro            Only show apps that have the SDK
+      --flutter-vm-service <uri>  Also read the Flutter app at this Dart VM service address, repeatable
+      --no-flutter          Don't read Flutter apps started with flutter run
       --no-update-check     Don't look up newer versions on npm (or set $CAPYBARA_NO_UPDATE_CHECK)
   -h, --help                Show this help
   -v, --version             Show the version
 
-Set $CAPYBARA_DEBUG=1 to print what goes wrong when reading apps through Metro, e.g. why one does not show up.
+Set $CAPYBARA_DEBUG=1 to print what goes wrong when reading apps through Metro or the Dart VM service, e.g. why
+one does not show up.
 `;
 
 const version = (JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string })
@@ -89,6 +94,14 @@ for (const value of values.metro ? (values['metro-port'] ?? DEFAULT_METRO_PORTS.
   metroPorts.push(metroPort);
 }
 
+const flutterUris = values['flutter-vm-service'] ?? [];
+for (const uri of flutterUris) {
+  if (!isLoopbackVmUri(uri)) {
+    console.error(`Invalid Dart VM service address: ${redactVmUri(uri)} (only http or ws addresses on this computer)`);
+    process.exit(1);
+  }
+}
+
 let announced: string | undefined;
 const checkLatest = async () => {
   const latest = await fetchLatestVersions();
@@ -134,10 +147,23 @@ let metroBridge: MetroBridge | undefined;
 if (metroPorts.length > 0) {
   metroBridge = startMetroBridge({ port: started.port, metroPorts, version, onHint: (hint) => server.hint(hint) });
 }
+let flutterBridge: FlutterBridge | undefined;
+if (values.flutter || flutterUris.length > 0) {
+  flutterBridge = startFlutterBridge({
+    port: started.port,
+    version,
+    vmServiceUris: flutterUris,
+    scan: values.flutter,
+    onHint: (hint) => server.hint(hint),
+    addresses: () => reachableAddresses(started.address),
+  });
+  server.setFlutterAttach(flutterBridge.attach);
+}
 if (values.open) openBrowser(`http://${hostOf(address)}:${started.port}`);
 
 const shutdown = () => {
   metroBridge?.stop();
+  flutterBridge?.stop();
   void server.close().finally(() => process.exit(0));
 };
 process.on('SIGINT', shutdown);
@@ -154,6 +180,8 @@ function parseCli() {
       'remote-ui': { type: 'boolean', default: false },
       metro: { type: 'boolean', default: true },
       'metro-port': { type: 'string', multiple: true },
+      flutter: { type: 'boolean', default: true },
+      'flutter-vm-service': { type: 'string', multiple: true },
       'update-check': { type: 'boolean', default: true },
       help: { type: 'boolean', short: 'h' },
       version: { type: 'boolean', short: 'v' },
@@ -185,6 +213,7 @@ function printBanner(actualPort: number, address: string) {
     const ports = metroPorts.map((p) => `localhost:${p}`).join(', ');
     lines.push(`  Metro     ${ports} (React Native apps show up without the SDK)`);
   }
+  if (values.flutter) lines.push('  Flutter   apps started with flutter run show up without a package');
   const machine = listensEverywhere(address) ? '<this machine>' : hostOf(address);
   lines.push('', `  Apps connect to ws://${machine}:${actualPort}/client (React Native finds it through Metro).`, '');
   console.log(lines.join('\n'));

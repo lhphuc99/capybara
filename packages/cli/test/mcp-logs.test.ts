@@ -26,4 +26,22 @@ describe('logText', () => {
       '        at onPress (/app/App.tsx:9:1)',
     ]);
   });
+
+  it('lists where in the app a Flutter error happened, past the frames of Flutter and the Dart SDK', () => {
+    const error = {
+      $t: 'error' as const,
+      name: 'StateError',
+      message: 'Bad state: The cart failed to build',
+      stack: [
+        '#0      ComponentElement.performRebuild (package:flutter/src/widgets/framework.dart:5830:15)',
+        '#1      _rootRun (dart:async/zone.dart:1525:13)',
+        '#2      _CartState.build (package:shop/cart.dart:42:7)',
+        '#3      main (package:shop/main.dart:9:3)',
+      ].join('\n'),
+    };
+    expect(logText(entry(1, { level: 'error', source: 'uncaught', args: [error] }), redact, false).split('\n').slice(1)).toEqual([
+      '    _CartState.build (package:shop/cart.dart:42:7)',
+      '    main (package:shop/main.dart:9:3)',
+    ]);
+  });
 });

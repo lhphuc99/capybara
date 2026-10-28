@@ -4,6 +4,7 @@ import { homedir } from 'node:os';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { parseArgs } from 'node:util';
 import { DEFAULT_PORT, isNewerVersion } from '@capybara-devtools/protocol';
+import { lanAddresses } from './server.js';
 
 export type AppKind = 'vite' | 'next' | 'expo' | 'react-native' | 'web';
 export type PackageManagerName = 'npm' | 'yarn' | 'pnpm' | 'bun';
@@ -59,9 +60,24 @@ export interface NextInfo {
   appRouter: boolean;
 }
 
+export interface FlutterProject {
+  dir: string;
+  name: string;
+  /** Platform folders the app has, e.g. ios, android, macos. */
+  platforms: string[];
+  /** Packages under `dependencies` in pubspec.yaml. */
+  dependencies: string[];
+  /** The Capybara package, when the app depends on it: the version pubspec.lock has, and whether main.dart runs it. */
+  capybara?: { version?: string; running: boolean };
+  /** With a macos folder: whether its debug entitlements let the app connect out, which the package needs. */
+  macosNetworkClient?: boolean;
+}
+
 export type Detection =
   | { type: 'app'; project: AppProject }
   | { type: 'workspace'; dir: string; apps: Array<{ dir: string; kind: AppKind }> }
+  | { type: 'flutter'; project: FlutterProject }
+  | { type: 'flutter-workspace'; dir: string; apps: string[] }
   | { type: 'missing'; dir: string };
 
 export interface GuideOptions {
@@ -337,6 +353,92 @@ function stateLibraries(dependencies: Record<string, string>): StateLibrary[] {
 }
 
 /** Accepts the folder or its package.json, absolute, relative to `cwd` or starting with `~`. */
+interface Pubspec {
+  name?: string;
+  dependencies: string[];
+  /** `flutter: sdk: flutter` under `dependencies`. */
+  flutter: boolean;
+  workspace: string[];
+}
+
+/** pubspec.yaml read line by line, the way `flutter create` and `dart pub add` write it: enough without a YAML parser. */
+function readPubspec(file: string): Pubspec | undefined {
+  let text: string;
+  try {
+    text = readFileSync(file, 'utf8');
+  } catch {
+    return undefined;
+  }
+  const pubspec: Pubspec = { dependencies: [], flutter: false, workspace: [] };
+  let section: string | undefined;
+  let dependency: string | undefined;
+  for (const line of text.split(/\r?\n/)) {
+    if (/^\s*(#|$)/.test(line)) continue;
+    const top = /^([A-Za-z_][\w-]*):\s*(.*?)\s*(#.*)?$/.exec(line);
+    if (top) {
+      section = top[1];
+      if (section === 'name') pubspec.name = top[2]!.replace(/^['"]|['"]$/g, '');
+      continue;
+    }
+    if (section === 'dependencies') {
+      const entry = /^ {2}([A-Za-z_]\w*):/.exec(line);
+      if (entry) {
+        dependency = entry[1]!;
+        pubspec.dependencies.push(dependency);
+      } else if (dependency === 'flutter' && /^\s{4,}sdk:\s*['"]?flutter['"]?\s*$/.test(line)) {
+        pubspec.flutter = true;
+      }
+    } else if (section === 'workspace') {
+      const member = /^\s*-\s*(.+?)\s*$/.exec(line);
+      if (member) pubspec.workspace.push(member[1]!.replace(/^['"]|['"]$/g, '').replace(/\/+$/, ''));
+    }
+  }
+  return pubspec;
+}
+
+const FLUTTER_PLATFORMS = ['ios', 'android', 'macos', 'linux', 'windows', 'web'];
+
+function readText(file: string): string | undefined {
+  try {
+    return readFileSync(file, 'utf8');
+  } catch {
+    return undefined;
+  }
+}
+
+/** The version pubspec.lock has of `name`, looking up the tree as far as a pub workspace keeps it. */
+function lockedVersion(dir: string, name: string): string | undefined {
+  for (let current = dir, i = 0; i < 4; current = dirname(current), i++) {
+    const lock = readText(join(current, 'pubspec.lock'));
+    const match = lock && new RegExp(`\\n  ${name}:\\n(?:    .*\\n)*?    version: "([^"]+)"`).exec(lock);
+    if (match) return match[1];
+    if (lock) return undefined;
+  }
+  return undefined;
+}
+
+function detectFlutter(dir: string): Detection | undefined {
+  const pubspec = readPubspec(join(dir, 'pubspec.yaml'));
+  if (!pubspec) return undefined;
+  if (pubspec.flutter) {
+    const platforms = FLUTTER_PLATFORMS.filter((platform) => existsSync(join(dir, platform)));
+    const project: FlutterProject = { dir, name: pubspec.name ?? basename(dir), platforms, dependencies: pubspec.dependencies };
+    if (pubspec.dependencies.includes(DART_PACKAGE)) {
+      const main = readText(join(dir, 'lib', 'main.dart')) ?? '';
+      project.capybara = { version: lockedVersion(dir, DART_PACKAGE), running: /\bCapybara\.(run|init)\(/.test(main) };
+    }
+    if (platforms.includes('macos')) {
+      project.macosNetworkClient = /com\.apple\.security\.network\.client/.test(
+        readText(join(dir, 'macos', 'Runner', 'DebugProfile.entitlements')) ?? '',
+      );
+    }
+    return { type: 'flutter', project };
+  }
+  if (pubspec.workspace.length === 0) return undefined;
+  const apps = pubspec.workspace.filter((member) => readPubspec(join(dir, member, 'pubspec.yaml'))?.flutter);
+  return { type: 'flutter-workspace', dir, apps: apps.map((member) => join(dir, member)) };
+}
+
 export function resolveProjectDir(target: string, cwd = process.cwd()): string {
   const path = target === '~' || target.startsWith('~/') ? join(homedir(), target.slice(1)) : resolve(cwd, target);
   try {
@@ -348,8 +450,13 @@ export function resolveProjectDir(target: string, cwd = process.cwd()): string {
 
 export function detectProject(dir: string): Detection {
   const pkg = readJson<PackageJson>(join(dir, 'package.json'));
+  // A Flutter app can have a package.json for its tooling; it stays a Flutter app unless that names a JS app.
+  const kind = pkg && appKind(dir, pkg);
+  if (!kind) {
+    const flutter = detectFlutter(dir);
+    if (flutter) return flutter;
+  }
   if (!pkg) return { type: 'missing', dir };
-  const kind = appKind(dir, pkg);
   if (!kind) {
     const apps = workspaceApps(dir, pkg);
     if (apps) return { type: 'workspace', dir, apps };
@@ -694,20 +801,166 @@ function appGuide(project: AppProject, options: GuideOptions): string[] {
   if (project.next) lines.push('- Only the browser side is recorded: logs and requests of server components and route handlers are not.');
   lines.push(`- If Capybara runs on another port (\`--port\` or \`CAPYBARA_PORT\`), pass the same \`port\` to init().`, `- Docs: ${DOCS}`);
 
-  if (options.via === 'cli') {
-    lines.push(
+  if (options.via === 'cli') lines.push(...assistantSection());
+  return lines;
+}
+
+/** For an assistant that ran the CLI: how to get the MCP server, which reads the app once it runs. */
+function assistantSection(): string[] {
+  return [
+    '',
+    '## Let the assistant read the app',
+    '',
+    "Capybara's MCP server lets an AI assistant read the app's logs, network requests, storage and state. In Claude Code:",
+    '',
+    ...code('sh', 'claude mcp add capybara -- npx capybara-devtools mcp'),
+    '',
+    'For other clients, add it to their MCP settings:',
+    '',
+    ...code('json', '{ "mcpServers": { "capybara": { "command": "npx", "args": ["capybara-devtools", "mcp"] } } }'),
+  ];
+}
+
+/** HTTP clients Capybara reads through dart:io's HTTP profile, by package name. */
+const DART_HTTP = ['http', 'dio', 'chopper', 'retrofit', 'cupertino_http', 'cronet_http', 'cached_network_image'];
+const DART_PACKAGE = 'capybara_devtools';
+const RIVERPOD = ['flutter_riverpod', 'hooks_riverpod', 'riverpod'];
+const BLOC = ['flutter_bloc', 'bloc'];
+
+/** The steps that add the Capybara package, picked by what the app depends on. */
+function packageSteps(project: FlutterProject): string[] {
+  const has = (...names: string[]) => names.some((name) => project.dependencies.includes(name));
+  const adds = [DART_PACKAGE, ...(has(...RIVERPOD) ? ['capybara_devtools_riverpod'] : []), ...(has(...BLOC) ? ['capybara_devtools_bloc'] : [])];
+  const steps: string[][] = [
+    [`Add it${adds.length > 1 ? ', with the packages for the app\'s state libraries' : ''}:`, '', ...code('sh', `flutter pub add ${adds.join(' ')}`)],
+    [
+      'In `lib/main.dart`, run the app inside `Capybara.run`, with what `main` did before `runApp`:',
       '',
-      '## Let the assistant read the app',
+      ...code(
+        'dart',
+        `import 'package:capybara_devtools/capybara_devtools.dart';
+
+void main() {
+  Capybara.run(() async {
+    WidgetsFlutterBinding.ensureInitialized();
+    // …what main did before runApp
+    runApp(const MyApp());
+  });
+}`,
+      ),
       '',
-      "Capybara's MCP server lets an AI assistant read the app's logs, network requests, storage and state. In Claude Code:",
+      'Keep a binding of the app\'s own (such as SentryWidgetsFlutterBinding) and the crash reporter\'s setup inside it. In release builds `Capybara.run` only runs its body.',
+    ],
+  ];
+  if (has(...RIVERPOD)) {
+    steps.push([
+      'Add the Riverpod observer to the `ProviderScope`:',
       '',
-      ...code('sh', 'claude mcp add capybara -- npx capybara-devtools mcp'),
-      '',
-      'For other clients, add it to their MCP settings:',
-      '',
-      ...code('json', '{ "mcpServers": { "capybara": { "command": "npx", "args": ["capybara-devtools", "mcp"] } } }'),
-    );
+      ...code('dart', `ProviderScope(observers: const [CapybaraRiverpodObserver()], child: const MyApp())`),
+    ]);
   }
+  if (has(...BLOC)) {
+    steps.push([
+      'Put the Bloc observer in front of the app\'s, inside `Capybara.run`, before any bloc is made:',
+      '',
+      ...code('dart', 'Bloc.observer = CapybaraBlocObserver(parent: Bloc.observer);'),
+    ]);
+  }
+  const storage = [
+    ...(has('shared_preferences')
+      ? ['Capybara.addStorage(CapybaraSharedPreferences.legacy(prefs)); // or .async(…), .withCache(…): the API the app uses']
+      : []),
+    ...(has('flutter_secure_storage') ? ['Capybara.addStorage(CapybaraSecureStorage(secureStorage)); // read-only, values hidden from MCP'] : []),
+    ...(has('hive_ce', 'hive') ? ['Capybara.addStorage(CapybaraHiveBox(box)); // each box the app opens'] : []),
+  ];
+  if (storage.length > 0) steps.push(['Where the app opens its stores, add them:', '', ...code('dart', storage.join('\n'))]);
+  if (has('provider')) {
+    steps.push([
+      'For each ChangeNotifier or ValueNotifier whose state matters, a line where it is made (`read:` gives a ChangeNotifier\'s fields when it has no `toJson()`):',
+      '',
+      ...code('dart', `Capybara.watch('settings', settings);`),
+    ]);
+  }
+  if (has('cupertino_http', 'cronet_http')) {
+    steps.push([
+      'Wrap the cupertino_http or cronet_http client, whose requests the package cannot see otherwise:',
+      '',
+      ...code('dart', 'final client = CapybaraHttpClient(CupertinoClient.defaultSessionConfiguration());'),
+    ]);
+  }
+  if (has('web_socket_channel')) {
+    steps.push([
+      'Wrap each WebSocket channel where it is made, to see its messages:',
+      '',
+      ...code('dart', 'final channel = Capybara.webSocket(WebSocketChannel.connect(url), url: url);'),
+    ]);
+  }
+  if (project.macosNetworkClient === false) {
+    steps.push([
+      'macOS blocks the app from connecting to Capybara: add this to `macos/Runner/DebugProfile.entitlements`:',
+      '',
+      ...code('xml', '<key>com.apple.security.network.client</key>\n<true/>'),
+    ]);
+  }
+  const address = lanAddresses()[0] ?? '<this computer\'s address>';
+  steps.push([
+    `On a phone on Wi‑Fi, and on any iPhone, the app has to be told where Capybara runs: \`flutter run --dart-define=CAPYBARA_HOST=${address}\`. Simulators, emulators, desktops and Android phones on USB need nothing.`,
+  ]);
+  // Everything under a list item is indented, code blocks line by line, or Markdown ends the item.
+  const indent = (line: string) => line.split('\n').map((part) => (part ? `   ${part}` : part));
+  return steps.flatMap((step, index) => [`${index + 1}. ${step[0]}`, ...step.slice(1).flatMap(indent), '']);
+}
+
+function flutterGuide(project: FlutterProject, options: GuideOptions): string[] {
+  const http = DART_HTTP.filter((name) => project.dependencies.includes(name));
+  const capybara = project.capybara;
+  const lines = [
+    `# Add Capybara to ${project.name}`,
+    '',
+    `Flutter app${project.platforms.length > 0 ? ` for ${project.platforms.join(', ')}` : ''}, in ${project.dir}.`,
+    '',
+    `This guide is for Capybara ${options.version}. Capybara reads Flutter apps in debug mode through the Dart VM service, the way Flutter DevTools does, so there is nothing to change in the app for its logs, errors and requests. The Capybara package for Flutter adds its storage, state and WebSocket messages (step 3).`,
+    '',
+    '## 1. Run the app and Capybara',
+    '',
+    '1. Start the app in debug mode with `flutter run` (or from VS Code or Android Studio), on a simulator, an emulator, a desktop or a phone.',
+    '2. Start Capybara on the same computer, or open its desktop app:',
+    '',
+    ...code('sh', 'npx capybara-devtools'),
+    '',
+    'Capybara finds apps that flutter run or an IDE started, within a few seconds. It shows:',
+    '',
+    '- `print`, `debugPrint` and `developer.log` output, with the logs from before it attached;',
+    '- Flutter errors with their stack;',
+    `- HTTP requests with their bodies: those of dart:io's HttpClient (package:http, dio, Image.network), cupertino_http and cronet_http${http.length > 0 ? `; this app uses ${http.join(', ')}` : ''}.`,
+    '',
+    '## 2. Check it',
+    '',
+    options.via === 'mcp'
+      ? '- Call list_sessions: the app is listed with "via Dart VM service". From then on get_logs and get_network read it.'
+      : '- The app shows up in Capybara\'s window, with "via Dart VM service".',
+    '- If it does not, start Capybara with the address flutter run prints ("A Dart VM Service on … is available at"): `npx capybara-devtools --flutter-vm-service <address>`, or paste it in the UI. Run with `CAPYBARA_DEBUG=1` to see why an app is skipped.',
+    '',
+    '## 3. The Capybara package (for storage, state and WebSockets)',
+    '',
+    capybara?.running
+      ? `The app runs ${DART_PACKAGE}${capybara.version ? ` ${capybara.version}` : ''} already. These are the steps, for what is not done yet:`
+      : 'Add it when the app\'s storage, state or WebSocket messages matter, when it runs on a phone that flutter run did not start, or to see errors of futures nobody awaited. With it, Capybara reads the app through the package instead of the Dart VM service.',
+    '',
+    ...packageSteps(project),
+    options.via === 'mcp'
+      ? 'Then call list_sessions: the app is listed with capybara_devtools rather than "via Dart VM service", and get_storage and get_state read it.'
+      : 'Then the app shows up in Capybara with capybara_devtools rather than "via Dart VM service".',
+    '',
+    '## Notes',
+    '',
+    '- Requests the app made before Capybara attached are missing; a hot restart (R in flutter run) records them from the start.',
+    '- With the package, `developer.log` output does not show: send a logger\'s records on with `Capybara.log`.',
+    '- Release builds have no Dart VM service, and the package does nothing in them, so Capybara reads nothing from them. Profile builds show logs and requests.',
+    '- Without the package, errors in async code nobody awaited appear only in the device log.',
+    `- Docs: ${DOCS}`,
+  ];
+  if (options.via === 'cli') lines.push(...assistantSection());
   return lines;
 }
 
@@ -719,7 +972,16 @@ export function setupGuide(dir: string, options: GuideOptions): string {
   const Retry = retry[0]!.toUpperCase() + retry.slice(1);
   switch (detection.type) {
     case 'missing':
-      return `There is no package.json in ${detection.dir}. ${Retry} the folder of the app, the one with its package.json.`;
+      return `There is no package.json or pubspec.yaml in ${detection.dir}. ${Retry} the folder of the app, the one with its package.json or pubspec.yaml.`;
+    case 'flutter':
+      return flutterGuide(detection.project, options).join('\n');
+    case 'flutter-workspace': {
+      if (detection.apps.length === 0) {
+        return `${detection.dir} is the root of a Dart workspace, and none of its members is a Flutter app. ${Retry} the folder of the app.`;
+      }
+      const apps = detection.apps.map((app) => `- ${app}: Flutter app`);
+      return [`${detection.dir} is the root of a Dart workspace. Capybara reads an app, so ${retry} one of these:`, '', ...apps].join('\n');
+    }
     case 'workspace': {
       if (detection.apps.length === 0) {
         return `${detection.dir} is the root of a monorepo, and none of its workspaces looks like a web or React Native app. ${Retry} the folder of the app.`;
@@ -736,8 +998,9 @@ const HELP = `Usage: capybara setup-guide [folder]
 
 Prints how to add Capybara to the app in this folder, or in the one given: the
 install command, the file that calls init(), where to import it and what its
-state libraries need, worked out from its package.json. Written for AI
-assistants: ask yours to run it and follow it. It changes no file.
+state libraries need, worked out from its package.json, or for a Flutter app
+from its pubspec.yaml. Written for AI assistants: ask yours to run it and
+follow it. It changes no file.
 `;
 
 /** `capybara setup-guide`: the guide on stdout, for assistants without the MCP server. */

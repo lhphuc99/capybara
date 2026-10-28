@@ -1,4 +1,11 @@
-import { METRO_SDK, type StorageAdapterInfo, type StorageEntries, type StorageEntry } from '@capybara-devtools/protocol';
+import {
+  FLUTTER_VM_SDK,
+  isPubPackage,
+  METRO_SDK,
+  type StorageAdapterInfo,
+  type StorageEntries,
+  type StorageEntry,
+} from '@capybara-devtools/protocol';
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { CopyButton } from '../components/CopyButton';
 import { EmptyPanel } from '../components/EmptyMessage';
@@ -166,6 +173,34 @@ function StorageBrowser({ session }: { session: SessionState }) {
         </EmptyPanel>
       );
     }
+    if (session.meta.info.sdk.name === FLUTTER_VM_SDK) {
+      return (
+        <EmptyPanel title="Storage needs the Capybara package for Flutter">
+          <p>
+            Through the Dart VM service, Capybara reads the app's logs, Flutter errors and HTTP requests. Reading and editing
+            SharedPreferences, secure storage and Hive needs the package for Flutter:
+          </p>
+          <pre className="code left">flutter pub add capybara_devtools</pre>
+        </EmptyPanel>
+      );
+    }
+    if (isPubPackage(session.meta.info.sdk.name)) {
+      return (
+        <EmptyPanel title="No storage added">
+          <p>Add the stores the app opens:</p>
+          <pre className="code left">{`Capybara.addStorage(CapybaraSharedPreferences.legacy(prefs));
+Capybara.addStorage(CapybaraSecureStorage(secureStorage));
+Capybara.addStorage(CapybaraHiveBox(box));`}</pre>
+        </EmptyPanel>
+      );
+    }
+    if (session.meta.info.platform === 'web') {
+      return (
+        <EmptyPanel title="No storage found">
+          <p>The page's localStorage, sessionStorage and cookies show here once the SDK reads them.</p>
+        </EmptyPanel>
+      );
+    }
     return (
       <EmptyPanel title="No storage configured">
         <p>Pass the storages your app uses to init():</p>
@@ -250,6 +285,11 @@ init({ storage: [asyncStorage(AsyncStorage), mmkvStorage(storage)] });`}</pre>
               >
                 <span>{a.label}</span>
                 {a.readOnly && <span className="tag">read-only</span>}
+                {a.secret && (
+                  <span className="tag" title="Every value is a secret: capybara mcp hides them">
+                    secret
+                  </span>
+                )}
               </button>
             ))}
             {adapter?.note && <p className="adapter-note">{adapter.note}</p>}

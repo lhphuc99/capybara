@@ -1,4 +1,4 @@
-import type { LatestVersions } from './versions.js';
+import { isPubPackage, type LatestVersions } from './versions.js';
 
 /** Bump on breaking changes to any message shape below; the server rejects mismatched clients. */
 export const PROTOCOL_VERSION = 1;
@@ -7,17 +7,30 @@ export const CLIENT_PATH = '/client';
 export const VIEWER_PATH = '/viewer';
 /** `sdk.name` of sessions the server reads from Metro, for React Native apps without the SDK. */
 export const METRO_SDK = 'metro';
+/** `sdk.name` of sessions the server reads through the Dart VM service, for Flutter apps without the Capybara package. */
+export const FLUTTER_VM_SDK = 'dart-vm-service';
+/** Service extensions of the Flutter package. The server leaves apps that register them to the package. */
+export const DART_EXTENSION_PREFIX = 'ext.capybara.';
 
 // ---------------------------------------------------------------------------
 // Sessions
 // ---------------------------------------------------------------------------
 
-export type Platform = 'web' | 'ios' | 'android' | 'windows' | 'macos' | 'unknown';
+export type Platform = 'web' | 'ios' | 'android' | 'windows' | 'macos' | 'linux' | 'unknown';
 
 export interface DeviceInfo {
   model?: string;
   osVersion?: string;
   isEmulator?: boolean;
+}
+
+/**
+ * Dart packages whose stack frames are the app's own rather than a library's. `dirs` maps those found in the
+ * app's package_config.json to their lib folder on this computer, so `package:` URIs can name files.
+ */
+export interface DartPackages {
+  app: string[];
+  dirs?: Record<string, string>;
 }
 
 /** One app launch or page load. */
@@ -36,10 +49,25 @@ export interface SessionInfo {
   /** Names of the plugins the SDK runs, e.g. "network". Older SDKs and Metro sessions leave it out. */
   plugins?: string[];
   /**
-   * Capybara began reading this app through Metro after the app had started, so requests from before `startedAt`
-   * are missing. Its console logs are not: the engine keeps them for a debugger that attaches later.
+   * Capybara began reading this app through Metro or the Dart VM service after the app had started, so requests
+   * from before `startedAt` are missing. Its logs are not: the engine, or the Dart Development Service, keeps them
+   * for a debugger that attaches later.
    */
   attachedLate?: boolean;
+  /** Flutter apps: which packages' stack frames are the app's own. */
+  dartPackages?: DartPackages;
+}
+
+/** A Flutter app, read through the Dart VM service or sending through the Capybara package. */
+export function isFlutterSession(info: Pick<SessionInfo, 'sdk'>): boolean {
+  const name = info.sdk?.name;
+  return name === FLUTTER_VM_SDK || (name !== undefined && isPubPackage(name));
+}
+
+/** Capybara reads the app itself, through Metro or the Dart VM service, instead of the app sending through an SDK. */
+export function readsWithoutSdk(info: Pick<SessionInfo, 'sdk'>): boolean {
+  const name = info.sdk?.name;
+  return name === METRO_SDK || name === FLUTTER_VM_SDK;
 }
 
 // ---------------------------------------------------------------------------
@@ -62,7 +90,8 @@ export type SerializedValue =
 
 export type SpecialValue =
   | { $t: 'undefined' }
-  | { $t: 'number'; v: 'NaN' | 'Infinity' | '-Infinity' | '-0' }
+  /** `v` is 'NaN', 'Infinity', '-Infinity', '-0', or the digits of a Dart int too big for a JS number to hold. */
+  | { $t: 'number'; v: string }
   | { $t: 'bigint'; v: string }
   | { $t: 'symbol'; v: string }
   | { $t: 'function'; name: string }
@@ -206,7 +235,18 @@ export interface StorageChangePayload {
   key?: string;
 }
 
-export type StateLibrary = 'redux' | 'zustand' | 'xstate' | 'mobx' | 'tanstack-query' | 'swr' | 'context';
+/** `riverpod`, `bloc` and `watch` (Listenables and streams the app watches) come from the Capybara package for Flutter. */
+export type StateLibrary =
+  | 'redux'
+  | 'zustand'
+  | 'xstate'
+  | 'mobx'
+  | 'tanstack-query'
+  | 'swr'
+  | 'context'
+  | 'riverpod'
+  | 'bloc'
+  | 'watch';
 
 /** Keys from the root of a store's state or an entry's data, e.g. `['todos', 0, 'title']`. */
 export type StatePath = Array<string | number>;
@@ -221,7 +261,7 @@ export interface StateStoreInfo {
   library: StateLibrary;
   label: string;
   /** How the SDK found the store. */
-  via: 'shim' | 'enhancer' | 'connect' | 'subscribe' | 'client' | 'cache' | 'fiber' | 'module';
+  via: 'shim' | 'enhancer' | 'connect' | 'subscribe' | 'client' | 'cache' | 'fiber' | 'module' | 'observer';
   /** False when changes come with a diff but no action name. */
   actions: boolean;
   /** Commands its entries support. Only stores with entries (TanStack Query, SWR) have any. */
@@ -319,6 +359,8 @@ export interface StorageAdapterInfo {
   readOnly: boolean;
   canClear: boolean;
   note?: string;
+  /** Every value is a secret, as in a keychain, so `capybara mcp` hides them all. Missing from the JS SDKs. */
+  secret?: boolean;
 }
 
 export interface StorageEntry {
@@ -412,6 +454,12 @@ export interface ServerInfo {
    * through Metro. The CLI also prints them; the desktop app has nowhere else to show them. Missing from older servers.
    */
   hints?: string[];
+  /**
+   * The server reads Flutter apps through the Dart VM service. `attach` says this viewer may give it the VM service
+   * address of an app it did not find itself: only viewers on this computer may. Missing from older servers and with
+   * `--no-flutter`.
+   */
+  flutter?: { attach: boolean };
 }
 
 /** One step of a diagnosis: a browser rule that passed or failed, or something the server saw on the way. */
@@ -438,7 +486,13 @@ export type ViewerToServer =
   | { t: 'diagnose'; id: string; sessionId: string; requestId: string }
   /** `scope: 'state'` clears only the state timeline; servers before 0.3.0 ignore it and clear everything. */
   | { t: 'clear'; sessionId: string; scope?: 'state' }
-  | { t: 'remove'; sessionId: string };
+  | { t: 'remove'; sessionId: string }
+  /**
+   * Read the Flutter app at this Dart VM service address, e.g. `http://127.0.0.1:50300/abc=/`. The address grants
+   * running code in the app, so the server takes it only from a viewer on this computer and only for a loopback
+   * host, never stores or repeats it, and answers with a CommandResult whose `result` is `{ appName }`.
+   */
+  | { t: 'attach'; id: string; uri: string };
 
 export type ServerToViewer =
   | { t: 'init'; server: ServerInfo; sessions: SessionMeta[] }
@@ -452,6 +506,7 @@ export type ServerToViewer =
   | { t: 'cleared'; sessionId: string; scope?: 'state' }
   | CommandResult;
 
+export * from './dart-stack.js';
 export * from './limits.js';
 export * from './session-model.js';
 export * from './state-model.js';

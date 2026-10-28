@@ -1,5 +1,7 @@
 import {
   currentStores,
+  FLUTTER_VM_SDK,
+  isPubPackage,
   formatOp,
   formatPath,
   isSpecial,
@@ -94,6 +96,12 @@ export function noStoresText(session: SessionMeta): string {
         'Add the SDK to the app to see its stores.'
       );
     }
+    if (info.sdk.name === FLUTTER_VM_SDK) {
+      return (
+        `${name} is read through the Dart VM service, which shows its logs, Flutter errors and HTTP requests but not its state. ` +
+        'State needs the Capybara package for Flutter (flutter pub add capybara_devtools); get_setup_guide says how to add it.'
+      );
+    }
     if (!info.plugins) {
       return `${name} uses ${info.sdk.name} ${info.sdk.version}, which does not report ${LIBRARY_NAMES} state. Update it to the latest version.`;
     }
@@ -103,6 +111,12 @@ export function noStoresText(session: SessionMeta): string {
     );
   }
   if (!session.connected) return `${name} is not connected, and its history has no state stores.`;
+  if (isPubPackage(info.sdk.name)) {
+    return (
+      `${name} has no state stores yet. Riverpod and Bloc show up once their observers are added ` +
+      '(CapybaraRiverpodObserver in the ProviderScope, CapybaraBlocObserver as Bloc.observer), notifiers with Capybara.watch().'
+    );
+  }
   return (
     `${name} has no state stores yet. ${LIBRARY_NAMES} stores show up once the app registers them; ` +
     'keep init() in the first file the app imports, before its store modules load.'

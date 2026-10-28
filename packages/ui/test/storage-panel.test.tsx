@@ -53,6 +53,37 @@ afterEach(() => {
 });
 
 describe('StoragePanel', () => {
+  it('says that a Flutter app read through the Dart VM service needs the package for storage', async () => {
+    storageCommand.mockResolvedValue([]);
+    const flutter = session(0);
+    flutter.meta.info = { ...flutter.meta.info, platform: 'android', sdk: { name: 'dart-vm-service', version: '0.6.0' } };
+    await act(async () => root.render(<StoragePanel session={flutter} />));
+    await wait(0);
+    expect(container.textContent).toContain('Storage needs the Capybara package for Flutter');
+    expect(container.textContent).not.toContain('init(');
+  });
+
+  it('marks a store whose values are all secrets', async () => {
+    storageCommand.mockImplementation(async (_session: string, method: string) =>
+      method === 'list'
+        ? [{ id: 'secure_storage', label: 'Secure storage', readOnly: true, canClear: false, secret: true }]
+        : { entries: [], total: 0 },
+    );
+    await render(0);
+    await wait(0);
+    expect([...container.querySelectorAll('.tag')].map((tag) => tag.textContent)).toEqual(['read-only', 'secret']);
+  });
+
+  it('shows a Flutter app with the package how to add its stores', async () => {
+    storageCommand.mockResolvedValue([]);
+    const flutter = session(0);
+    flutter.meta.info = { ...flutter.meta.info, platform: 'ios', sdk: { name: 'capybara_devtools', version: '0.1.0' } };
+    await act(async () => root.render(<StoragePanel session={flutter} />));
+    await wait(0);
+    expect(container.textContent).toContain('Capybara.addStorage(CapybaraSharedPreferences.legacy(prefs))');
+    expect(container.textContent).not.toContain('init(');
+  });
+
   it('reads a store the app writes all the time every 250 ms, not only once the writes stop', async () => {
     let count = 0;
     storageCommand.mockImplementation(async (_session: string, method: string) =>

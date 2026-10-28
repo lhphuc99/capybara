@@ -1,6 +1,6 @@
-import type { SerializedValue } from '@capybara-devtools/protocol';
+import type { SerializedValue, SessionInfo } from '@capybara-devtools/protocol';
 import { describe, expect, it } from 'vitest';
-import { decodeSocketIo, isFetchOrXhr, logEntryText, toCurl, valueText } from '../src/format';
+import { decodeSocketIo, describeSession, isFetchOrXhr, logEntryText, platformLabel, toCurl, valueText } from '../src/format';
 import type { LogEntry, NetworkEntry } from '../src/store';
 
 describe('toCurl', () => {
@@ -157,3 +157,41 @@ describe('the Fetch/XHR filter', () => {
     expect(['fetch', 'xhr', 'other', 'image', 'websocket'].filter(isFetchOrXhr)).toEqual(['fetch', 'xhr', 'other']);
   });
 });
+
+describe('platformLabel and describeSession', () => {
+  const session = (fields: Partial<SessionInfo>): SessionInfo => ({
+    id: 's1',
+    appName: 'shop',
+    platform: 'ios',
+    sdk: { name: 'dart-vm-service', version: '0.6.0' },
+    startedAt: 0,
+    ...fields,
+  });
+
+  it('names each platform, and passes through ones it does not know', () => {
+    expect(platformLabel('linux')).toBe('Linux');
+    expect(platformLabel('macos')).toBe('macOS');
+    expect(platformLabel('fuchsia' as SessionInfo['platform'])).toBe('fuchsia');
+  });
+
+  it('describes an app by its device and runtime, and a page by its browser and host', () => {
+    expect(
+      describeSession(
+        session({ device: { model: 'iPhone Duo', osVersion: 'iOS 27.1', isEmulator: true }, runtime: 'Flutter 3.47.8 · Dart 3.13.7' }),
+      ),
+    ).toBe('iPhone Duo · iOS 27.1 · emulator · Flutter 3.47.8 · Dart 3.13.7');
+    expect(describeSession(session({ platform: 'linux', runtime: 'Flutter 3.47.8 · Dart 3.13.7' }))).toBe(
+      'Flutter 3.47.8 · Dart 3.13.7',
+    );
+    expect(
+      describeSession(
+        session({
+          platform: 'web',
+          url: 'http://localhost:5173/cart',
+          userAgent: 'Mozilla/5.0 (Macintosh) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36',
+        }),
+      ),
+    ).toBe('Chrome 156 · localhost:5173');
+  });
+});
+

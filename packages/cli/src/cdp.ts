@@ -86,7 +86,9 @@ export function initiatorOf(type: string | undefined, initiator?: RequestInitiat
 }
 
 export function platformOf(name: string | undefined): Platform {
-  return name === 'ios' || name === 'android' || name === 'macos' || name === 'windows' ? name : 'unknown';
+  return name === 'ios' || name === 'android' || name === 'macos' || name === 'windows' || name === 'linux'
+    ? name
+    : 'unknown';
 }
 
 /** Requests React Native makes to Metro for development itself: symbolication for LogBox, bundles, assets. */

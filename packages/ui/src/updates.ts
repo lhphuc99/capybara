@@ -1,4 +1,4 @@
-import { CLI_PACKAGE, METRO_SDK, SDK_PACKAGES, isNewerVersion, type ServerInfo, type SessionInfo } from '@capybara-devtools/protocol';
+import { CLI_PACKAGE, METRO_SDK, SDK_PACKAGES, isNewerVersion, isPubPackage, type ServerInfo, type SessionInfo } from '@capybara-devtools/protocol';
 
 export interface UpdateNotice {
   /** Dismissing hides the notice until a newer version comes out. */
@@ -11,7 +11,8 @@ export interface UpdateNotice {
 /**
  * The selected app's SDK comes first, then the CLI. The desktop app updates itself, so it never
  * gets the CLI notice. Without an npm lookup an SDK is still compared with the server, since
- * every Capybara package is released at the same version.
+ * every Capybara npm package is released at the same version; the Dart packages have versions of
+ * their own, so they are only compared with pub.dev.
  */
 export function updateNotice(
   server: ServerInfo | undefined,
@@ -30,6 +31,17 @@ export function updateNotice(
         key: `${sdk.name}@${newest}`,
         text: `${session.appName} uses ${sdk.name} ${sdk.version}. Version ${newest} is out:`,
         command: `npm install ${sdk.name}@${newest}`,
+      });
+    }
+  }
+
+  if (sdk && isPubPackage(sdk.name)) {
+    const newest = server.latest?.[sdk.name];
+    if (newest && isNewerVersion(newest, sdk.version)) {
+      notices.push({
+        key: `${sdk.name}@${newest}`,
+        text: `${session.appName} uses ${sdk.name} ${sdk.version}. Version ${newest} is out:`,
+        command: `flutter pub add ${sdk.name}:^${newest}`,
       });
     }
   }

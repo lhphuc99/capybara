@@ -252,6 +252,9 @@ const LIBRARY_TITLES: Record<string, string> = {
   'tanstack-query': 'TanStack Query',
   swr: 'SWR',
   context: 'React Context',
+  riverpod: 'Riverpod',
+  bloc: 'Bloc',
+  watch: 'Watched',
 } satisfies Record<StateLibrary, string>;
 
 /** State libraries in the order stores are listed. */

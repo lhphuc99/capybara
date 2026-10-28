@@ -29,6 +29,9 @@
   --syntax-muted: #6e7781;
   --lib-xstate: #0f766e;
   --lib-mobx: #c2410c;
+  --lib-riverpod: #0891b2;
+  --lib-bloc: #2563eb;
+  --lib-watch: #7c3aed;
   --shadow: 0 10px 30px rgb(15 20 30 / 0.16);
   --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
@@ -64,6 +67,9 @@
   --syntax-muted: #8b949e;
   --lib-xstate: #2dd4bf;
   --lib-mobx: #fb923c;
+  --lib-riverpod: #22d3ee;
+  --lib-bloc: #60a5fa;
+  --lib-watch: #a78bfa;
   --shadow: 0 10px 30px rgb(0 0 0 / 0.5);
 }
 
@@ -1540,6 +1546,18 @@ code {
   background: var(--ok);
 }
 
+.state-dot.riverpod {
+  background: var(--lib-riverpod);
+}
+
+.state-dot.bloc {
+  background: var(--lib-bloc);
+}
+
+.state-dot.watch {
+  background: var(--lib-watch);
+}
+
 .state-alert {
   width: 6px;
   height: 6px;
@@ -1877,6 +1895,220 @@ code {
   font-size: 12px;
 }
 
+/* ------------------------------------------------------------ Flutter */
+
+/* The Dart VM service address of an app Capybara did not find. The button goes under a field that is too narrow. */
+.vm-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.vm-input {
+  flex: 1 1 290px;
+  min-width: 0;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  outline: none;
+  background: var(--bg-input);
+  color: var(--text);
+  font: 12px var(--font-mono);
+}
+
+.vm-input::placeholder {
+  color: var(--text-faint);
+}
+
+.vm-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.vm-error {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--error);
+  font-size: 12px;
+}
+
+/* The line flutter run prints, with the part to copy marked. */
+.vm-line {
+  padding: 7px 10px;
+  color: var(--text-muted);
+  font-size: 11.5px;
+  line-height: 17px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.vm-line mark {
+  padding: 0 2px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--text);
+}
+
+.vm-attach {
+  margin: 12px 0 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-subtle);
+}
+
+.onboarding .vm-attach p {
+  margin: 0 0 8px;
+  font-size: 12.5px;
+}
+
+.onboarding .vm-attach p.note {
+  margin: 8px 0 0;
+  font-size: 12px;
+}
+
+.vm-attach strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.attach {
+  position: relative;
+  flex: none;
+}
+
+.attach-button[aria-expanded='true'] {
+  border-color: var(--accent);
+  background: var(--bg-selected);
+  color: var(--accent);
+}
+
+/* Wider than the device panel, so a whole address shows in the field. */
+.attach-panel {
+  width: min(420px, calc(100vw - 24px));
+}
+
+.picker-sep {
+  height: 1px;
+  margin: 4px 6px;
+  border: 0;
+  background: var(--border);
+}
+
+.picker-attach {
+  display: grid;
+  gap: 8px;
+  padding: 2px;
+  border-radius: var(--radius);
+}
+
+.picker-attach-head {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-weight: 550;
+  text-align: left;
+  cursor: pointer;
+}
+
+.picker-attach-head:hover,
+.picker-attach-head[aria-expanded='true'] {
+  background: var(--bg-hover);
+}
+
+.picker-attach-head svg {
+  color: var(--text-muted);
+}
+
+.picker-attach > .vm-form,
+.picker-attach-note {
+  margin: 0 8px;
+}
+
+.picker-attach-note {
+  margin-bottom: 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.platform-tabs {
+  display: inline-flex;
+  gap: 2px;
+  margin: 14px 0 4px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-subtle);
+}
+
+.platform-tabs .tab {
+  height: 26px;
+  padding: 0 14px;
+}
+
+.platform-tabs .tab[aria-selected='true'] {
+  background: var(--bg);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.12);
+  color: var(--text);
+}
+
+/* A Dart stack in a value tree: the app's frames open, the rest folded by where they come from. */
+.frame {
+  gap: 2px;
+}
+
+.f-num {
+  flex: none;
+  width: 4.5ch;
+  color: var(--text-faint);
+}
+
+.f-body {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.f-name {
+  color: var(--text);
+}
+
+.f-loc {
+  margin-left: 0.5ch;
+  color: var(--text-muted);
+}
+
+.frame.app .f-name {
+  font-weight: 650;
+}
+
+.frame.app .f-num {
+  color: var(--text-muted);
+}
+
+.frame.dim .f-name,
+.frame.dim .f-loc {
+  color: var(--text-faint);
+}
+
+.fold-text {
+  color: var(--text-muted);
+}
+
+.fold-text b {
+  color: var(--text);
+  font-weight: 550;
+}
+
 /* ------------------------------------------------------------ narrow screens */
 
 @media (max-width: 860px) {
@@ -1894,6 +2126,16 @@ code {
   }
 
   /* The bar can scroll sideways here, which clips whatever drops out of it; pin the menus under it instead. */
+  .attach-label {
+    display: none;
+  }
+
+  .btn.small.attach-button {
+    width: 24px;
+    justify-content: center;
+    padding: 0;
+  }
+
   .picker-menu,
   .appearance-menu,
   .remote-panel {

@@ -95,7 +95,7 @@ function QrCode({ text }: { text: string }) {
   );
 }
 
-function useDismiss(open: boolean, setOpen: (open: boolean) => void, ref: RefObject<HTMLElement | null>) {
+export function useDismiss(open: boolean, setOpen: (open: boolean) => void, ref: RefObject<HTMLElement | null>) {
   useEffect(() => {
     if (!open) return;
     const onPointer = (event: MouseEvent) => {

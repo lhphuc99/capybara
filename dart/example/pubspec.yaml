@@ -1,0 +1,35 @@
+name: capybara_example
+description: "App to try Capybara with: logs, errors, HTTP, WebSocket and storage, each behind a button."
+publish_to: none
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.8.0
+  flutter: ">=3.32.0"
+
+resolution: workspace
+
+dependencies:
+  flutter:
+    sdk: flutter
+  bloc: ^9.0.0
+  capybara_devtools: ^0.1.0
+  capybara_devtools_bloc: ^0.1.0
+  capybara_devtools_riverpod: ^0.1.0
+  cupertino_http: ">=2.0.0 <4.0.0"
+  dio: ^5.4.0
+  flutter_secure_storage: ">=9.0.0 <12.0.0"
+  hive_ce: ^2.6.0
+  hive_ce_flutter: ^2.1.0
+  http: ^1.2.0
+  riverpod: ^3.0.0
+  shared_preferences: ^2.3.0
+  web_socket_channel: ^3.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

@@ -1,4 +1,5 @@
 import {
+  dartStackTop,
   formatLogMessage,
   isExpandable,
   isSpecial,
@@ -52,6 +53,9 @@ export function logText(entry: LogEntry, redact: Redactor, full: boolean): strin
 }
 
 function stackTop(stack: string, message: string, name: string): string {
+  // Flutter's and the Dart SDK's own frames often fill the top of a Dart stack: show where the app was instead.
+  const dart = dartStackTop(stack);
+  if (dart.length > 0) return dart.join('\n');
   // Errors without a message, such as console.trace()'s, start their stack with just the name.
   const frames = stack.split('\n').filter((line) => line.trim() && (message ? !line.includes(message) : line.trim() !== name));
   return frames.slice(0, 3).map((line) => line.trim()).join('\n');

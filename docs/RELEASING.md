@@ -5,6 +5,7 @@
 | Thứ phát hành | Nơi chứa | Người dùng cài bằng |
 |---|---|---|
 | 5 gói npm: `capybara-devtools` (CLI), `@capybara-devtools/web`, `@capybara-devtools/react-native`, `@capybara-devtools/core`, `@capybara-devtools/protocol` | registry npm | `npx capybara-devtools`, `npm`/`yarn`/`pnpm`/`bun add @capybara-devtools/web` |
+| 3 gói Dart: `capybara_devtools`, `capybara_devtools_riverpod`, `capybara_devtools_bloc` | pub.dev, publisher `lhphuc.com` | `flutter pub add capybara_devtools` |
 | App desktop: `.dmg`, `.zip` (macOS arm64), `.exe`, `.zip` (Windows x64), `.AppImage`, `.tar.gz` (Linux x64, arm64) | GitHub Releases của `lhphuc99/capybara`, tag `vX.Y.Z` | tải trực tiếp hoặc qua website; Homebrew, winget, Scoop, AUR trỏ về các file này |
 
 yarn, pnpm và bun đều tải từ registry npm, nên publish một lần lên npm là cài được bằng cả bốn.
@@ -46,6 +47,37 @@ Năm gói npm, UI và app desktop dùng chung một số version (nhóm `fixed` 
 2. Đặt biến `NPM_TRUSTED_PUBLISHING` = `true` trong Settings → Secrets and variables → Actions → Variables của repo.
 3. Từ đó, merge PR version là workflow tự build, test và publish, npm tự gắn provenance (repo public), workflow đẩy tag của từng gói. Bỏ bước 4 ở trên.
 4. Tuỳ chọn: trong Settings của từng gói trên npmjs.com, bật Publishing access → "Require two-factor authentication and disallow tokens".
+
+## Gói Dart trên pub.dev
+
+Ba gói trong `dart/packages`: `capybara_devtools`, `capybara_devtools_riverpod`, `capybara_devtools_bloc`. Version của chúng riêng, không theo nhóm npm (version ở `pubspec.yaml`, với gói lõi còn ở `lib/src/version.dart`, test kiểm hai chỗ khớp nhau). UI chỉ so version của gói Dart với pub.dev, không với version server.
+
+### Lần đầu (người dùng làm)
+
+1. Publisher đã xác minh `lhphuc.com`: pub.dev → Create publisher, thêm bản ghi DNS TXT Google đưa ra.
+2. Publish tay từng gói, gói lõi trước vì hai gói kia phụ thuộc nó, từ máy, đăng nhập bằng tài khoản Google:
+
+   ```bash
+   cd dart/packages/capybara_devtools && fvm flutter pub publish
+   cd ../capybara_devtools_riverpod && fvm flutter pub publish
+   cd ../capybara_devtools_bloc && fvm flutter pub publish
+   ```
+
+3. Trên trang Admin của từng gói: chuyển sang publisher `lhphuc.com`; bật "Automated publishing" từ GitHub Actions, repo `lhphuc99/capybara`, tag pattern `<tên gói>-v{{version}}` (vd `capybara_devtools-v{{version}}`), bắt buộc environment `pub.dev`.
+4. Trên GitHub: tạo environment `pub.dev` (Settings → Environments) với required reviewers, và ruleset chỉ cho người duyệt tạo tag `capybara_devtools*`.
+
+### Mỗi lần phát hành
+
+1. Nâng `version` trong `pubspec.yaml` (gói lõi: cả `lib/src/version.dart`), thêm mục vào `CHANGELOG.md` của gói, merge vào `main` qua PR.
+2. Tạo và đẩy tag trên commit đó, một tag cho mỗi gói:
+
+   ```bash
+   git tag capybara_devtools-v0.2.0 && git push origin refs/tags/capybara_devtools-v0.2.0
+   ```
+
+3. Workflow `publish-pub.yml` chờ duyệt ở environment `pub.dev`, kiểm tag khớp `pubspec.yaml`, chạy test rồi `flutter pub publish --force`.
+
+`npm run release` chỉ đẩy tag `tên@version` của npm (`scripts/push-release-tags.mjs`), không đẩy tag của gói Dart, để không vô tình publish lên pub.dev.
 
 ## App desktop
 

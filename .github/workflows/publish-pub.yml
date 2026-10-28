@@ -1,0 +1,48 @@
+# pub.dev's automated publishing is set up for this file name, the pub.dev environment and each package's tag pattern
+# (capybara_devtools-v{{version}}, capybara_devtools_riverpod-v{{version}}, capybara_devtools_bloc-v{{version}}):
+# change them there too if they change here.
+name: Publish to pub.dev
+
+on:
+  push:
+    tags:
+      - 'capybara_devtools-v[0-9]+.[0-9]+.[0-9]+*'
+      - 'capybara_devtools_riverpod-v[0-9]+.[0-9]+.[0-9]+*'
+      - 'capybara_devtools_bloc-v[0-9]+.[0-9]+.[0-9]+*'
+
+permissions: {}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    # The environment's required reviewers stand between a pushed tag and pub.dev.
+    environment: pub.dev
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - id: package
+        # capybara_devtools_riverpod-v0.1.0 → the package folder, and the version the tag names.
+        run: |
+          echo "dir=dart/packages/${GITHUB_REF_NAME%-v*}" >> "$GITHUB_OUTPUT"
+          echo "version=${GITHUB_REF_NAME##*-v}" >> "$GITHUB_OUTPUT"
+          echo "flutter=$(jq -r .flutter dart/.fvmrc)" >> "$GITHUB_OUTPUT"
+      # Gives pub the workflow's OIDC token; Flutter below does the publishing.
+      - uses: dart-lang/setup-dart@v1
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ steps.package.outputs.flutter }}
+      - name: The tag names the version in pubspec.yaml
+        working-directory: ${{ steps.package.outputs.dir }}
+        run: |
+          test "$(sed -n 's/^version: *//p' pubspec.yaml)" = "${{ steps.package.outputs.version }}"
+      - run: flutter pub get
+        working-directory: dart
+      - run: flutter test
+        working-directory: ${{ steps.package.outputs.dir }}
+      - run: flutter pub publish --force
+        working-directory: ${{ steps.package.outputs.dir }}

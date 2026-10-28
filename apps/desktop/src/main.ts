@@ -4,15 +4,18 @@ import { join } from 'node:path';
 import { DEFAULT_PORT } from '@capybara-devtools/protocol';
 import {
   fetchLatestVersions,
+  lanAddresses,
   listen,
   PortInUseError,
   readPort,
   remoteUiFrom,
   reverseAndroidPorts,
+  startFlutterBridge,
   startMetroBridge,
   startOrReuse,
   updateCheckFrom,
   type CapybaraServer,
+  type FlutterBridge,
   type MetroBridge,
   type ServerOptions,
   type Started,
@@ -26,6 +29,7 @@ const TAKEOVER_INTERVAL_MS = 2_000;
 let url = '';
 let mainWindow: BrowserWindow | null = null;
 let metroBridge: MetroBridge | undefined;
+let flutterBridge: FlutterBridge | undefined;
 let takeoverTimer: ReturnType<typeof setTimeout> | undefined;
 let quitting = false;
 let settings: DesktopSettings = DEFAULT_SETTINGS;
@@ -37,6 +41,7 @@ app.on('before-quit', () => {
   quitting = true;
   clearTimeout(takeoverTimer);
   metroBridge?.stop();
+  flutterBridge?.stop();
 });
 
 if (!app.requestSingleInstanceLock()) {
@@ -102,6 +107,7 @@ async function main() {
     reverseAndroidPorts(started.port, findAdb());
     own = { server: started.server, port: started.port };
     restartMetro();
+    restartFlutter();
     buildMenu();
   } else {
     console.log(`Using the Capybara server already running on port ${started.port}`);
@@ -149,6 +155,7 @@ function takeOverWhenFree(options: ServerOptions) {
     reverseAndroidPorts(taken.port, findAdb());
     own = taken;
     restartMetro();
+    restartFlutter();
     buildMenu();
     // The page came from the other server, which may be a different version.
     if (mainWindow) load(mainWindow);
@@ -162,6 +169,17 @@ function restartMetro() {
   if (!own || !settings.metro) return;
   const { server, port } = own;
   metroBridge = startMetroBridge({ port, metroPorts: settings.metroPorts, version: app.getVersion(), onHint: (hint) => server.hint(hint) });
+}
+
+/** Reads Flutter apps through the Dart VM service, or stops reading them. */
+function restartFlutter() {
+  flutterBridge?.stop();
+  flutterBridge = undefined;
+  own?.server.setFlutterAttach(undefined);
+  if (!own || !settings.flutter) return;
+  const { server, port } = own;
+  flutterBridge = startFlutterBridge({ port, version: app.getVersion(), onHint: (hint) => server.hint(hint), addresses: lanAddresses });
+  server.setFlutterAttach(flutterBridge.attach);
 }
 
 async function setRemoteUi(on: boolean) {
@@ -203,6 +221,11 @@ function buildMenu() {
       setMetroPort: (port, on) => {
         saveSettings({ metroPorts: togglePort(settings.metroPorts, port, on) });
         restartMetro();
+        buildMenu();
+      },
+      setFlutter: (on) => {
+        saveSettings({ flutter: on });
+        restartFlutter();
         buildMenu();
       },
     },

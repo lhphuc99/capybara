@@ -7,12 +7,17 @@ describe('desktop settings', () => {
     expect(parseSettings('not json')).toEqual(DEFAULT_SETTINGS);
     // What 0.5.0 saved: only the appearance.
     expect(parseSettings('{"appearance":"dark"}')).toEqual({ ...DEFAULT_SETTINGS, appearance: 'dark' });
-    expect(parseSettings('{"appearance":"blue","remoteUi":"yes","metro":false,"metroPorts":[8083,8081,8083,"x",70000]}')).toEqual({
+    expect(
+      parseSettings('{"appearance":"blue","remoteUi":"yes","metro":false,"metroPorts":[8083,8081,8083,"x",70000],"flutter":false}'),
+    ).toEqual({
       appearance: 'system',
       remoteUi: false,
       metro: false,
       metroPorts: [8081, 8083],
+      flutter: false,
     });
+    // Saved before Flutter could be read: reading it is on.
+    expect(parseSettings('{"metro":false}').flutter).toBe(true);
   });
 
   it('turns Metro ports on and off, keeping the last one', () => {
@@ -22,7 +27,7 @@ describe('desktop settings', () => {
   });
 
   it('builds a Settings menu that changes nothing while another program runs the server', () => {
-    const actions = { setRemoteUi: vi.fn(), setMetro: vi.fn(), setMetroPort: vi.fn() };
+    const actions = { setRemoteUi: vi.fn(), setMetro: vi.fn(), setMetroPort: vi.fn(), setFlutter: vi.fn() };
     type Item = { label?: string; enabled?: boolean; checked?: boolean; submenu?: Item[]; click?: (item: { checked: boolean }) => void };
     const items = (menu: unknown) => (menu as { submenu: Item[] }).submenu.filter((item) => item.label);
     const mine = items(settingsMenu({ settings: DEFAULT_SETTINGS, ownServer: true, remoteUiFromEnv: false }, actions));
@@ -30,6 +35,7 @@ describe('desktop settings', () => {
       ['Let Other Devices Open the UI', true, false],
       ['Read React Native Apps Through Metro', true, true],
       ['Metro Ports', true, undefined],
+      ['Read Flutter Apps Through the Dart VM Service', true, true],
     ]);
     expect(mine[2]!.submenu!.map((port) => [port.label, port.checked])).toEqual([
       ['8081', true],
@@ -40,6 +46,8 @@ describe('desktop settings', () => {
     ]);
     mine[2]!.submenu![2]!.click!({ checked: true });
     expect(actions.setMetroPort).toHaveBeenCalledWith(8083, true);
+    mine[3]!.click!({ checked: false });
+    expect(actions.setFlutter).toHaveBeenCalledWith(false);
 
     const theirs = items(settingsMenu({ settings: DEFAULT_SETTINGS, ownServer: false, remoteUiFromEnv: true }, actions));
     expect(theirs.map((item) => [item.label, item.enabled])).toEqual([
@@ -47,6 +55,7 @@ describe('desktop settings', () => {
       ['Let Other Devices Open the UI (CAPYBARA_REMOTE_UI)', false],
       ['Read React Native Apps Through Metro', false],
       ['Metro Ports', false],
+      ['Read Flutter Apps Through the Dart VM Service', false],
     ]);
   });
 });

@@ -23,7 +23,7 @@ export function pickSession(sessions: SessionMeta[], id: string | undefined): Se
   );
   if (!newest) {
     throw new Error(
-      'No app has connected to Capybara yet. Start a web app that calls init() from @capybara-devtools/web, or a React Native app through Metro.',
+      'No app has connected to Capybara yet. Start a web app that calls init() from @capybara-devtools/web, a React Native app through Metro, or a Flutter app with flutter run.',
     );
   }
   return newest;
