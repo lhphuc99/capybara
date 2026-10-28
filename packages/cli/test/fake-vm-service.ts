@@ -39,6 +39,8 @@ export async function fakeVmService(
     httpOn?: boolean;
     /** The app has no Development Service, as with `flutter run --no-dds`. */
     noDds?: boolean;
+    /** Milliseconds to wait before answering these methods. */
+    slow?: Record<string, number>;
     /** With the package: it reached Capybara on its own, or does once given an address it can reach. */
     packageConnected?: boolean;
     packageReachable?: boolean;
@@ -109,7 +111,12 @@ export async function fakeVmService(
     ws.on('message', (data) => {
       const { id, method, params = {} } = JSON.parse(data.toString()) as { id: string; method: string; params?: Record<string, any> };
       calls.push({ method, params });
-      const reply = (result: unknown) => ws.send(JSON.stringify({ jsonrpc: '2.0', id, result }));
+      const wait = options.slow?.[method] ?? 0;
+      const reply = (result: unknown) => {
+        const send = () => ws.send(JSON.stringify({ jsonrpc: '2.0', id, result }));
+        if (wait > 0) setTimeout(send, wait);
+        else send();
+      };
       const fail = (code: number, message: string) => ws.send(JSON.stringify({ jsonrpc: '2.0', id, error: { code, message } }));
       switch (method) {
         case 'setClientName':

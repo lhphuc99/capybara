@@ -284,12 +284,23 @@ describe('Flutter apps through the Dart VM service', () => {
   it('starts a new session on hot restart, and turns profiling on again', async () => {
     const t = await fixture();
     t.start();
+    // Profiling is turned on before the session opens: a restart as soon as it is on could come before the session.
+    await until(() => expect(t.sessions().filter((s) => s.connected)).toHaveLength(1));
     await until(() => expect(t.vm.httpOn()).toBe(true));
     t.vm.restart();
     expect(t.vm.httpOn()).toBe(false);
-    await until(() => expect(t.sessions().filter((s) => s.connected)).toHaveLength(1));
-    await until(() => expect(new Set(t.sessions().map((s) => s.info.id)).size).toBe(2));
+    await until(() => expect(t.sessions().map((s) => s.connected)).toEqual([false, true]));
     await until(() => expect(t.vm.httpOn()).toBe(true));
+  });
+
+  it('opens no session for a run that a hot restart ended while it was being set up', async () => {
+    const t = await fixture({ slow: { lookupResolvedPackageUris: 300 } });
+    t.start();
+    await until(() => expect(t.vm.calls.some((call) => call.method === 'lookupResolvedPackageUris')).toBe(true));
+    t.vm.restart();
+    await until(() => expect(t.sessions().filter((s) => s.connected)).toHaveLength(1));
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(t.sessions()).toHaveLength(1);
   });
 
   it('leaves apps that run the Capybara package to it', async () => {
