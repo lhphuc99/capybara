@@ -378,6 +378,8 @@ function watchApp(
     }
     run.state = 'streaming';
     const info = await sessionInfo(run, isolate);
+    // A hot restart may have ended the run while this waited: a session opened now would never be closed.
+    if (ended || runs.get(run.isolateId) !== run || run.state !== 'streaming') return;
     resolveReady(info.appName);
     meta.packageName ??= info.appName;
     debug(`Reading ${label()} through the Dart VM service`);
