@@ -5,7 +5,7 @@
 | Thứ phát hành | Nơi chứa | Người dùng cài bằng |
 |---|---|---|
 | 5 gói npm: `capybara-devtools` (CLI), `@capybara-devtools/web`, `@capybara-devtools/react-native`, `@capybara-devtools/core`, `@capybara-devtools/protocol` | registry npm | `npx capybara-devtools`, `npm`/`yarn`/`pnpm`/`bun add @capybara-devtools/web` |
-| 3 gói Dart: `capybara_devtools`, `capybara_devtools_riverpod`, `capybara_devtools_bloc` | pub.dev, publisher `lhphuc.com` | `flutter pub add capybara_devtools` |
+| 3 gói Dart: `capybara_devtools`, `capybara_devtools_riverpod`, `capybara_devtools_bloc` | pub.dev, publisher `capybara.lhphuc.com` | `flutter pub add capybara_devtools` |
 | App desktop: `.dmg`, `.zip` (macOS arm64), `.exe`, `.zip` (Windows x64), `.AppImage`, `.tar.gz` (Linux x64, arm64) | GitHub Releases của `lhphuc99/capybara`, tag `vX.Y.Z` | tải trực tiếp hoặc qua website; Homebrew, winget, Scoop, AUR trỏ về các file này |
 
 yarn, pnpm và bun đều tải từ registry npm, nên publish một lần lên npm là cài được bằng cả bốn.
@@ -54,8 +54,9 @@ Ba gói trong `dart/packages`: `capybara_devtools`, `capybara_devtools_riverpod`
 
 ### Lần đầu (người dùng làm)
 
-1. Publisher đã xác minh `lhphuc.com`: pub.dev → Create publisher, thêm bản ghi DNS TXT Google đưa ra.
-2. Publish tay từng gói, gói lõi trước vì hai gói kia phụ thuộc nó, từ máy, đăng nhập bằng tài khoản Google:
+1. Publisher đã xác minh `capybara.lhphuc.com`, trùng domain của website: pub.dev → Create publisher. Google Search Console xác minh domain bằng bản ghi DNS; tên này đã là CNAME trỏ sang Vercel nên không thêm TXT được, chọn cách xác minh bằng CNAME (bản ghi `<mã>.capybara`, DNS của `lhphuc.com` ở Spaceship).
+   Search Console, pub.dev và lần publish đầu phải cùng một tài khoản Google: pub.dev chỉ thấy domain mà chính tài khoản đang đăng nhập đã xác minh, và báo "Verification unsuccessful" dù Search Console ghi verified owner ở tài khoản khác.
+2. Publish tay từng gói, gói lõi trước vì hai gói kia phụ thuộc nó, từ máy, đăng nhập bằng tài khoản Google đó:
 
    ```bash
    cd dart/packages/capybara_devtools && fvm flutter pub publish
@@ -63,7 +64,7 @@ Ba gói trong `dart/packages`: `capybara_devtools`, `capybara_devtools_riverpod`
    cd ../capybara_devtools_bloc && fvm flutter pub publish
    ```
 
-3. Trên trang Admin của từng gói: chuyển sang publisher `lhphuc.com`; bật "Automated publishing" từ GitHub Actions, repo `lhphuc99/capybara`, tag pattern `<tên gói>-v{{version}}` (vd `capybara_devtools-v{{version}}`), bắt buộc environment `pub.dev`.
+3. Trên trang Admin của từng gói: chuyển sang publisher `capybara.lhphuc.com`; bật "Automated publishing" từ GitHub Actions, repo `lhphuc99/capybara`, tag pattern `<tên gói>-v{{version}}` (vd `capybara_devtools-v{{version}}`), bắt buộc environment `pub.dev`.
 4. Trên GitHub: tạo environment `pub.dev` (Settings → Environments) với required reviewers, và ruleset chỉ cho người duyệt tạo tag `capybara_devtools*`.
 
 ### Mỗi lần phát hành
