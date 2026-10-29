@@ -62,6 +62,11 @@ export interface ServerOptions {
    * out of date. Called once the server is listening, then twice a day. Without it nothing is looked up.
    */
   latestVersions?: () => Promise<LatestVersions | undefined>;
+  /**
+   * Ends the program the server runs in when a viewer on this computer asks (`capybara stop`), once it is answered.
+   * Without it such viewers are told to quit the desktop app instead.
+   */
+  onStop?: () => void;
 }
 
 export interface CapybaraServer {
@@ -241,6 +246,7 @@ export function createServer(options: ServerOptions): CapybaraServer {
     hints: [...hints],
     // Addresses are taken only from this computer, so other devices are told they can't give one.
     ...(flutterAttach && { flutter: { attach: viewer !== undefined && localViewers.get(viewer) === true } }),
+    stop: options.onStop !== undefined && viewer !== undefined && localViewers.get(viewer) === true,
   });
 
   const broadcastServer = () => {
@@ -447,6 +453,15 @@ export function createServer(options: ServerOptions): CapybaraServer {
     }
   };
 
+  const stop = (viewer: WebSocket, message: Extract<ViewerToServer, { t: 'stop' }>) => {
+    const fail = (error: string) => send(viewer, { t: 'result', id: message.id, ok: false, error });
+    if (!localViewers.get(viewer)) return fail('Only the computer Capybara runs on can stop it');
+    const { onStop } = options;
+    if (!onStop) return fail('This Capybara is the desktop app: quit it from its menu');
+    // Stopping closes this socket at once, which would drop an answer still waiting to be sent.
+    viewer.send(JSON.stringify({ t: 'result', id: message.id, ok: true }), () => onStop());
+  };
+
   const diagnose = async (viewer: WebSocket, message: Extract<ViewerToServer, { t: 'diagnose' }>) => {
     const fail = (error: string) => send(viewer, { t: 'result', id: message.id, ok: false, error });
     const session = sessions.get(message.sessionId);
@@ -522,6 +537,9 @@ export function createServer(options: ServerOptions): CapybaraServer {
           break;
         case 'attach':
           void attachFlutter(ws, message);
+          break;
+        case 'stop':
+          stop(ws, message);
           break;
         case 'clear': {
           const session = sessions.get(message.sessionId);

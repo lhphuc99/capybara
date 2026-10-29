@@ -430,6 +430,64 @@ describe('hints', () => {
   });
 });
 
+describe('stopping', () => {
+  it('answers a viewer on this computer, after what it is still being sent, before it stops', async () => {
+    let stopping: Promise<void> | undefined;
+    await start({
+      onStop: () => {
+        stopping = server!.close();
+      },
+    });
+    const ui = viewer();
+    expect((await ui.next((m) => m.t === 'init')).server.stop).toBe(true);
+    const { app } = await connectApp();
+    const body = 'x'.repeat(128 * 1024);
+    const responses = Array.from({ length: 128 }, (_, i) => ({
+      seq: i + 1,
+      ts: i + 1,
+      kind: 'network.response',
+      payload: { id: `r${i + 1}`, status: 200, headers: {}, body: { kind: 'text', text: body }, duration: 1 },
+    }));
+    await deliver(app, ui, responses);
+    const closed = new Promise<void>((resolve) => ui.ws.once('close', () => resolve()));
+    // 16 MB is more than the socket buffers of both ends hold, so it is still being sent when the stop comes.
+    ui.send({ t: 'history', sessionId: 'app-1' });
+    ui.send({ t: 'stop', id: 's1' });
+    await closed;
+    expect(ui.messages.at(-2).events).toHaveLength(responses.length);
+    expect(ui.messages.at(-1)).toEqual({ t: 'result', id: 's1', ok: true });
+    await stopping;
+  });
+
+  it('tells viewers of a server without onStop, as in the desktop app, to quit the app', async () => {
+    await start();
+    const ui = viewer();
+    expect((await ui.next((m) => m.t === 'init')).server.stop).toBe(false);
+    ui.send({ t: 'stop', id: 's1' });
+    expect(await ui.next((m) => m.t === 'result')).toEqual({
+      t: 'result',
+      id: 's1',
+      ok: false,
+      error: 'This Capybara is the desktop app: quit it from its menu',
+    });
+  });
+
+  it.skipIf(!lan)('stops only for this computer, even with remote UI', async () => {
+    const stops: number[] = [];
+    await start({ remoteUi: true, onStop: () => stops.push(1) });
+    const device = connect('/viewer', { origin: `http://127.0.0.1:${port}` }, { localAddress: lan });
+    expect((await device.next((m) => m.t === 'init')).server.stop).toBe(false);
+    device.send({ t: 'stop', id: 'd1' });
+    expect(await device.next((m) => m.t === 'result')).toEqual({
+      t: 'result',
+      id: 'd1',
+      ok: false,
+      error: 'Only the computer Capybara runs on can stop it',
+    });
+    expect(stops).toEqual([]);
+  });
+});
+
 describe('access control', () => {
   it('refuses viewer sockets from other origins', async () => {
     await start();
