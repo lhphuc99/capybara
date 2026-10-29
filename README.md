@@ -11,7 +11,8 @@ Debug React Native, Flutter and web apps from one place: logs, network (includin
 ## Quick start
 
 ```bash
-npx capybara-devtools    # UI at http://localhost:7357
+npx capybara-devtools         # UI at http://localhost:7357
+npx capybara-devtools stop    # stop it from another terminal, or press Ctrl+C in its own
 ```
 
 Or use the [desktop app](#desktop-app). From this repo:
@@ -299,7 +300,7 @@ Packages land in `apps/desktop/release/`, named like `Capybara-0.1.0-win-x64.exe
 
 - Apps connect exactly as they do to the CLI, on port 7357. Set `CAPYBARA_PORT` to use another port. What the CLI would print, such as a device that was turned away or an app that can't be read through Metro, shows in a banner at the top of the window.
 - **Settings** (in the Capybara menu on macOS, the File menu elsewhere) turns on **Let Other Devices Open the UI**, after asking, and off again, which lets go of the devices that had it open. It also turns reading React Native apps through Metro on and off, and picks the Metro ports to look on (8081 to 8085; 8081 and 8082 at first). The app remembers them; while it shows the server of `npx capybara-devtools`, they wait until it runs its own. `CAPYBARA_REMOTE_UI=1` still turns remote UI on for one run.
-- If `npx capybara-devtools` is already running, the window shows that server, and the app takes over the port once the CLI stops. If another program holds the port, the app says so and lets you try again. The other way round, `npx capybara-devtools` started while the app runs opens the app's UI and exits.
+- If `npx capybara-devtools` is already running, the window shows that server, and the app takes over the port once the CLI stops (`npx capybara-devtools stop` stops it). If another program holds the port, the app says so and lets you try again. The other way round, `npx capybara-devtools` started while the app runs opens the app's UI and exits, and `npx capybara-devtools stop` leaves the app running.
 - On macOS, closing the window keeps the server running in the Dock. Quit with ⌘Q. On Windows and Linux, closing the window quits.
 - No build is signed for distribution. On another Mac the first launch is blocked until you allow it in System Settings → Privacy & Security. On Windows, SmartScreen warns about an unknown publisher: choose More info → Run anyway.
 - Updates: the app looks for a new GitHub release 10 seconds after it starts and twice a day, and asks before doing anything. The Windows installer and the AppImage download the update, then restart into it; the macOS app, the Windows zip and the tar.gz open the release page to download it. **Check for Updates…** is in the Capybara menu on macOS and the Help menu elsewhere. `CAPYBARA_NO_UPDATE_CHECK=1` turns the automatic checks off.

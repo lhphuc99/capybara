@@ -16,6 +16,7 @@ import { fetchLatestVersions } from './updates.js';
 const HELP = `Usage: capybara [options]
        capybara mcp [options]          Serve this data to AI assistants (see capybara mcp --help)
        capybara setup-guide [folder]   Print how to add Capybara to an app, for AI assistants
+       capybara stop [options]         Stop the Capybara running on this computer (see capybara stop --help)
 
 Options:
   -p, --port <port>         Port for the UI and app connections (default ${DEFAULT_PORT}, or $CAPYBARA_PORT)
@@ -53,6 +54,17 @@ if (process.argv[2] === 'setup-guide') {
   const { runSetupGuide } = await import('./setup-guide.js');
   try {
     await runSetupGuide(process.argv.slice(3), version);
+    process.exit(0);
+  } catch (error) {
+    console.error((error as Error).message);
+    process.exit(1);
+  }
+}
+
+if (process.argv[2] === 'stop') {
+  const { runStop } = await import('./stop.js');
+  try {
+    await runStop(process.argv.slice(3));
     process.exit(0);
   } catch (error) {
     console.error((error as Error).message);
@@ -126,6 +138,10 @@ try {
     onHint: (hint) => console.log(`  ${hint}\n`),
     version,
     latestVersions: updateCheckFrom(process.env, values['update-check']) ? checkLatest : undefined,
+    onStop: () => {
+      console.log('  Stopped by capybara stop.\n');
+      shutdown();
+    },
   });
 } catch (error) {
   console.error(error instanceof PortInUseError ? `${error.message}. Choose another port with --port.` : error);
@@ -135,7 +151,9 @@ try {
 if (!started.server) {
   // The desktop app or another `capybara` has the port; apps already reach it there.
   const url = `http://localhost:${started.port}`;
-  console.log(`\n  Capybara is already running at ${url}. Quit it first to start one with these options.\n`);
+  console.log(
+    `\n  Capybara is already running at ${url}. Stop it first (${stopCommand(started.port)}, or quit the desktop app) to start one with these options.\n`,
+  );
   if (values.open) openBrowser(url);
   process.exit(0);
 }
@@ -199,6 +217,14 @@ function hostOf(address: string): string {
   return address.includes(':') ? `[${address}]` : address;
 }
 
+/** `capybara stop` for the server on `port`, with the address it listens on when that is not every interface. */
+function stopCommand(port: number, address?: string): string {
+  let command = `npx ${CLI_PACKAGE} stop`;
+  if (port !== DEFAULT_PORT) command += ` --port ${port}`;
+  if (address && !listensEverywhere(address)) command += ` --host ${address}`;
+  return command;
+}
+
 function printBanner(actualPort: number, address: string) {
   const lines = ['', `  Capybara ${version}`, '', `  UI        http://${hostOf(address)}:${actualPort}`];
   const reachable = reachableAddresses(address);
@@ -214,6 +240,8 @@ function printBanner(actualPort: number, address: string) {
     lines.push(`  Metro     ${ports} (React Native apps show up without the SDK)`);
   }
   if (values.flutter) lines.push('  Flutter   apps started with flutter run show up without a package');
+  // An assistant that started this in the background reads the banner from a log, with no terminal to press Ctrl+C in.
+  lines.push(`  Stop      Ctrl+C, or ${stopCommand(actualPort, address)} from another terminal`);
   const machine = listensEverywhere(address) ? '<this machine>' : hostOf(address);
   lines.push('', `  Apps connect to ws://${machine}:${actualPort}/client (React Native finds it through Metro).`, '');
   console.log(lines.join('\n'));

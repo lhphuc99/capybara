@@ -460,6 +460,11 @@ export interface ServerInfo {
    * `--no-flutter`.
    */
   flutter?: { attach: boolean };
+  /**
+   * This viewer may stop the server, as `capybara stop` does: only viewers on this computer may, and not when the server
+   * runs in the desktop app, which is quit from its menu. Missing from older servers.
+   */
+  stop?: boolean;
 }
 
 /** One step of a diagnosis: a browser rule that passed or failed, or something the server saw on the way. */
@@ -492,7 +497,9 @@ export type ViewerToServer =
    * running code in the app, so the server takes it only from a viewer on this computer and only for a loopback
    * host, never stores or repeats it, and answers with a CommandResult whose `result` is `{ appName }`.
    */
-  | { t: 'attach'; id: string; uri: string };
+  | { t: 'attach'; id: string; uri: string }
+  /** Stop the server, as Ctrl+C in its terminal would. Answered with a CommandResult before the server closes. */
+  | { t: 'stop'; id: string };
 
 export type ServerToViewer =
   | { t: 'init'; server: ServerInfo; sessions: SessionMeta[] }
