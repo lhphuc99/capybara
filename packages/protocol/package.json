@@ -1,6 +1,6 @@
 {
   "name": "@capybara-devtools/protocol",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "description": "Wire protocol, and helpers to read its values, shared by the Capybara SDKs, server and UI",
   "keywords": [
     "capybara"
