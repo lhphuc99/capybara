@@ -1,5 +1,12 @@
 # @capybara-devtools/core
 
+## 0.8.0
+
+### Patch Changes
+
+- Updated dependencies [51bf441]
+  - @capybara-devtools/protocol@0.8.0
+
 ## 0.7.0
 
 ### Patch Changes
