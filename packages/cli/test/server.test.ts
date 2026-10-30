@@ -226,6 +226,32 @@ describe('event relay', () => {
   });
 });
 
+describe('taking over', () => {
+  it('keeps what another server recorded, and lets its apps carry on in their sessions', async () => {
+    await start();
+    const ui = viewer();
+    await ui.opened;
+    const { app } = await connectApp();
+    await deliver(app, ui, [log(1), stateStore(2), stateChange(3), log(4)]);
+    const before = await load();
+    const recorded = server!.recorded();
+    await server!.close();
+
+    await start({ sessions: recorded });
+    const after = await load();
+    expect(after.meta).toMatchObject({ info: { id: 'app-1' }, connected: false, eventCount: 4 });
+    expect(after.events).toEqual(before.events);
+
+    const next = viewer();
+    await next.opened;
+    const again = await connectApp();
+    expect(again.welcome).toEqual({ t: 'welcome', lastSeq: 4 });
+    // The SDK sends again what it holds after that seq; anything older would be a duplicate.
+    again.app.send({ t: 'events', events: [log(4), log(5)] });
+    expect((await next.next((m) => m.t === 'events')).events.map((e: any) => e.seq)).toEqual([5]);
+  });
+});
+
 describe('state events', () => {
   it('keeps them apart, so busy stores never push logs out', async () => {
     await start();
@@ -485,6 +511,20 @@ describe('stopping', () => {
       error: 'Only the computer Capybara runs on can stop it',
     });
     expect(stops).toEqual([]);
+  });
+});
+
+describe('in the background', () => {
+  it('tells viewers on this computer where it writes its output', async () => {
+    await start({ log: '/tmp/capybara-x/capybara.log' });
+    const ui = viewer();
+    expect((await ui.next((m) => m.t === 'init')).server.log).toBe('/tmp/capybara-x/capybara.log');
+  });
+
+  it.skipIf(!lan)('keeps it from other devices, even with remote UI', async () => {
+    await start({ remoteUi: true, log: '/tmp/capybara-x/capybara.log' });
+    const device = connect('/viewer', { origin: `http://127.0.0.1:${port}` }, { localAddress: lan });
+    expect((await device.next((m) => m.t === 'init')).server.log).toBeUndefined();
   });
 });
 

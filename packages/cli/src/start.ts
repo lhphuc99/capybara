@@ -1,5 +1,5 @@
 import net from 'node:net';
-import { VIEWER_PATH } from '@capybara-devtools/protocol';
+import { VIEWER_PATH, type ServerInfo } from '@capybara-devtools/protocol';
 import { WebSocket, type RawData } from 'ws';
 import { createServer, type CapybaraServer, type ServerOptions } from './server.js';
 
@@ -12,14 +12,15 @@ export class PortInUseError extends Error {
 /** `address` is where the server listens, as `CapybaraServer.start()` says. */
 export type Started =
   | { port: number; address: string; server: CapybaraServer }
-  /** Another Capybara process (the desktop app, another `capybara`) already serves the port. */
-  | { port: number; server: null };
+  /** Another Capybara process (the desktop app, another `capybara`) already serves the port; `running` is how it greets. */
+  | { port: number; server: null; running: ServerInfo };
 
 /** Starts a server, or reuses the Capybara server that already has the port. */
 export async function startOrReuse(options: ServerOptions): Promise<Started> {
   const own = await listen(options);
   if (own) return own;
-  if (await isCapybaraServer(options.port)) return { port: options.port, server: null };
+  const running = await readServerInfo(options.port);
+  if (running) return { port: options.port, server: null, running };
   throw new PortInUseError(options.port);
 }
 
@@ -54,10 +55,15 @@ async function isHeldElsewhere(port: number): Promise<boolean> {
 }
 
 /** Connects the way the UI does and waits for the greeting a Capybara server sends every viewer. */
-export function isCapybaraServer(port: number, timeout = 2_000): Promise<boolean> {
+export async function isCapybaraServer(port: number, timeout = 2_000): Promise<boolean> {
+  return (await readServerInfo(port, timeout)) !== undefined;
+}
+
+/** What the Capybara server on `port` says of itself in that greeting; undefined when no Capybara answers. */
+export function readServerInfo(port: number, timeout = 2_000): Promise<ServerInfo | undefined> {
   return new Promise((resolve) => {
     const ws = new WebSocket(`ws://localhost:${port}${VIEWER_PATH}`, { origin: `http://localhost:${port}` });
-    const finish = (result: boolean) => {
+    const finish = (result: ServerInfo | undefined) => {
       clearTimeout(timer);
       ws.removeAllListeners();
       // Terminating a socket that is still connecting emits one more error.
@@ -65,16 +71,17 @@ export function isCapybaraServer(port: number, timeout = 2_000): Promise<boolean
       ws.terminate();
       resolve(result);
     };
-    const timer = setTimeout(() => finish(false), timeout);
-    ws.once('message', (data) => finish(isInit(data)));
-    ws.once('error', () => finish(false));
+    const timer = setTimeout(() => finish(undefined), timeout);
+    ws.once('message', (data) => finish(greeting(data)));
+    ws.once('error', () => finish(undefined));
   });
 }
 
-function isInit(data: RawData): boolean {
+function greeting(data: RawData): ServerInfo | undefined {
   try {
-    return (JSON.parse(data.toString()) as { t?: unknown }).t === 'init';
+    const message = JSON.parse(data.toString()) as { t?: unknown; server?: ServerInfo };
+    return message.t === 'init' && message.server && typeof message.server === 'object' ? message.server : undefined;
   } catch {
-    return false;
+    return undefined;
   }
 }

@@ -11,9 +11,12 @@ Debug React Native, Flutter and web apps from one place: logs, network (includin
 ## Quick start
 
 ```bash
-npx capybara-devtools         # UI at http://localhost:7357
-npx capybara-devtools stop    # stop it from another terminal, or press Ctrl+C in its own
+npx capybara-devtools                # UI at http://localhost:7357; Ctrl+C stops it, b moves it to the background
+npx capybara-devtools --background   # the same, but gives the terminal back
+npx capybara-devtools stop           # stops it from any terminal
 ```
+
+With `--background`, the command returns once Capybara runs, and Capybara keeps running after the terminal closes. What it prints from then on goes to the log file it names. Forgot it? Press **b** in the terminal Capybara runs in: a Capybara in the background takes over what it has recorded, on the same port and with the same options, and apps and the UI reconnect on their own. An app with the SDK carries on in its session; one read through Metro or the Dart VM service shows up as a new session, as after a reload, with the old one kept. Run `npx capybara-devtools` again while one runs, in the background or not, and it opens that one's UI and says which it is: its version, and its log when it runs in the background.
 
 Or use the [desktop app](#desktop-app). From this repo:
 

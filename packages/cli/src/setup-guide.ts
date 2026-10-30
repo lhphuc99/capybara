@@ -776,7 +776,7 @@ function appGuide(project: AppProject, options: GuideOptions): string[] {
   const startScript = native ? (scripts.start ? 'start' : undefined) : scripts.dev ? 'dev' : scripts.start ? 'start' : undefined;
   const start = startScript ? ` (\`${runScript(project.manager, startScript)}\`)` : '';
   lines.push(
-    `1. Capybara has to be running: the Capybara desktop app, or \`npx capybara-devtools\` in a terminal that stays open (its UI is at http://localhost:${DEFAULT_PORT}). Start it, or ask the user to.`,
+    `1. Capybara has to be running: the Capybara desktop app, or \`npx capybara-devtools --background\`, which returns once it runs and keeps running until \`npx capybara-devtools stop\` (its UI is at http://localhost:${DEFAULT_PORT}). Start it, or ask the user to.`,
     native
       ? `2. Start Metro${start} and open the app on a simulator, an emulator or a phone in development mode.`
       : `2. Start the app in development${start} and open it in a browser.`,
@@ -924,9 +924,9 @@ function flutterGuide(project: FlutterProject, options: GuideOptions): string[] 
     '## 1. Run the app and Capybara',
     '',
     '1. Start the app in debug mode with `flutter run` (or from VS Code or Android Studio), on a simulator, an emulator, a desktop or a phone.',
-    '2. Start Capybara on the same computer, or open its desktop app:',
+    '2. Start Capybara on the same computer, or open its desktop app. This command returns once Capybara runs; `npx capybara-devtools stop` stops it:',
     '',
-    ...code('sh', 'npx capybara-devtools'),
+    ...code('sh', 'npx capybara-devtools --background'),
     '',
     'Capybara finds apps that flutter run or an IDE started, within a few seconds. It shows:',
     '',
@@ -939,7 +939,7 @@ function flutterGuide(project: FlutterProject, options: GuideOptions): string[] 
     options.via === 'mcp'
       ? '- Call list_sessions: the app is listed with "via Dart VM service". From then on get_logs and get_network read it.'
       : '- The app shows up in Capybara\'s window, with "via Dart VM service".',
-    '- If it does not, start Capybara with the address flutter run prints ("A Dart VM Service on … is available at"): `npx capybara-devtools --flutter-vm-service <address>`, or paste it in the UI. Run with `CAPYBARA_DEBUG=1` to see why an app is skipped.',
+    '- If it does not, start Capybara with the address flutter run prints ("A Dart VM Service on … is available at"): `npx capybara-devtools --background --flutter-vm-service <address>`, or paste it in the UI. Run with `CAPYBARA_DEBUG=1` to see why an app is skipped.',
     '',
     '## 3. The Capybara package (for storage, state and WebSockets)',
     '',

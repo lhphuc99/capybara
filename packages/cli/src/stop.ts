@@ -5,8 +5,8 @@ import { readPort } from './config.js';
 
 const HELP = `Usage: capybara stop [options]
 
-Stops the Capybara server running on this computer, as Ctrl+C in its terminal would, e.g. one an AI assistant started
-in the background. The desktop app is quit from its menu instead.
+Stops the Capybara server running on this computer, as Ctrl+C in its terminal would, e.g. one started with
+--background, or one an AI assistant started in the background. The desktop app is quit from its menu instead.
 
 Options:
   -p, --port <port>     Port of the Capybara server (default ${DEFAULT_PORT}, or $CAPYBARA_PORT)

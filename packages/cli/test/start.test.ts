@@ -31,9 +31,9 @@ describe('startOrReuse', () => {
     expect(await isCapybaraServer(started.port)).toBe(true);
   });
 
-  it('reuses a Capybara server that already has the port', async () => {
+  it('reuses a Capybara server that already has the port, and says what it is', async () => {
     const port = await capybara();
-    expect(await startOrReuse({ port, host: '127.0.0.1' })).toEqual({ port, server: null });
+    expect(await startOrReuse({ port, host: '127.0.0.1' })).toMatchObject({ port, server: null, running: { version: 'test', port } });
   });
 
   it('reports a port held by another program', async () => {
