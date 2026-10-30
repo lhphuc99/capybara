@@ -67,6 +67,23 @@ export interface ServerOptions {
    * Without it such viewers are told to quit the desktop app instead.
    */
   onStop?: () => void;
+  /** Where the server's output goes when it runs in the background, for viewers on this computer (`ServerInfo.log`). */
+  log?: string;
+  /**
+   * What the server this one takes over from recorded (`recorded()`), as when the CLI moves to the background. The
+   * sessions start out disconnected; an app that reconnects carries on in its own, sending only what it is missing.
+   */
+  sessions?: RecordedSession[];
+}
+
+/** A session as a server recorded it, for another server to take over. */
+export interface RecordedSession {
+  info: SessionInfo;
+  /** In seq order, state included. */
+  events: CapybaraEvent[];
+  lastSeq: number;
+  lastSeen: number;
+  address?: string;
 }
 
 export interface CapybaraServer {
@@ -82,6 +99,8 @@ export interface CapybaraServer {
    * an app it did not find itself. Undefined when it is off.
    */
   setFlutterAttach(attach: ((uri: string) => Promise<{ appName: string }>) | undefined): void;
+  /** The sessions it keeps, oldest first, for a server that takes over from it (`ServerOptions.sessions`). */
+  recorded(): RecordedSession[];
 }
 
 interface Session {
@@ -247,6 +266,7 @@ export function createServer(options: ServerOptions): CapybaraServer {
     // Addresses are taken only from this computer, so other devices are told they can't give one.
     ...(flutterAttach && { flutter: { attach: viewer !== undefined && localViewers.get(viewer) === true } }),
     stop: options.onStop !== undefined && viewer !== undefined && localViewers.get(viewer) === true,
+    ...(options.log && viewer !== undefined && localViewers.get(viewer) === true && { log: options.log }),
   });
 
   const broadcastServer = () => {
@@ -329,6 +349,20 @@ export function createServer(options: ServerOptions): CapybaraServer {
       session.state.events.push(event);
     }
   };
+
+  for (const recorded of options.sessions ?? []) {
+    const session: Session = {
+      info: recorded.info,
+      events: [],
+      state: { events: [], stores: new Map() },
+      lastSeq: recorded.lastSeq,
+      socket: null,
+      lastSeen: recorded.lastSeen,
+      address: recorded.address,
+    };
+    for (const event of recorded.events) keep(session, event);
+    sessions.set(recorded.info.id, session);
+  }
 
   const ingest = (session: Session, events: unknown) => {
     if (!Array.isArray(events)) return;
@@ -634,6 +668,15 @@ export function createServer(options: ServerOptions): CapybaraServer {
       flutterAttach = next;
       broadcastServer();
     },
+
+    recorded: () =>
+      [...sessions.values()].map((s) => ({
+        info: s.info,
+        events: history(s),
+        lastSeq: s.lastSeq,
+        lastSeen: s.lastSeen,
+        ...(s.address && { address: s.address }),
+      })),
   };
 }
 

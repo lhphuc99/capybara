@@ -252,7 +252,7 @@ function refused(address: string): Error {
 
 function notRunning(address: string): Error {
   return new Error(
-    `Capybara is not running on ${address}. Open the Capybara app or run \`npx capybara-devtools\`, then try again. ` +
+    `Capybara is not running on ${address}. Open the Capybara app or run \`npx capybara-devtools --background\`, then try again. ` +
       'If it uses another port, start the MCP server with --port.',
   );
 }

@@ -465,6 +465,11 @@ export interface ServerInfo {
    * runs in the desktop app, which is quit from its menu. Missing from older servers.
    */
   stop?: boolean;
+  /**
+   * The server runs in the background (`--background`), and writes what it prints to this file. Only viewers on this
+   * computer are told, e.g. a second `npx capybara-devtools`, so it can say where the first one runs.
+   */
+  log?: string;
 }
 
 /** One step of a diagnosis: a browser rule that passed or failed, or something the server saw on the way. */
